@@ -1161,68 +1161,58 @@ local function BuyTowerIfNeeded(towerName, cost)
     end
 end
 
--- ========== CUSTOM STRATEGY FUNCTIONS (Your URLs) ==========
+-- ========== CUSTOM STRATEGY FUNCTIONS ==========
 local function RunEasyMode()
-    print("Starting Easy Mode (Summer Castle)")
+    print("Starting Easy Mode")
     TDS:Mode("Easy")
-    TDS:GameInfo("Simplicity", {})
+    TDS:GameInfo("Summer Castle", {})  
     loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy1"))()
 end
 
 local function RunPizzaMode()
     print("Starting Pizza Party")
     TDS:Mode("PizzaParty")
-    -- No map selection needed for Pizza Party
+    TDS:GameInfo("halloween", {})
     loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/pizza"))()
 end
 
 local function RunHardcoreMode()
     print("Starting Hardcore Mode")
     TDS:Mode("Hardcore")
-    TDS:GameInfo("Wretched Front", {})
+    TDS:GameInfo("Wretched Front", {})  
     loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"))()
 end
 
--- ========== AUTO PROGRESSION FUNCTION ==========
-local autoProgRunning = false
-local function StartAutoProgression()
-    if autoProgRunning then return end
-    autoProgRunning = true
-
-    print("Auto-Progression: Checking level and coins...")
-
-    -- Wait until we are in the lobby
-    while GameState ~= "LOBBY" do
-        task.wait(1)
-    end
-
-    local level = GetStatNumber and GetStatNumber("Level") or 0
-    local coins = GetStatNumber and GetStatNumber("Coins") or 0
-    print("Level:", level, "Coins:", coins)
-
-    if level >= 100 then
-        print("Max level reached. Stopping Auto-Progression.")
-        Window:Notify({Title = "ADS", Desc = "Max level reached! Auto-Progression stopped.", Time = 5})
-        Globals.AutoProgression = false
-        SetSetting("AutoProgression", false)
-        autoProgRunning = false
-        return
-    elseif level >= 50 then
-        print("Hardcore mode selected.")
-        BuyTowerIfNeeded("Pyromancer", 1250)
-        BuyTowerIfNeeded("Electroshocker", 2500)
-        BuyTowerIfNeeded("Freezer", 650)
-        RunHardcoreMode()
-    elseif level >= 25 then
-        print("Pizza Party selected.")
-        BuyTowerIfNeeded("Assassin", 800)
-        BuyTowerIfNeeded("Trapper", 3000)
-        RunPizzaMode()
-    else
-        print("Easy mode selected.")
+-- ========== START EASY MODE ==========
+local function StartEasyMode()
+    if Globals.Easy then
         RunEasyMode()
     end
+end
 
+-- ========== AUTO PROGRESSION ==========
+local autoProgRunning = false  -- ← Fix: declare this
+
+local function StartAutoProgression()
+    if autoProgRunning or not Globals.AutoProgression then return end
+    autoProgRunning = true
+
+    print("Auto Progression started - cycling modes")
+    
+    while Globals.AutoProgression do
+        local level = LocalPlayer:FindFirstChild("Level") and LocalPlayer.Level.Value or 0
+        
+        if level < 50 then
+            RunEasyMode()
+        elseif level < 100 then
+            RunPizzaMode()
+        else
+            RunHardcoreMode()
+        end
+        
+        task.wait(5)
+    end
+    
     autoProgRunning = false
 end
 
