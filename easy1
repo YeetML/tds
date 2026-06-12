@@ -1,0 +1,260 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local RemoteFunction = ReplicatedStorage:WaitForChild("RemoteFunction")
+
+local LOBBY_PLACE_ID = 3260590327
+local MAX_LOSSES = 10
+
+local activeStratThread = nil
+local stratRunning = false
+local teleported = false
+local lossCount = 0
+
+local function TeleportLobby()
+    if teleported then
+        return
+    end
+
+    teleported = true
+    print("Teleporting to TDS lobby...")
+
+    local success, err = pcall(function()
+        TeleportService:Teleport(LOBBY_PLACE_ID, LocalPlayer)
+    end)
+
+    if not success then
+        warn("Teleport failed:", err)
+        teleported = false
+    end
+end
+
+-- ========== YOUR NEW SCOUT+SNIPER STRATEGY ==========
+local function StartStrategy()
+    if stratRunning or teleported then
+        return
+    end
+
+    stratRunning = true
+    print("Starting Scout + Sniper strategy...")
+
+    TDS:ResetIndex()
+    TDS:Ready()
+
+    -- Placements and upgrades exactly as in your log
+    TDS:Place("Scout", 4.912, 1.000, 5.861)
+    TDS:Upgrade(1)
+    TDS:Upgrade(1)
+    TDS:Upgrade(1)
+    TDS:Upgrade(1)
+
+    TDS:Place("Sniper", 9.287, 5.100, -9.666)
+    TDS:Upgrade(2)
+    TDS:Upgrade(2)
+    TDS:Upgrade(2)
+    TDS:Upgrade(2)
+
+    TDS:Place("Scout", 8.080, 1.000, 5.857)
+    TDS:Upgrade(3)
+    TDS:Upgrade(3)
+    TDS:Upgrade(3)
+    TDS:Upgrade(3)
+
+    TDS:Place("Sniper", 12.517, 5.100, -9.073)
+    TDS:Upgrade(4)
+    TDS:Upgrade(4)
+    TDS:Upgrade(4)
+    TDS:Upgrade(4)
+
+    TDS:Place("Scout", 11.081, 1.000, 5.873)
+    TDS:Upgrade(5)
+    TDS:Upgrade(5)
+    TDS:Upgrade(5)
+    TDS:Upgrade(5)
+
+    TDS:Place("Scout", 5.420, 1.000, 9.105)
+    TDS:Upgrade(6)
+    TDS:Upgrade(6)
+    TDS:Upgrade(6)
+    TDS:Upgrade(6)
+
+    TDS:Place("Scout", 8.522, 1.000, 9.220)
+    TDS:Upgrade(7)
+    TDS:Upgrade(7)
+    TDS:Upgrade(7)
+    TDS:Upgrade(7)
+
+    TDS:Place("Scout", 12.074, 1.000, 8.827)
+    TDS:Upgrade(8)
+    TDS:Upgrade(8)
+    TDS:Upgrade(8)
+    TDS:Upgrade(8)
+
+    TDS:Place("Sniper", 15.668, 5.100, -9.558)
+    TDS:Upgrade(9)
+    TDS:Upgrade(9)
+    TDS:Upgrade(9)
+    TDS:Upgrade(9)
+
+    TDS:Place("Sniper", -12.851, 4.500, -9.717)
+    TDS:Upgrade(10)
+    TDS:Upgrade(10)
+    TDS:Upgrade(10)
+    TDS:Upgrade(10)
+
+    TDS:Place("Sniper", -10.803, 4.500, -12.198)
+    TDS:Upgrade(11)
+    TDS:Upgrade(11)
+    TDS:Upgrade(11)
+    TDS:Upgrade(11)
+
+    TDS:Place("Sniper", -15.322, 4.500, -11.552)
+    TDS:Upgrade(12)
+    TDS:Upgrade(12)
+    TDS:Upgrade(12)
+    TDS:Upgrade(12)
+
+    TDS:Place("Scout", 4.139, 1.000, 2.855)
+    TDS:Upgrade(13)
+    TDS:Upgrade(13)
+    TDS:Upgrade(13)
+    TDS:Upgrade(13)
+
+    TDS:Place("Scout", 7.260, 1.000, 2.896)
+    TDS:Upgrade(14)
+    TDS:Upgrade(14)
+    TDS:Upgrade(14)
+    TDS:Upgrade(14)
+
+    TDS:Place("Scout", 10.515, 1.000, 2.754)
+    TDS:Upgrade(15)
+    TDS:Upgrade(15)
+    TDS:Upgrade(15)
+    TDS:Upgrade(15)
+
+    TDS:Place("Scout", -3.512, 1.000, 3.093)
+    TDS:Upgrade(16)
+    TDS:Upgrade(16)
+    TDS:Upgrade(16)
+    TDS:Upgrade(16)
+
+    TDS:Place("Scout", -6.680, 1.000, 2.640)
+    TDS:Upgrade(17)
+    TDS:Upgrade(17)
+    TDS:Upgrade(17)
+    TDS:Upgrade(17)
+
+    stratRunning = false
+    print("Scout + Sniper strategy finished.")
+end
+-- ====================================================
+
+local function GetMatchStatus()
+    local success, status = pcall(function()
+        local uiRoot = PlayerGui:FindFirstChild("ReactGameNewRewards")
+        if not uiRoot then
+            return nil
+        end
+
+        local mainFrame = uiRoot:FindFirstChild("Frame")
+        if not mainFrame or not mainFrame.Visible then
+            return nil
+        end
+
+        local gameOver = mainFrame:FindFirstChild("gameOver")
+        if not gameOver or not gameOver.Visible then
+            return nil
+        end
+
+        local rewardsScreen = gameOver:FindFirstChild("RewardsScreen")
+        if not rewardsScreen or not rewardsScreen.Visible then
+            return nil
+        end
+
+        local topBanner = rewardsScreen:FindFirstChild("RewardBanner")
+        local textLabel = topBanner and topBanner:FindFirstChild("textLabel")
+
+        if not textLabel then
+            return nil
+        end
+
+        local txt = textLabel.Text:upper()
+        print("Banner text:", txt)
+
+        if txt:find("LOST") then
+            return "LOSS"
+        end
+
+        return nil
+    end)
+
+    if success then
+        return status
+    end
+
+    return nil
+end
+
+local function FireVotingSkipUntilGone()
+    print("Firing Voting Skip until reward screen disappears...")
+
+    while GetMatchStatus() ~= nil and not teleported do
+        local success, err = pcall(function()
+            RemoteFunction:InvokeServer("Voting", "Skip")
+        end)
+
+        if success then
+            print("Voting Skip fired")
+        else
+            warn("Voting Skip failed:", err)
+        end
+
+        task.wait(0.5)
+    end
+
+    print("Reward screen disappeared.")
+end
+
+task.spawn(function()
+    activeStratThread = task.spawn(StartStrategy)
+
+    while not teleported do
+        task.wait(0.5)
+
+        local currentStatus = GetMatchStatus()
+
+        if currentStatus == "LOSS" then
+            lossCount += 1
+            print("Loss Count:", lossCount .. "/" .. MAX_LOSSES)
+
+            print("Loss detected! Stopping old thread...")
+
+            if activeStratThread and coroutine.status(activeStratThread) ~= "dead" then
+                task.cancel(activeStratThread)
+                activeStratThread = nil
+            end
+
+            stratRunning = false
+
+            if lossCount >= MAX_LOSSES then
+                print("10 losses reached. Teleporting to lobby...")
+                TeleportLobby()
+                break
+            end
+
+            FireVotingSkipUntilGone()
+
+            if teleported then
+                break
+            end
+
+            task.wait(1.5)
+
+            print("Starting new Scout + Sniper strategy match!")
+            activeStratThread = task.spawn(StartStrategy)
+        end
+    end
+end)
