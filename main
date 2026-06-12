@@ -133,6 +133,18 @@ end
 
 StartAntiAfk()
 
+local function ResetStrategyFlags()
+    EasyModeRunning = false
+    PizzaModeRunning = false
+    HardcoreModeRunning = false
+end
+
+-- Call this when you detect you're back in the lobby
+-- For example, inside the GameState check loop:
+if GameState == "LOBBY" then
+    ResetStrategyFlags()
+end
+
 local SendRequest = request or http_request or httprequest
     or GetDevice and GetDevice().request
 
