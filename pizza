@@ -1,0 +1,201 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local RemoteFunction = ReplicatedStorage:WaitForChild("RemoteFunction")
+
+local LOBBY_PLACE_ID = 3260590327
+local MAX_LOSSES = 20
+
+local activeStratThread = nil
+local stratRunning = false
+local teleported = false
+local lossCount = 0
+
+local function TeleportLobby()
+    if teleported then
+        return
+    end
+
+    teleported = true
+    print("Teleporting to TDS lobby...")
+
+    local success, err = pcall(function()
+        TeleportService:Teleport(LOBBY_PLACE_ID, LocalPlayer)
+    end)
+
+    if not success then
+        warn("Teleport failed:", err)
+        teleported = false
+    end
+end
+
+-- ========== YOUR ASSASSIN + TRAPPER STRATEGY ==========
+local function StartStrategy()
+    if stratRunning or teleported then
+        return
+    end
+
+    stratRunning = true
+    print("Starting Assassin + Trapper strategy...")
+
+    TDS:ResetIndex()
+    TDS:Ready()
+
+    -- 6 Assassins
+    TDS:Place("Assassin", 4.759, 1.000, -37.587)
+    TDS:Place("Assassin", -1.379, 1.000, -37.467)
+    TDS:Place("Assassin", -1.438, 1.037, -35.245)
+    TDS:Place("Assassin", 4.466, 1.037, -35.539)
+    TDS:Place("Assassin", -1.311, 1.037, -32.909)
+    TDS:Place("Assassin", 4.748, 1.037, -33.355)
+
+    -- Upgrades for Assassins (each gets 1 upgrade, in specific order)
+    TDS:Upgrade(2)
+    TDS:Upgrade(3)
+    TDS:Upgrade(5)
+    TDS:Upgrade(1)
+    TDS:Upgrade(4)
+    TDS:Upgrade(6)
+
+    -- 5 Trappers
+    TDS:Place("Trapper", -0.958, 1.037, -30.300)
+    TDS:Place("Trapper", -0.475, 1.037, -27.287)
+    TDS:Place("Trapper", 5.079, 1.037, -30.764)
+    TDS:Place("Trapper", 7.272, 1.037, -33.360)
+    TDS:Place("Trapper", 8.043, 1.037, -30.194)
+
+    -- First round of Trapper upgrades
+    TDS:Upgrade(7)
+    TDS:Upgrade(8)
+    TDS:Upgrade(9)
+    TDS:Upgrade(11)
+    TDS:Upgrade(10)
+
+    -- Second round of Trapper upgrades
+    TDS:Upgrade(7)
+    TDS:Upgrade(8)
+    TDS:Upgrade(9)
+    TDS:Upgrade(11)
+    TDS:Upgrade(10)
+
+    -- Sells (order as given)
+    TDS:Sell(4)
+    TDS:Sell(1)
+    TDS:Sell(6)
+    TDS:Sell(9)
+    TDS:Sell(11)
+    TDS:Sell(10)
+    TDS:Sell(3)
+    TDS:Sell(8)
+    TDS:Sell(7)
+    TDS:Sell(2)
+    TDS:Sell(5)
+
+    stratRunning = false
+    print("Assassin + Trapper strategy finished.")
+end
+-- ======================================================
+
+local function GetMatchStatus()
+    local success, status = pcall(function()
+        local uiRoot = PlayerGui:FindFirstChild("ReactGameNewRewards")
+        if not uiRoot then
+            return nil
+        end
+
+        local mainFrame = uiRoot:FindFirstChild("Frame")
+        if not mainFrame or not mainFrame.Visible then
+            return nil
+        end
+
+        local gameOver = mainFrame:FindFirstChild("gameOver")
+        if not gameOver or not gameOver.Visible then
+            return nil
+        end
+
+        local rewardsScreen = gameOver:FindFirstChild("RewardsScreen")
+        if not rewardsScreen or not rewardsScreen.Visible then
+            return nil
+        end
+
+        local topBanner = rewardsScreen:FindFirstChild("RewardBanner")
+        local textLabel = topBanner and topBanner:FindFirstChild("textLabel")
+
+        if not textLabel then
+            return nil
+        end
+
+        local txt = textLabel.Text:upper()
+        print("Banner text:", txt)
+
+        if txt:find("LOST") then
+            return "LOSS"
+        end
+
+        return nil
+    end)
+
+    if success then
+        return status
+    end
+
+    return nil
+end
+
+local function FireVotingSkipUntilGone()
+    print("Firing Voting Skip until reward screen disappears...")
+
+    while GetMatchStatus() ~= nil and not teleported do
+        pcall(function()
+            RemoteFunction:InvokeServer("Voting", "Skip")
+        end)
+
+        task.wait(0.5)
+    end
+
+    print("Reward screen disappeared.")
+end
+
+task.spawn(function()
+    activeStratThread = task.spawn(StartStrategy)
+
+    while not teleported do
+        task.wait(0.5)
+
+        local currentStatus = GetMatchStatus()
+
+        if currentStatus == "LOSS" then
+            lossCount += 1
+            print("Loss Count:", lossCount .. "/" .. MAX_LOSSES)
+
+            print("Loss detected! Stopping old thread...")
+
+            if activeStratThread and coroutine.status(activeStratThread) ~= "dead" then
+                task.cancel(activeStratThread)
+                activeStratThread = nil
+            end
+
+            stratRunning = false
+
+            if lossCount >= MAX_LOSSES then
+                print("20 losses reached. Teleporting to lobby...")
+                TeleportLobby()
+                break
+            end
+
+            FireVotingSkipUntilGone()
+
+            if teleported then
+                break
+            end
+
+            task.wait(1.5)
+
+            print("Starting new Assassin + Trapper strategy match!")
+            activeStratThread = task.spawn(StartStrategy)
+        end
+    end
+end)
