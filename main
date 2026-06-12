@@ -178,7 +178,6 @@ local AllModifiers = {
 
 local DefaultSettings = {
     PathVisuals = false,
-    AutoProgression = false,
     MilitaryPath = false,
     MercenaryPath = false,
     AutoSkip = false,
@@ -215,6 +214,10 @@ local DefaultSettings = {
     StreamerName = "",
     tagName = "None",
     Modifiers = {},
+    AutoProgression = false,
+    AutoEasy = false,
+    AutoPizza = false,
+    AutoHardcore = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -1075,45 +1078,99 @@ local function StartAutoReady()
 end
 
 local EasyModeRunning = false
+local PizzaModeRunning = false
+local HardcoreModeRunning = false
+local AutoProgressionRunning = false
 
-local function StartEasyMode()
-    if EasyModeRunning or not Globals.Easy then return end
+local function GetStatNumber(name)
+    local obj = LocalPlayer:FindFirstChild(name)
+    local v = obj and (tonumber(obj.Value) or tonumber(obj:GetAttribute("Value")))
+    if v ~= nil then return v end
+    local attr = LocalPlayer:GetAttribute(name)
+    return attr and tonumber(attr) or 0
+end
 
+local function BuyTower(towerName)
+    pcall(function()
+        RemoteFunc:InvokeServer("Shop", "Purchase", "Tower", towerName)
+    end)
+end
+
+local function RunEasyStrategy()
+    if EasyModeRunning then return end
     EasyModeRunning = true
 
+    Globals.AutoPremium = true
+    Globals.AutoSkip = true
+    Globals.AutoRejoin = false
+    Globals.TimeScaleEnabled = false
+
     task.spawn(function()
-        local content = nil
-
-        while Globals.Easy and content == nil do
-            local success, res = pcall(function() 
-                return game:HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Easy.lua") 
-            end)
-
-            if success and type(res) == "string" then
-                content = res
-            else
-                task.wait(1)
-            end
-        end
-
-        if content then
-            while not (TDS and TDS.Loadout) do 
-                task.wait(0.5) 
-            end
-
-            local func = loadstring(content)
-
-            if func then
-                pcall(func)
-
-                Window:Notify({Title = "ADS", Desc = "Running...", Time = 3})
-            end
-        end
-
-        repeat task.wait(2) until not Globals.Easy or (GameState == "GAME" and not game:IsLoaded())
-
-        EasyModeRunning = false
+        local content = game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy1")
+        local func = loadstring(content)
+        if func then func() end
     end)
+end
+
+local function RunPizzaStrategy()
+    if PizzaModeRunning then return end
+    PizzaModeRunning = true
+
+    Globals.AutoPremium = true
+    Globals.AutoSkip = true
+    Globals.AutoRejoin = false
+
+    task.spawn(function()
+        local content = game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/pizza")
+        local func = loadstring(content)
+        if func then func() end
+    end)
+end
+
+local function RunHardcoreStrategy()
+    if HardcoreModeRunning then return end
+    HardcoreModeRunning = true
+
+    Globals.AutoPremium = true
+    Globals.AutoSkip = true
+    Globals.AutoRejoin = false
+    Globals.TimeScaleEnabled = true
+    Globals.TimeScaleValue = 2
+
+    task.spawn(function()
+        local content = game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore")
+        local func = loadstring(content)
+        if func then func() end
+    end)
+end
+
+local function RunAutoProgression()
+    if AutoProgressionRunning then return end
+    AutoProgressionRunning = true
+
+    local level = GetStatNumber("Level")
+    local coins = GetStatNumber("Coins")
+
+    if level < 25 then
+        BuyTower("Scout") -- basic
+        RunEasyStrategy()
+    elseif level < 50 then
+        if coins >= 800 then BuyTower("Assassin") end
+        if coins >= 3000 then BuyTower("Trapper") end
+        RunPizzaStrategy()
+    else
+        if coins >= 2500 then BuyTower("Electroshocker") end
+        if coins >= 650 then BuyTower("Freezer") end
+        if coins >= 1250 then BuyTower("Pyromancer") end
+        if level >= 100 then
+            -- turn off hardcore if level 100+
+            Globals.AutoHardcore = false
+        else
+            RunHardcoreStrategy()
+        end
+    end
+
+    AutoProgressionRunning = false
 end
 
 -- // ui
@@ -1140,83 +1197,6 @@ if not LocalPlayer:IsInGroup(4914494) then
     })
 end
 
--- ========== CUSTOM TOWER PURCHASE FUNCTIONS ==========
-local function BuyTower(towerName)
-    print("Buying " .. towerName)
-    pcall(function()
-        RemoteFunc:InvokeServer("Shop", "Purchase", "Tower", towerName)
-    end)
-end
-
-local function BuyTowerIfNeeded(towerName, cost)
-    -- Use GetStatNumber from the existing Interactive tab functions (it's global)
-    local coins = GetStatNumber and GetStatNumber("Coins") or 0
-    if coins >= cost then
-        BuyTower(towerName)
-        task.wait(1)
-        return true
-    else
-        print("Not enough coins for " .. towerName .. " (" .. cost .. ")")
-        return false
-    end
-end
-
--- ========== CUSTOM STRATEGY FUNCTIONS ==========
-local function RunEasyMode()
-    print("Starting Easy Mode")
-    TDS:Mode("Easy")
-    TDS:GameInfo("Summer Castle", {})  
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy1"))()
-end
-
-local function RunPizzaMode()
-    print("Starting Pizza Party")
-    TDS:Mode("PizzaParty")
-    TDS:GameInfo("halloween", {})
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/pizza"))()
-end
-
-local function RunHardcoreMode()
-    print("Starting Hardcore Mode")
-    TDS:Mode("Hardcore")
-    TDS:GameInfo("Wretched Front", {})  
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"))()
-end
-
--- ========== START EASY MODE ==========
-local function StartEasyMode()
-    if Globals.Easy then
-        RunEasyMode()
-    end
-end
-
--- ========== AUTO PROGRESSION ==========
-local autoProgRunning = false  -- ← Fix: declare this
-
-local function StartAutoProgression()
-    if autoProgRunning or not Globals.AutoProgression then return end
-    autoProgRunning = true
-
-    print("Auto Progression started - cycling modes")
-    
-    while Globals.AutoProgression do
-        local level = LocalPlayer:FindFirstChild("Level") and LocalPlayer.Level.Value or 0
-        
-        if level < 50 then
-            RunEasyMode()
-        elseif level < 100 then
-            RunPizzaMode()
-        else
-            RunHardcoreMode()
-        end
-        
-        task.wait(5)
-    end
-    
-    autoProgRunning = false
-end
-
--- ========== UI TABS ==========
 local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
     
     Automation:Section({Title = "Match Progression"})
@@ -1476,6 +1456,17 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
             SetSetting("ClaimRewards", v)
         end
     })
+
+    Automation:Section({Title = "Auto Progression"})
+    Automation:Toggle({
+        Title = "Enable Auto Progression",
+        Desc = "Auto buys towers and runs appropriate strat based on level/coins",
+        Value = Globals.AutoProgression,
+        Callback = function(v)
+            SetSetting("AutoProgression", v)
+            if v then RunAutoProgression() end
+        end
+    })
 end
 
 Window:Line()
@@ -1733,20 +1724,6 @@ local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-cli
         end)
         if ok then
             return ParseNumber(v)
-        end
-        return nil
-    end
-
-    local function GetStatNumber(name)
-        local obj = LocalPlayer:FindFirstChild(name)
-        local v = ReadValue(obj)
-        if v ~= nil then
-            return v
-        end
-        local attr = LocalPlayer:GetAttribute(name)
-        v = ParseNumber(attr)
-        if v ~= nil then
-            return v
         end
         return nil
     end
@@ -2138,7 +2115,7 @@ local Configuration = Window:Tab({Title = "Configuration", Icon = "sliders-horiz
                     Title = "ADS",
                     Desc = "You must be in Sandbox mode for this to work!",
                     Time = 3,
-                    Type = "error"
+                    Type = "normal"
                 })
             end
         end
@@ -2151,166 +2128,37 @@ local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) d
 
     Strategies:Section({Title = "Survival Strategies"})
     Strategies:Toggle({
-        Title = "Easy Mode (Summer Castle)",
-        Desc = "Requires: Normal Scout\nMap: Summer Castle",
-        Value = Globals.Easy,
+        Title = "Easy Mode (Crossroads)",
+        Desc = "Auto uses the YeetML Easy strat",
+        Value = Globals.AutoEasy,
         Callback = function(v)
-            Globals.Easy = v
-            SetSetting("Easy", v)
-
-            if v then
-                StartEasyMode()
-            end
-        end
-    })
-
-    -- ========== AUTO PROGRESSION TOGGLE ==========
-    Strategies:Section({Title = "Intelligent Progression"})
-    Strategies:Toggle({
-        Title = "Auto Progression",
-        Desc = "Automatically switches between Easy, Pizza Party, and Hardcore based on your level.",
-        Value = Globals.AutoProgression,
-        Callback = function(v)
-            SetSetting("AutoProgression", v)
-            if v then
-                task.spawn(StartAutoProgression)
-            end
-        end
-    })
-    -- ============================================
-
---[[
-    Strategies:Toggle({
-        Title = "Fallen Mode",
-        Desc = "Skill tree: Not needed\n\nTowers:\nGolden Scout,\nBrawler,\nMercenary Base,\nElectroshocker,\nEngineer",
-        Value = Globals.Fallen,
-        Callback = function(v)
-            SetSetting("Fallen", v)
-
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Fallen.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
+            Globals.AutoEasy = v
+            SetSetting("AutoEasy", v)
+            if v then RunEasyStrategy() end
         end
     })
 
     Strategies:Toggle({
-        Title = "Intermediate Mode",
-        Desc = "Skill tree: Not needed\n\nTowers:\nShotgunner,\nCrook Boss",
-        Value = Globals.Intermediate,
+        Title = "Pizza Party (Assassin + Trapper)",
+        Desc = "Auto uses the YeetML Pizza strat",
+        Value = Globals.AutoPizza,
         Callback = function(v)
-            SetSetting("Intermediate", v)
-
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Intermediate.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
+            Globals.AutoPizza = v
+            SetSetting("AutoPizza", v)
+            if v then RunPizzaStrategy() end
         end
     })
 
     Strategies:Toggle({
-        Title = "Casual Mode",
-        Desc = "Skill tree: Not needed\n\nTowers:\nShotgunner",
-        Value = Globals.Casual,
+        Title = "Hardcore (Electro + Freezer + Pyro)",
+        Desc = "Auto uses the YeetML Hardcore strat",
+        Value = Globals.AutoHardcore,
         Callback = function(v)
-            SetSetting("Casual", v)
-
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Casual.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
+            Globals.AutoHardcore = v
+            SetSetting("AutoHardcore", v)
+            if v then RunHardcoreStrategy() end
         end
     })
-
-    Strategies:Toggle({
-        Title = "Easy Mode",
-        Desc = "Skill tree: Not needed\n\nTowers:\nNormal Scout",
-        Value = Globals.Easy,
-        Callback = function(v)
-            SetSetting("Easy", v)
-
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Easy.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
-        end
-    })
-
-    Strategies:Section({Title = "Other Strategies"})
-    Strategies:Toggle({
-        Title = "Hardcore Mode",
-        Desc = "Towers:\nFarm,\nGolden Scout,\nDJ Booth,\nCommander,\nElectroshocker,\nRanger,\nFreezer,\nGolden Minigunner",
-        Value = Globals.Hardcore,
-        Callback = function(v)
-            SetSetting("Hardcore", v)
-
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Hardcore.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
-        end
-    })
-]]
 end
 
 Window:Line()
@@ -2658,11 +2506,11 @@ SmartTeleportToLobby = function()
 
     Window:Notify({
         Title = "Fixing Delta Teleport Issues",
-        Desc = "1. Disconnect from the game\n" ..
-               "2. Completely empty your 'autoexecute' folder\n" ..
-               "3. Reopen Roblox and join the game\n" ..
-               "4. Go to Delta settings and disable 'Verify Teleports'\n" ..
-               "5. Disconnect and rejoin to confirm 'Verify Teleports' remains OFF\n" ..
+        Desc = "1. Disconnect from the game\n" .. 
+               "2. Completely empty your 'autoexecute' folder\n" .. 
+               "3. Reopen Roblox and join the game\n" .. 
+               "4. Go to Delta settings and disable 'Verify Teleports'\n" .. 
+               "5. Disconnect and rejoin to confirm 'Verify Teleports' remains OFF\n" .. 
                "6. Once verified, restore your files to 'autoexecute' and rejoin",
         Time = 9999,
         Type = "normal"
@@ -3156,7 +3004,7 @@ local function GetCurrentWave()
     return tonumber(WaveNum) or 0
 end
 
-local function DoPlaceTower(TName, TPos, ...)
+local function DoPlaceTower(TName, TPos, ... )
     local args = {...}
     Logger:Log("Placing tower: " .. TName)
     while true do
@@ -3583,7 +3431,7 @@ function TDS:RestartGame()
     TriggerRestart()
 end
 
-function TDS:Place(TName, px, py, pz, ...)
+function TDS:Place(TName, px, py, pz, ... )
     local args = {...}
     local isStacking = args[#args] == "stack" or args[#args] == true
 
@@ -4472,15 +4320,9 @@ task.spawn(function()
             StartAutoReady()
         end
 
-        if Globals.Easy and not EasyModeRunning then
-            StartEasyMode()
+        if Globals.AutoProgression and not AutoProgressionRunning then
+            RunAutoProgression()
         end
-
-        -- ========== AUTO PROGRESSION CHECK ==========
-        if Globals.AutoProgression and not autoProgRunning then
-            task.spawn(StartAutoProgression)
-        end
-        -- ==========================================
 
         task.wait(1)
     end
@@ -4488,6 +4330,10 @@ end)
 
 if Globals.ClaimRewards and not AutoClaimRewards then
     StartClaimRewards()
+end
+
+if Globals.AutoProgression then
+    task.spawn(RunAutoProgression)
 end
 
 MissionsUIFix()
