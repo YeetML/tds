@@ -171,7 +171,7 @@ local function GetKeys(t)
     local keys = {}
 
     for k in pairs(t) do
-        table.insert(keys, k)
+        keys[#keys + 1] = k
     end
 
     return keys
