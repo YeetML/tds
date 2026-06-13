@@ -184,7 +184,7 @@ local function RunYeetEasy()
     
     print("[AutoProgression] Starting Easy strategy - checking available maps...")
     
-    getgenv().AutoPremium = true
+    getgenv().AutoPremium = false
     getgenv().AutoSkip = true
     getgenv().AutoRejoin = false
     getgenv().TimeScaleEnabled = false
@@ -232,7 +232,7 @@ local function RunYeetPizza()
     
     print("[AutoProgression] Starting Pizza strategy (Assassin + Trapper on Pizza Party)")
     
-    getgenv().AutoPremium = true
+    getgenv().AutoPremium = false
     getgenv().AutoSkip = true
     getgenv().AutoRejoin = false
     getgenv().TimeScaleEnabled = false
@@ -253,7 +253,7 @@ local function RunYeetHardcore()
     
     print("[AutoProgression] Starting Hardcore strategy (Electroshocker + Freezer + Pyromancer + Crook Boss)")
     
-    getgenv().AutoPremium = true
+    getgenv().AutoPremium = false
     getgenv().AutoSkip = true
     getgenv().AutoRejoin = false
     getgenv().TimeScaleEnabled = true
