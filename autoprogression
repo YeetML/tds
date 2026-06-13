@@ -1,0 +1,460 @@
+-- // Auto Progression Companion Script for Aether Hub
+-- // Load this AFTER the main Aether Hub script
+-- // It adds BuyTower function, 3 new strategies, and auto-progression logic
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
+local RemoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent")
+
+local platform = UserInputService:GetPlatform()
+local IsMobile = (platform == Enum.Platform.IOS or platform == Enum.Platform.Android)
+
+local SETTINGS_FILE = "AutoProgression.json"
+
+-- // ===== BUY TOWER FUNCTION (from auto progression script) =====
+local function BuyTower(towerName)
+    print("Buying " .. towerName)
+    local success, result = pcall(function()
+        return RemoteFunc:InvokeServer("Shop", "Purchase", "Tower", towerName)
+    end)
+    if success then
+        print("Successfully bought " .. towerName)
+    else
+        print("Failed to buy " .. towerName .. ": " .. tostring(result))
+    end
+    return success
+end
+
+-- // ===== GET STAT FUNCTION =====
+local function GetStat(name)
+    local obj = LocalPlayer:FindFirstChild(name)
+    if obj and obj.Value ~= nil then
+        return tonumber(obj.Value) or 0
+    end
+    local attr = LocalPlayer:GetAttribute(name)
+    if attr ~= nil then
+        return tonumber(attr) or 0
+    end
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    local stat = leaderstats and leaderstats:FindFirstChild(name)
+    if stat and stat.Value ~= nil then
+        return tonumber(stat.Value) or 0
+    end
+    return 0
+end
+
+-- // ===== SMART TELEPORT TO LOBBY =====
+local function SmartTeleportToLobby()
+    local lobbyId = 3260590327
+    pcall(function()
+        if not IsMobile and getgenv().PrivateCode and getgenv().PrivateCode ~= "" then
+            game:GetService("ExperienceService"):LaunchExperience({
+                placeId = lobbyId,
+                linkCode = getgenv().PrivateCode
+            })
+        else
+            TeleportService:Teleport(lobbyId)
+        end
+    end)
+end
+
+-- // ===== REMOVE AETHER UI (to avoid duplicates) =====
+local function RemoveAether()
+    task.spawn(function()
+        task.wait()
+        local aether = CoreGui:FindFirstChild("Aether")
+        if aether then
+            aether:Destroy()
+        end
+    end)
+end
+
+-- // ===== STRATEGY RUNNERS =====
+local runningEasy = false
+local runningPizza = false
+local runningHardcore = false
+local AutoProgressionRunning = false
+local AutoProgressionEnabled = false
+
+local function RunYeetEasy()
+    if runningEasy then return end
+    runningEasy = true
+    
+    print("[AutoProgression] Starting Easy1 strategy (Scout on Crossroads)")
+    
+    getgenv().AutoPremium = true
+    getgenv().AutoSkip = true
+    getgenv().AutoRejoin = false
+    getgenv().TimeScaleEnabled = false
+    
+    -- Load the YeetML main loader (creates its own TDS instance)
+    local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+    RemoveAether()
+    
+    -- Execute the easy1 strategy
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy1"))()
+    
+    runningEasy = false
+end
+
+local function RunYeetPizza()
+    if runningPizza then return end
+    runningPizza = true
+    
+    print("[AutoProgression] Starting Pizza strategy (Assassin + Trapper on Pizza Party)")
+    
+    getgenv().AutoPremium = true
+    getgenv().AutoSkip = true
+    getgenv().AutoRejoin = false
+    getgenv().TimeScaleEnabled = false
+    
+    -- Load the YeetML main loader
+    local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+    RemoveAether()
+    
+    -- Execute the pizza strategy
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/pizza"))()
+    
+    runningPizza = false
+end
+
+local function RunYeetHardcore()
+    if runningHardcore then return end
+    runningHardcore = true
+    
+    print("[AutoProgression] Starting Hardcore strategy (Electroshocker + Freezer + Pyromancer + Crook Boss)")
+    
+    getgenv().AutoPremium = true
+    getgenv().AutoSkip = true
+    getgenv().AutoRejoin = false
+    getgenv().TimeScaleEnabled = true
+    getgenv().TimeScaleValue = 2
+    
+    -- Load the YeetML main loader
+    local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+    RemoveAether()
+    
+    -- Execute the hardcore strategy
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"))()
+    
+    runningHardcore = false
+end
+
+-- // ===== CHECK IF TOWER IS OWNED =====
+local function OwnsTower(towerName)
+    local success, result = pcall(function()
+        return RemoteFunc:InvokeServer("Shop", "GetOwned", "Tower", towerName)
+    end)
+    if success and result == true then
+        return true
+    end
+    -- Fallback: check inventory
+    local inv = LocalPlayer:FindFirstChild("Inventory")
+    if inv then
+        local towers = inv:FindFirstChild("Towers")
+        if towers then
+            return towers:FindFirstChild(towerName) ~= nil
+        end
+    end
+    return false
+end
+
+-- // ===== AUTO BUY TOWERS =====
+local function AutoBuyTowers(towerList)
+    print("[AutoProgression] Checking towers to buy...")
+    for _, towerData in ipairs(towerList) do
+        local towerName = towerData[1]
+        local towerCost = towerData[2]
+        local coins = GetStat("Coins")
+        
+        if not OwnsTower(towerName) then
+            if coins >= towerCost then
+                print("[AutoProgression] Buying " .. towerName .. " for " .. tostring(towerCost) .. " coins")
+                BuyTower(towerName)
+                task.wait(1)
+            else
+                print("[AutoProgression] Not enough coins for " .. towerName .. " (need " .. tostring(towerCost) .. ", have " .. tostring(coins) .. ")")
+            end
+        else
+            print("[AutoProgression] Already own " .. towerName)
+        end
+    end
+end
+
+-- // ===== AUTO PROGRESSION LOGIC =====
+local function RunAutoProgression()
+    if AutoProgressionRunning then return end
+    AutoProgressionRunning = true
+    
+    print("[AutoProgression] Starting Auto Progression...")
+    
+    -- Wait for data to load
+    task.wait(3)
+    local level = GetStat("Level")
+    local coins = GetStat("Coins")
+    
+    print("[AutoProgression] Level: " .. tostring(level) .. ", Coins: " .. tostring(coins))
+    
+    -- Level-based strategy selection
+    if level >= 100 then
+        print("[AutoProgression] Level 100+ reached! Stopping progression.")
+        AutoProgressionRunning = false
+        return
+    elseif level >= 50 then
+        -- Level 50-99: Hardcore strategy
+        -- Required towers: Electroshocker (2500), Freezer (650), Pyromancer (1250), Crook Boss (free)
+        print("[AutoProgression] Level " .. level .. " >= 50, using Hardcore strategy")
+        
+        -- Auto-buy required towers
+        AutoBuyTowers({
+            {"Electroshocker", 2500},
+            {"Freezer", 650},
+            {"Pyromancer", 1250},
+            {"Crook Boss", 0}
+        })
+        
+        RunYeetHardcore()
+        
+    elseif level >= 25 then
+        -- Level 25-49: Pizza Party strategy
+        -- Required towers: Assassin (800), Trapper (depends)
+        print("[AutoProgression] Level " .. level .. " >= 25, using Pizza strategy")
+        
+        -- Auto-buy required towers
+        AutoBuyTowers({
+            {"Assassin", 800},
+            {"Trapper", 350}
+        })
+        
+        RunYeetPizza()
+        
+    else
+        -- Level 0-24: Easy1 strategy
+        -- Required towers: Scout (free), Militant (free), Farm (free)
+        print("[AutoProgression] Level " .. level .. " < 25, using Easy1 strategy")
+        
+        -- Scout, Militant, Farm are free starter towers, no need to buy
+        RunYeetEasy()
+    end
+    
+    AutoProgressionRunning = false
+end
+
+-- // ===== UI CREATION =====
+local function CreateUI()
+    -- Remove old UI if exists
+    local oldGui = CoreGui:FindFirstChild("AutoProgressionUI")
+    if oldGui then
+        oldGui:Destroy()
+    end
+    
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "AutoProgressionUI"
+    gui.ResetOnSpawn = false
+    gui.Parent = CoreGui
+    
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 260, 0, 160)
+    frame.Position = UDim2.new(0.5, -130, 0.85, -80)
+    frame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
+    frame.BorderSizePixel = 0
+    frame.Parent = gui
+    
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 14)
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(60, 60, 80)
+    stroke.Thickness = 2
+    stroke.Parent = frame
+    
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, -24, 0, 38)
+    header.Position = UDim2.new(0, 12, 0, 12)
+    header.BackgroundColor3 = Color3.fromRGB(70, 130, 255)
+    header.BorderSizePixel = 0
+    header.Parent = frame
+    
+    Instance.new("UICorner", header).CornerRadius = UDim.new(0, 12)
+    
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 150, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(170, 80, 220))
+    })
+    gradient.Parent = header
+    
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 1, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "Auto Progression OFF"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextScaled = true
+    title.Font = Enum.Font.GothamBold
+    title.TextXAlignment = Enum.TextXAlignment.Center
+    title.Parent = header
+    
+    local titleConstraint = Instance.new("UITextSizeConstraint")
+    titleConstraint.MaxTextSize = 22
+    titleConstraint.MinTextSize = 15
+    titleConstraint.Parent = title
+    
+    local levelDisplay = Instance.new("TextLabel")
+    levelDisplay.Size = UDim2.new(1, 0, 0, 25)
+    levelDisplay.Position = UDim2.new(0, 0, 0, 60)
+    levelDisplay.BackgroundTransparency = 1
+    levelDisplay.Text = "Level: " .. tostring(GetStat("Level"))
+    levelDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
+    levelDisplay.TextScaled = true
+    levelDisplay.Font = Enum.Font.GothamBold
+    levelDisplay.TextXAlignment = Enum.TextXAlignment.Center
+    levelDisplay.Parent = frame
+    
+    local statusDisplay = Instance.new("TextLabel")
+    statusDisplay.Size = UDim2.new(1, 0, 0, 25)
+    statusDisplay.Position = UDim2.new(0, 0, 0, 88)
+    statusDisplay.BackgroundTransparency = 1
+    statusDisplay.Text = "Status: Idle"
+    statusDisplay.TextColor3 = Color3.fromRGB(200, 200, 200)
+    statusDisplay.TextScaled = true
+    statusDisplay.Font = Enum.Font.GothamBold
+    statusDisplay.TextXAlignment = Enum.TextXAlignment.Center
+    statusDisplay.Parent = frame
+    
+    local toggle = Instance.new("TextButton")
+    toggle.Size = UDim2.new(0, 90, 0, 30)
+    toggle.Position = UDim2.new(0.5, -45, 1, -40)
+    toggle.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
+    toggle.Text = "OFF"
+    toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggle.TextScaled = true
+    toggle.Font = Enum.Font.GothamBold
+    toggle.Parent = frame
+    
+    Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 10)
+    
+    -- Load saved state
+    local savedState = false
+    if isfile and isfile(SETTINGS_FILE) then
+        local success, data = pcall(function()
+            return HttpService:JSONDecode(readfile(SETTINGS_FILE))
+        end)
+        if success and type(data) == "table" and data.AutoProgression ~= nil then
+            savedState = data.AutoProgression
+        end
+    end
+    
+    -- Toggle logic
+    toggle.MouseButton1Click:Connect(function()
+        AutoProgressionEnabled = not AutoProgressionEnabled
+        
+        -- Save state
+        if writefile then
+            local saveData = { AutoProgression = AutoProgressionEnabled }
+            writefile(SETTINGS_FILE, HttpService:JSONEncode(saveData))
+        end
+        
+        if AutoProgressionEnabled then
+            toggle.Text = "ON"
+            toggle.BackgroundColor3 = Color3.fromRGB(0, 170, 80)
+            title.Text = "Auto Progression Running"
+            statusDisplay.Text = "Status: Running..."
+            task.spawn(RunAutoProgression)
+        else
+            toggle.Text = "OFF"
+            toggle.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
+            title.Text = "Auto Progression OFF"
+            statusDisplay.Text = "Status: Stopped"
+        end
+    end)
+    
+    -- Auto-start if was enabled
+    if savedState then
+        AutoProgressionEnabled = true
+        toggle.Text = "ON"
+        toggle.BackgroundColor3 = Color3.fromRGB(0, 170, 80)
+        title.Text = "Auto Progression Running"
+        statusDisplay.Text = "Status: Running..."
+        task.spawn(RunAutoProgression)
+    end
+    
+    -- Dragging
+    local dragging = false
+    local dragInput
+    local dragStart
+    local startPos
+    
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    -- Update level display
+    task.spawn(function()
+        while task.wait(1) do
+            local level = GetStat("Level")
+            if level > 0 then
+                levelDisplay.Text = "Level: " .. tostring(level)
+            end
+        end
+    end)
+    
+    return { 
+        title = title, 
+        status = statusDisplay, 
+        toggle = toggle,
+        levelDisplay = levelDisplay
+    }
+end
+
+-- // ===== INITIALIZATION =====
+print("[AutoProgression] Loading Auto Progression Companion Script...")
+print("[AutoProgression] This script adds BuyTower, 3 strategies, and auto-progression to Aether Hub")
+print("[AutoProgression] Level thresholds: < 25 = Easy1, 25-49 = Pizza, 50-99 = Hardcore, 100+ = Stop")
+
+-- Create the UI
+local ui = CreateUI()
+
+-- Expose functions globally so they can be called from other scripts
+getgenv().BuyTower = BuyTower
+getgenv().RunYeetEasy = RunYeetEasy
+getgenv().RunYeetPizza = RunYeetPizza
+getgenv().RunYeetHardcore = RunYeetHardcore
+getgenv().RunAutoProgression = RunAutoProgression
+
+print("[AutoProgression] Loaded successfully!")
