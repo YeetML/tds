@@ -132,7 +132,7 @@ local function IsInLobby()
     return false
 end
 
--- // ===== CHECK AVAILABLE MAPS IN LOBBY =====
+-- // ===== CHECK AVAILABLE MAPS IN GAME =====
 local function GetAvailableMaps()
     local maps = {}
     -- Wait a bit for map displays to load
@@ -176,6 +176,19 @@ local EasyStrategies = {
     }
 }
 
+-- // ===== HARDCORE STRATEGIES (Level 50-99) =====
+-- // Add the maps that your Hardcore strategy actually works on
+local HardcoreStrategies = {
+    {
+        name = "hardcore1",
+        mapName = "Wrecked Battlefield",  -- correct map from the YeetML script
+        url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore",
+        mode = "Hardcore"
+    },
+    -- If the same strategy works on other Hardcore maps, add them here:
+    -- { name = "hardcore2", mapName = "Badlands", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore", mode = "Hardcore" },
+}
+
 -- // ===== STRATEGY RUNNERS =====
 local runningEasy = false
 local runningPizza = false
@@ -194,7 +207,57 @@ local function GetKeys(t)
     return keys
 end
 
--- // ===== RUN EASY STRATEGY WITH MAP DETECTION =====
+-- // ===== GET REMAINING VETO COUNT =====
+local function GetRemainingVetos()
+    local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not PlayerGui then return nil end
+    
+    local ReactLobbyHud = PlayerGui:FindFirstChild("ReactLobbyHud")
+    if not ReactLobbyHud then return nil end
+    
+    local Frame = ReactLobbyHud:FindFirstChild("Frame")
+    if not Frame then return nil end
+    
+    local Matchmaking = Frame:FindFirstChild("matchmaking")
+    if not Matchmaking then return nil end
+    
+    local Buttons = Matchmaking:FindFirstChild("buttons")
+    if not Buttons then return nil end
+    
+    local VetoButton = Buttons:FindFirstChild("veto")
+    if not VetoButton then return nil end
+    
+    -- Look for a TextLabel with text like "Veto 1/3"
+    for _, child in pairs(VetoButton:GetChildren()) do
+        if child:IsA("TextLabel") then
+            local text = child.Text
+            local remaining = tonumber(text:match("(%d+)/"))
+            if remaining then
+                return remaining
+            end
+        end
+    end
+    return nil
+end
+
+-- // ===== VETO MAP (USE ONE VETO) =====
+local function VetoMap()
+    print("[AutoProgression] Attempting to veto...")
+    local remaining = GetRemainingVetos()
+    if remaining and remaining <= 0 then
+        print("[AutoProgression] No vetos left, cannot veto.")
+        return false
+    end
+    
+    pcall(function()
+        RemoteEvent:FireServer("LobbyVoting", "Veto")
+        print("[AutoProgression] Veto fired. Remaining vetos: " .. tostring(remaining))
+    end)
+    task.wait(1) -- wait for map rotation
+    return true
+end
+
+-- // ===== RUN EASY STRATEGY WITH MAP DETECTION + VETO =====
 local function RunYeetEasy()
     if runningEasy then return end
     runningEasy = true
@@ -212,38 +275,49 @@ local function RunYeetEasy()
     
     -- Check if we're in a game (not the lobby)
     if not IsInLobby() then
-        -- In game: check which maps are available and pick one
-        local availableMaps = GetAvailableMaps()
-        local mapKeys = GetKeys(availableMaps)
-        print("[AutoProgression] Available maps: " .. (#mapKeys > 0 and table.concat(mapKeys, ", ") or "none"))
+        local vetoAttempts = 0
+        local maxVetos = GetRemainingVetos() or 3  -- fallback to 3 if detection fails
         
-        -- Find ALL strategies whose maps are available
-        local availableStrategies = {}
-        for _, strategy in ipairs(EasyStrategies) do
-            if availableMaps[strategy.mapName] then
-                table.insert(availableStrategies, strategy)
-                print("[AutoProgression] Found available map: " .. strategy.mapName .. " - " .. strategy.name .. " strategy is usable")
+        while vetoAttempts < maxVetos do
+            local availableMaps = GetAvailableMaps()
+            local mapKeys = GetKeys(availableMaps)
+            print("[AutoProgression] Available maps: " .. (#mapKeys > 0 and table.concat(mapKeys, ", ") or "none"))
+            
+            -- Find strategies whose maps are available
+            local availableStrategies = {}
+            for _, strategy in ipairs(EasyStrategies) do
+                if availableMaps[strategy.mapName] then
+                    table.insert(availableStrategies, strategy)
+                    print("[AutoProgression] Found available map: " .. strategy.mapName)
+                end
+            end
+            
+            if #availableStrategies > 0 then
+                -- Randomly pick one of the available strategies
+                local chosenStrategy = availableStrategies[math.random(1, #availableStrategies)]
+                print("[AutoProgression] Selected: " .. chosenStrategy.name .. " on " .. chosenStrategy.mapName)
+                print("[AutoProgression] Loading strategy from: " .. chosenStrategy.url)
+                loadstring(game:HttpGet(chosenStrategy.url))()
+                runningEasy = false
+                return
+            else
+                print("[AutoProgression] No suitable map. Veto attempt " .. (vetoAttempts+1) .. "/" .. maxVetos)
+                local vetoSuccess = VetoMap()
+                if not vetoSuccess then
+                    print("[AutoProgression] Veto failed (no vetoes left?). Breaking.")
+                    break
+                end
+                vetoAttempts = vetoAttempts + 1
             end
         end
         
-        if #availableStrategies == 0 then
-            -- No maps from our strategy list are available, teleport back to lobby
-            print("[AutoProgression] No easy maps available in this game, teleporting to lobby...")
-            runningEasy = false
-            SmartTeleportToLobby()
-            return
-        end
-        
-        -- Randomly pick one of the available strategies
-        local chosenStrategy = availableStrategies[math.random(1, #availableStrategies)]
-        print("[AutoProgression] Randomly selected: " .. chosenStrategy.name .. " strategy on " .. chosenStrategy.mapName)
-        
-        -- Load and execute the strategy from URL
-        print("[AutoProgression] Loading strategy from: " .. chosenStrategy.url)
-        loadstring(game:HttpGet(chosenStrategy.url))()
+        -- If we exit loop, no map found after using all vetoes
+        print("[AutoProgression] No easy maps available after using all vetoes. Teleporting to lobby...")
+        runningEasy = false
+        SmartTeleportToLobby()
+        return
     else
-        -- In lobby: just pick a random easy strategy and run it
-        -- The YeetML strategy scripts handle joining the correct map
+        -- In lobby: just pick a random easy strategy
         local chosenStrategy = EasyStrategies[math.random(1, #EasyStrategies)]
         print("[AutoProgression] In lobby, randomly selected: " .. chosenStrategy.name .. " strategy")
         print("[AutoProgression] Loading strategy from: " .. chosenStrategy.url)
@@ -278,7 +352,7 @@ local function RunYeetHardcore()
     if runningHardcore then return end
     runningHardcore = true
     
-    print("[AutoProgression] Starting Hardcore strategy (Electroshocker + Freezer + Pyromancer + Crook Boss)")
+    print("[AutoProgression] Starting Hardcore strategy...")
     
     getgenv().AutoPremium = false
     getgenv().AutoSkip = true
@@ -286,12 +360,54 @@ local function RunYeetHardcore()
     getgenv().TimeScaleEnabled = true
     getgenv().TimeScaleValue = 2
     
-    -- Load the YeetML main loader
     local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
     RemoveAether()
     
-    -- Execute the hardcore strategy
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"))()
+    if not IsInLobby() then
+        local vetoAttempts = 0
+        local maxVetos = GetRemainingVetos() or 3
+        
+        while vetoAttempts < maxVetos do
+            local availableMaps = GetAvailableMaps()
+            local mapKeys = GetKeys(availableMaps)
+            print("[AutoProgression] Available maps: " .. (#mapKeys > 0 and table.concat(mapKeys, ", ") or "none"))
+            
+            -- Find hardcore strategies with available maps
+            local availableStrategies = {}
+            for _, strategy in ipairs(HardcoreStrategies) do
+                if availableMaps[strategy.mapName] then
+                    table.insert(availableStrategies, strategy)
+                    print("[AutoProgression] Found available map: " .. strategy.mapName)
+                end
+            end
+            
+            if #availableStrategies > 0 then
+                local chosenStrategy = availableStrategies[math.random(1, #availableStrategies)]
+                print("[AutoProgression] Selected: " .. chosenStrategy.name .. " on " .. chosenStrategy.mapName)
+                print("[AutoProgression] Loading strategy from: " .. chosenStrategy.url)
+                loadstring(game:HttpGet(chosenStrategy.url))()
+                runningHardcore = false
+                return
+            else
+                print("[AutoProgression] No hardcore map available. Veto attempt " .. (vetoAttempts+1) .. "/" .. maxVetos)
+                local vetoSuccess = VetoMap()
+                if not vetoSuccess then
+                    print("[AutoProgression] Veto failed (no vetoes left?). Breaking.")
+                    break
+                end
+                vetoAttempts = vetoAttempts + 1
+            end
+        end
+        
+        print("[AutoProgression] No hardcore maps after using all vetoes. Teleporting to lobby...")
+        runningHardcore = false
+        SmartTeleportToLobby()
+        return
+    else
+        -- In lobby: run the default hardcore strategy (YeetML script handles map joining)
+        print("[AutoProgression] In lobby, running default hardcore strategy")
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"))()
+    end
     
     runningHardcore = false
 end
