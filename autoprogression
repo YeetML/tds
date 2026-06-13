@@ -117,9 +117,26 @@ local function AutoBuyTowers(towerList)
     end
 end
 
+-- // ===== CHECK IF IN LOBBY =====
+local function IsInLobby()
+    -- Check if we're in the main lobby place
+    local placeId = game.PlaceId
+    if placeId == 3260590327 then
+        return true
+    end
+    -- Also check if workspace has lobby-specific elements
+    local lobby = workspace:FindFirstChild("Lobby")
+    if lobby then
+        return true
+    end
+    return false
+end
+
 -- // ===== CHECK AVAILABLE MAPS IN LOBBY =====
 local function GetAvailableMaps()
     local maps = {}
+    -- Wait a bit for map displays to load
+    task.wait(2)
     for _, g in ipairs(workspace:GetDescendants()) do
         if g:IsA("SurfaceGui") and g.Name == "MapDisplay" then
             local t = g:FindFirstChild("Title")
@@ -182,7 +199,7 @@ local function RunYeetEasy()
     if runningEasy then return end
     runningEasy = true
     
-    print("[AutoProgression] Starting Easy strategy - checking available maps...")
+    print("[AutoProgression] Starting Easy strategy...")
     
     getgenv().AutoPremium = false
     getgenv().AutoSkip = true
@@ -193,35 +210,45 @@ local function RunYeetEasy()
     local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
     RemoveAether()
     
-    -- Check which maps are available
-    local availableMaps = GetAvailableMaps()
-    local mapKeys = GetKeys(availableMaps)
-    print("[AutoProgression] Available maps: " .. (#mapKeys > 0 and table.concat(mapKeys, ", ") or "none"))
-    
-    -- Find ALL strategies whose maps are available
-    local availableStrategies = {}
-    for _, strategy in ipairs(EasyStrategies) do
-        if availableMaps[strategy.mapName] then
-            table.insert(availableStrategies, strategy)
-            print("[AutoProgression] Found available map: " .. strategy.mapName .. " - " .. strategy.name .. " strategy is usable")
+    -- Check if we're in a game (not the lobby)
+    if not IsInLobby() then
+        -- In game: check which maps are available and pick one
+        local availableMaps = GetAvailableMaps()
+        local mapKeys = GetKeys(availableMaps)
+        print("[AutoProgression] Available maps: " .. (#mapKeys > 0 and table.concat(mapKeys, ", ") or "none"))
+        
+        -- Find ALL strategies whose maps are available
+        local availableStrategies = {}
+        for _, strategy in ipairs(EasyStrategies) do
+            if availableMaps[strategy.mapName] then
+                table.insert(availableStrategies, strategy)
+                print("[AutoProgression] Found available map: " .. strategy.mapName .. " - " .. strategy.name .. " strategy is usable")
+            end
         end
+        
+        if #availableStrategies == 0 then
+            -- No maps from our strategy list are available, teleport back to lobby
+            print("[AutoProgression] No easy maps available in this game, teleporting to lobby...")
+            runningEasy = false
+            SmartTeleportToLobby()
+            return
+        end
+        
+        -- Randomly pick one of the available strategies
+        local chosenStrategy = availableStrategies[math.random(1, #availableStrategies)]
+        print("[AutoProgression] Randomly selected: " .. chosenStrategy.name .. " strategy on " .. chosenStrategy.mapName)
+        
+        -- Load and execute the strategy from URL
+        print("[AutoProgression] Loading strategy from: " .. chosenStrategy.url)
+        loadstring(game:HttpGet(chosenStrategy.url))()
+    else
+        -- In lobby: just pick a random easy strategy and run it
+        -- The YeetML strategy scripts handle joining the correct map
+        local chosenStrategy = EasyStrategies[math.random(1, #EasyStrategies)]
+        print("[AutoProgression] In lobby, randomly selected: " .. chosenStrategy.name .. " strategy")
+        print("[AutoProgression] Loading strategy from: " .. chosenStrategy.url)
+        loadstring(game:HttpGet(chosenStrategy.url))()
     end
-    
-    if #availableStrategies == 0 then
-        -- No maps from our strategy list are available, rejoin to try again
-        print("[AutoProgression] No easy maps available from our strategy list, rejoining lobby...")
-        runningEasy = false
-        SmartTeleportToLobby()
-        return
-    end
-    
-    -- Randomly pick one of the available strategies
-    local chosenStrategy = availableStrategies[math.random(1, #availableStrategies)]
-    print("[AutoProgression] Randomly selected: " .. chosenStrategy.name .. " strategy on " .. chosenStrategy.mapName)
-    
-    -- Load and execute the strategy from URL
-    print("[AutoProgression] Loading strategy from: " .. chosenStrategy.url)
-    loadstring(game:HttpGet(chosenStrategy.url))()
     
     runningEasy = false
 end
@@ -530,6 +557,17 @@ local function CreateUI()
         levelDisplay = levelDisplay
     }
 end
+
+-- // ===== UI RECOVERY LOOP =====
+-- Keep the UI alive even if other scripts destroy CoreGui elements
+task.spawn(function()
+    while task.wait(5) do
+        if AutoProgressionEnabled and not CoreGui:FindFirstChild("AutoProgressionUI") then
+            print("[AutoProgression] UI was destroyed, recreating...")
+            local ui = CreateUI()
+        end
+    end
+end)
 
 -- // ===== INITIALIZATION =====
 print("[AutoProgression] Loading Auto Progression Companion Script...")
