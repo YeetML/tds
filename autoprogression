@@ -89,9 +89,9 @@ local function RunYeetEasy()
     
     print("[AutoProgression] Starting Easy1 strategy (Scout on Crossroads)")
     
-    getgenv().AutoPremium = true
+    getgenv().AutoPremium = false
     getgenv().AutoSkip = true
-    getgenv().AutoRejoin = false
+    getgenv().AutoRejoin = true
     getgenv().TimeScaleEnabled = false
     
     -- Load the YeetML main loader (creates its own TDS instance)
@@ -110,9 +110,9 @@ local function RunYeetPizza()
     
     print("[AutoProgression] Starting Pizza strategy (Assassin + Trapper on Pizza Party)")
     
-    getgenv().AutoPremium = true
+    getgenv().AutoPremium = false
     getgenv().AutoSkip = true
-    getgenv().AutoRejoin = false
+    getgenv().AutoRejoin = true
     getgenv().TimeScaleEnabled = false
     
     -- Load the YeetML main loader
@@ -131,9 +131,9 @@ local function RunYeetHardcore()
     
     print("[AutoProgression] Starting Hardcore strategy (Electroshocker + Freezer + Pyromancer + Crook Boss)")
     
-    getgenv().AutoPremium = true
+    getgenv().AutoPremium = false
     getgenv().AutoSkip = true
-    getgenv().AutoRejoin = false
+    getgenv().AutoRejoin = true
     getgenv().TimeScaleEnabled = true
     getgenv().TimeScaleValue = 2
     
