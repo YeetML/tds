@@ -326,62 +326,77 @@ local function RunYeetPizza()
     
     print("[AutoProgression] Starting Pizza strategy (Assassin + Trapper on Pizza Party)")
     
+    -- Ensure we are in the lobby
+    if not IsInLobby() then
+        print("[AutoProgression] Not in lobby. Teleporting to lobby first...")
+        statusDisplay.Text = "Status: Teleporting to lobby..."
+        SmartTeleportToLobby()
+        -- Wait for teleport to complete
+        repeat task.wait(1) until IsInLobby()
+        print("[AutoProgression] Now in lobby. Continuing...")
+        task.wait(3) -- extra wait for UI to settle
+    end
+    
     -- ===== MANUAL LOADOUT MANAGEMENT (works in LOBBY) =====
-    if IsInLobby() then
-        print("[AutoProgression] In lobby – manually equipping loadout...")
-        
-        -- Helper to get currently equipped towers
-        local function GetCurrentEquippedTowers()
-            local towers = {}
-            local StateReplicators = ReplicatedStorage:FindFirstChild("StateReplicators")
-            if StateReplicators then
-                for _, folder in ipairs(StateReplicators:GetChildren()) do
-                    if folder.Name == "PlayerReplicator" and folder:GetAttribute("UserId") == LocalPlayer.UserId then
-                        local equipped = folder:GetAttribute("EquippedTowers")
-                        if type(equipped) == "string" then
-                            local cleaned = equipped:match("%[.*%]")
-                            local success, t = pcall(function()
-                                return HttpService:JSONDecode(cleaned)
-                            end)
-                            if success and type(t) == "table" then
-                                for i = 1, 5 do
-                                    if t[i] and t[i] ~= "None" then
-                                        table.insert(towers, t[i])
-                                    end
+    print("[AutoProgression] In lobby – manually equipping loadout...")
+    
+    -- Helper to get currently equipped towers
+    local function GetCurrentEquippedTowers()
+        local towers = {}
+        local StateReplicators = ReplicatedStorage:FindFirstChild("StateReplicators")
+        if StateReplicators then
+            for _, folder in ipairs(StateReplicators:GetChildren()) do
+                if folder.Name == "PlayerReplicator" and folder:GetAttribute("UserId") == LocalPlayer.UserId then
+                    local equipped = folder:GetAttribute("EquippedTowers")
+                    if type(equipped) == "string" then
+                        local cleaned = equipped:match("%[.*%]")
+                        local success, t = pcall(function()
+                            return HttpService:JSONDecode(cleaned)
+                        end)
+                        if success and type(t) == "table" then
+                            for i = 1, 5 do
+                                if t[i] and t[i] ~= "None" then
+                                    table.insert(towers, t[i])
                                 end
                             end
                         end
                     end
                 end
             end
-            return towers
         end
-        
-        -- Unequip all current towers
-        local currentTowers = GetCurrentEquippedTowers()
-        for _, towerName in ipairs(currentTowers) do
-            print("[AutoProgression] Unequipping", towerName)
-            pcall(function()
-                RemoteEvent:FireServer("Inventory", "Unequip", "Tower", towerName)
-                task.wait(0.3)
-            end)
-        end
-        
-        -- Equip required towers
-        local requiredTowers = {"Assassin", "Trapper"}
-        for _, towerName in ipairs(requiredTowers) do
-            print("[AutoProgression] Equipping", towerName)
-            pcall(function()
-                RemoteEvent:FireServer("Inventory", "Equip", "Tower", towerName)
-                task.wait(0.3)
-            end)
-        end
-        
-        print("[AutoProgression] Loadout equipped successfully!")
-        task.wait(1)
-    else
-        print("[AutoProgression] Not in lobby – skipping manual equip (will rely on strategy script)")
+        return towers
     end
+    
+    -- Unequip all current towers
+    local currentTowers = GetCurrentEquippedTowers()
+    if #currentTowers > 0 then
+        print("[AutoProgression] Current loadout:", table.concat(currentTowers, ", "))
+    else
+        print("[AutoProgression] No towers currently equipped.")
+    end
+    
+    for _, towerName in ipairs(currentTowers) do
+        print("[AutoProgression] Unequipping", towerName)
+        pcall(function()
+            RemoteEvent:FireServer("Inventory", "Unequip", "Tower", towerName)
+            task.wait(0.3)
+        end)
+    end
+    
+    -- Equip required towers
+    local requiredTowers = {"Assassin", "Trapper"}
+    for _, towerName in ipairs(requiredTowers) do
+        print("[AutoProgression] Equipping", towerName)
+        pcall(function()
+            RemoteEvent:FireServer("Inventory", "Equip", "Tower", towerName)
+            task.wait(0.3)
+        end)
+    end
+    
+    print("[AutoProgression] Loadout equipped successfully!")
+    statusDisplay.Text = "Status: Loadout ready"
+    task.wait(1)
+    
     -- ===== END MANUAL LOADOUT =====
     
     getgenv().AutoPremium = false
@@ -389,6 +404,7 @@ local function RunYeetPizza()
     getgenv().AutoRejoin = true
     getgenv().TimeScaleEnabled = false
     
+    -- Load the YeetML main loader and run pizza strategy
     local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
     RemoveAether()
     
