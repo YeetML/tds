@@ -167,13 +167,6 @@ local EasyStrategies = {
         loadout = {"Soldier", "Shotgunner", "None", "None", "None"},
         mode = "Easy"
     },
-    {
-        name = "easy3",
-        mapName = "Simplicity",
-        url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy3",
-        loadout = {"Assassin", "Commander", "DJ Booth", "None", "None"},
-        mode = "Easy"
-    }
 }
 
 -- // ===== HARDCORE STRATEGIES (Level 50-99) =====
