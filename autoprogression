@@ -184,6 +184,7 @@ local HardcoreStrategies = {
 
 -- // ===== STRATEGY RUNNERS =====
 local runningEasy = false
+local runningMolten = false
 local runningPizza = false
 local runningHardcore = false
 local AutoProgressionRunning = false
@@ -320,7 +321,37 @@ local function RunYeetEasy()
     runningEasy = false
 end
 
-local function RunYeetPizza()
+local function RunYeetMolten()
+    if runningMolten then return end
+    runningMolten = true
+    
+    print("[AutoProgression] Starting Molten strategy (Summer Castle)")
+    
+    -- Ensure we are in the lobby (same as Easy)
+    if not IsInLobby() then
+        print("[AutoProgression] Not in lobby. Teleporting to lobby first...")
+        SmartTeleportToLobby()
+        repeat task.wait(1) until IsInLobby()
+        print("[AutoProgression] Now in lobby. Continuing...")
+        task.wait(3)
+    end
+    
+    -- Set global settings (same as Easy)
+    getgenv().AutoPremium = false
+    getgenv().AutoSkip = false
+    getgenv().AutoRejoin = true
+    getgenv().TimeScaleEnabled = false
+    
+    -- Load YeetML main loader and the molten strategy URL
+    local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+    RemoveAether()
+    
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/molten"))()
+    
+    runningMolten = false
+end
+
+--[[local function RunYeetPizza()
     if runningPizza then return end
     runningPizza = true
     
@@ -411,7 +442,7 @@ local function RunYeetPizza()
     loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/pizza"))()
     
     runningPizza = false
-end
+end]]
 
 local function RunYeetHardcore()
     if runningHardcore then return end
@@ -512,17 +543,17 @@ local function RunAutoProgression()
         RunYeetHardcore()
         
     elseif level >= 26 then
-        -- Level 26-49: Pizza Party strategy
-        -- Required towers: Assassin (800), Trapper (350)
-        print("[AutoProgression] Level " .. level .. " >= 25, using Pizza strategy")
+        -- Level 26-49: Molten strategy
+        print("[AutoProgression] Level " .. level .. " >= 26, using Molten strategy")
         
-        -- Auto-buy required towers
+        -- Auto-buy required towers for the Molten strategy
         AutoBuyTowers({
-            {"Assassin", 800},
-            {"Trapper", 350}
+            {"Electroshocker", 2500},      -- Adjust price if needed
+            {"Military Base", 4000}, -- Adjust price if needed
+            {"Hunter", 1000}        -- Adjust price if needed
         })
         
-        RunYeetPizza()
+        RunYeetMolten()
         
     else
         -- Level 0-25: Easy strategy (multi-map support)
@@ -762,8 +793,10 @@ local ui = CreateUI()
 -- Expose functions globally so they can be called from other scripts
 getgenv().BuyTower = BuyTower
 getgenv().RunYeetEasy = RunYeetEasy
-getgenv().RunYeetPizza = RunYeetPizza
+getgenv().RunYeetMolten = RunYeetMolten
+--getgenv().RunYeetPizza = RunYeetPizza
 getgenv().RunYeetHardcore = RunYeetHardcore
 getgenv().RunAutoProgression = RunAutoProgression
 
 print("[AutoProgression] Loaded successfully!")
+
