@@ -327,19 +327,14 @@ local function RunYeetPizza()
     print("[AutoProgression] Starting Pizza strategy (Assassin + Trapper on Pizza Party)")
     
     -- === NEW: Equip loadout in lobby ===
-    if IsInLobby() then
-        print("[AutoProgression] In lobby, equipping loadout: Assassin, Trapper")
-        -- Use the global TDS object from main Aether Hub (must be loaded before this script)
-        if TDS and TDS.Loadout then
+     if _G.TDS and _G.TDS.Loadout then
+            _G.TDS:Loadout("Assassin", "Trapper")
+        elseif TDS and TDS.Loadout then
             TDS:Loadout("Assassin", "Trapper")
-            print("[AutoProgression] Loadout equipped successfully.")
         else
-            print("[AutoProgression] WARNING: TDS object not available – cannot equip loadout automatically.")
-            print("[AutoProgression] Make sure the Aether Hub script is loaded before this one.")
+            print("[AutoProgression] WARNING: TDS not found – cannot equip loadout")
         end
-        task.wait(2)  -- Wait for equip to register
-    else
-        print("[AutoProgression] Not in lobby – loadout equip skipped (may cause issues).")
+        task.wait(2)
     end
     
     getgenv().AutoPremium = false
