@@ -326,16 +326,15 @@ local function RunYeetPizza()
     
     print("[AutoProgression] Starting Pizza strategy (Assassin + Trapper on Pizza Party)")
     
-    -- === NEW: Equip loadout in lobby ===
-     if _G.TDS and _G.TDS.Loadout then
-            _G.TDS:Loadout("Assassin", "Trapper")
-        elseif TDS and TDS.Loadout then
-            TDS:Loadout("Assassin", "Trapper")
-        else
-            print("[AutoProgression] WARNING: TDS not found – cannot equip loadout")
-        end
-        task.wait(2)
+    -- Equip loadout in lobby
+    if _G.TDS and _G.TDS.Loadout then
+        _G.TDS:Loadout("Assassin", "Trapper")
+    elseif TDS and TDS.Loadout then
+        TDS:Loadout("Assassin", "Trapper")
+    else
+        print("[AutoProgression] WARNING: TDS not found – cannot equip loadout")
     end
+    task.wait(2)
     
     getgenv().AutoPremium = false
     getgenv().AutoSkip = true
@@ -349,7 +348,6 @@ local function RunYeetPizza()
     
     runningPizza = false
 end
-
 local function RunYeetHardcore()
     if runningHardcore then return end
     runningHardcore = true
