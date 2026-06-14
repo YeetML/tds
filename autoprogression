@@ -439,8 +439,8 @@ local function RunAutoProgression()
         
         RunYeetHardcore()
         
-    elseif level >= 25 then
-        -- Level 25-49: Pizza Party strategy
+    elseif level >= 26 then
+        -- Level 26-49: Pizza Party strategy
         -- Required towers: Assassin (800), Trapper (350)
         print("[AutoProgression] Level " .. level .. " >= 25, using Pizza strategy")
         
@@ -453,7 +453,7 @@ local function RunAutoProgression()
         RunYeetPizza()
         
     else
-        -- Level 0-24: Easy strategy (multi-map support)
+        -- Level 0-25: Easy strategy (multi-map support)
         -- Required towers: Scout (free), Soldier (350), Shotgunner (850), Assassin (800), Commander (4000), DJ Booth (5000)
         print("[AutoProgression] Level " .. level .. " < 25, using Easy strategy (multi-map)")
         
