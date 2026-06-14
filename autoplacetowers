@@ -1,0 +1,692 @@
+-- // ===== AUTO PLACE TOWERS - YeetML/Aether Hub Addon =====
+-- // Load this AFTER the main Aether Hub script
+-- // Click on a position, and it will scan around to find valid placement spots for all your equipped towers
+-- // It brute-forces every tower type since we can't tell which towers go on hills vs ground
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local mouse = LocalPlayer:GetMouse()
+local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- // ===== CHECK IF IN GAME =====
+local function IsInGame()
+    if getgenv().GameState == "GAME" then return true end
+    if PlayerGui:FindFirstChild("ReactUniversalHotbar") then return true end
+    return false
+end
+
+local SETTINGS_FILE = "AutoPlaceTowers.json"
+
+-- // ===== CONFIGURATION =====
+local config = {
+    Enabled = false,
+    Radius = 15,        -- How far from click point to scan
+    Step = 3,           -- Grid step size (smaller = more thorough but slower)
+    TowerList = {},     -- Towers to try placing (populated from equipped towers)
+    UseAllEquipped = true, -- Auto-use all equipped towers
+    CustomTowers = {},  -- Custom tower list if not using equipped
+    MaxPlacements = 50, -- Max towers to place before stopping
+    YOffset = 1.0,      -- Y height to try placing at
+    YVariations = {1.0, 1.037, 0.5, 1.5}, -- Different Y heights to try (hills vs ground)
+}
+
+-- // ===== STATE =====
+local autoPlaceRunning = false
+local autoPlaceSphere = nil
+local autoPlaceCenter = nil
+local autoPlacePlaced = 0
+local autoPlaceStop = false
+
+-- // ===== HELPER: Check if a remote response indicates success =====
+local function CheckResOk(data)
+    if data == true then return true end
+    if type(data) == "table" and data.Success == true then return true end
+    local success, IsModel = pcall(function()
+        return data and data:IsA("Model")
+    end)
+    if success and IsModel then return true end
+    if type(data) == "userdata" then return true end
+    return false
+end
+
+-- // ===== GET EQUIPPED TOWERS =====
+local function GetEquippedTowers()
+    local towers = {}
+    local StateReplicators = ReplicatedStorage:FindFirstChild("StateReplicators")
+    if StateReplicators then
+        for _, folder in ipairs(StateReplicators:GetChildren()) do
+            if folder.Name == "PlayerReplicator" and folder:GetAttribute("UserId") == LocalPlayer.UserId then
+                local equipped = folder:GetAttribute("EquippedTowers")
+                if type(equipped) == "string" then
+                    local CleanedJson = equipped:match("%[.*%]")
+                    local success, TowerTable = pcall(function()
+                        return HttpService:JSONDecode(CleanedJson)
+                    end)
+                    if success and type(TowerTable) == "table" then
+                        for i = 1, 5 do
+                            if TowerTable[i] and TowerTable[i] ~= "None" then
+                                table.insert(towers, TowerTable[i])
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return towers
+end
+
+-- // ===== TRY PLACE TOWER AT POSITION =====
+local function TryPlaceTower(towerName, position)
+    local success, result = pcall(function()
+        return RemoteFunc:InvokeServer("Troops", "Place", {
+            Rotation = CFrame.new(),
+            Position = position
+        }, towerName)
+    end)
+    if success and CheckResOk(result) then
+        return true, result
+    end
+    return false, result
+end
+
+-- // ===== GENERATE SCAN POSITIONS =====
+local function GenerateScanPositions(center, radius, step)
+    local positions = {}
+    -- Scan in a spiral/grid pattern outward from center
+    for x = -radius, radius, step do
+        for z = -radius, radius, step do
+            local pos = Vector3.new(
+                center.X + x,
+                center.Y,
+                center.Z + z
+            )
+            -- Check distance from center
+            local dist = (Vector3.new(pos.X, 0, pos.Z) - Vector3.new(center.X, 0, center.Z)).Magnitude
+            if dist <= radius then
+                table.insert(positions, pos)
+            end
+        end
+    end
+    -- Sort by distance from center (closest first)
+    table.sort(positions, function(a, b)
+        local da = (a - center).Magnitude
+        local db = (b - center).Magnitude
+        return da < db
+    end)
+    return positions
+end
+
+-- // ===== CHECK IF POSITION IS ALREADY OCCUPIED =====
+local function IsPositionOccupied(position, checkRadius)
+    checkRadius = checkRadius or 1.5
+    local Towers = workspace:FindFirstChild("Towers")
+    if not Towers then return false end
+    for _, tower in ipairs(Towers:GetChildren()) do
+        if tower:IsA("Model") then
+            local primary = tower:FindFirstChild("TowerReplicator") or tower:FindFirstChildWhichIsA("BasePart")
+            if primary then
+                local tPos = primary:IsA("BasePart") and primary.Position or (primary:IsA("Folder") and primary.Parent and primary.Parent:FindFirstChildWhichIsA("BasePart") and primary.Parent:FindFirstChildWhichIsA("BasePart").Position)
+                if tPos then
+                    local dist = (Vector3.new(position.X, 0, position.Z) - Vector3.new(tPos.X, 0, tPos.Z)).Magnitude
+                    if dist < checkRadius then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- // ===== MAIN AUTO PLACE FUNCTION =====
+local function RunAutoPlace(clickPosition)
+    if autoPlaceRunning then
+        print("[AutoPlace] Already running!")
+        return
+    end
+    if not IsInGame() then
+        print("[AutoPlace] Must be in a game to place towers!")
+        return
+    end
+    
+    autoPlaceRunning = true
+    autoPlaceStop = false
+    autoPlacePlaced = 0
+    autoPlaceCenter = clickPosition
+    
+    print("[AutoPlace] Starting auto place at: " .. tostring(clickPosition))
+    print("[AutoPlace] Radius: " .. config.Radius .. ", Step: " .. config.Step)
+    
+    -- Get towers to place
+    local towersToPlace = {}
+    if config.UseAllEquipped then
+        towersToPlace = GetEquippedTowers()
+        if #towersToPlace == 0 then
+            print("[AutoPlace] No equipped towers found!")
+            autoPlaceRunning = false
+            return
+        end
+    else
+        towersToPlace = config.CustomTowers
+        if #towersToPlace == 0 then
+            print("[AutoPlace] No custom towers configured!")
+            autoPlaceRunning = false
+            return
+        end
+    end
+    
+    print("[AutoPlace] Towers to try: " .. table.concat(towersToPlace, ", "))
+    
+    -- Generate scan positions
+    local basePositions = GenerateScanPositions(
+        Vector3.new(clickPosition.X, 0, clickPosition.Z),
+        config.Radius,
+        config.Step
+    )
+    
+    print("[AutoPlace] Generated " .. #basePositions .. " scan positions")
+    
+    -- For each position, try each tower at each Y variation
+    for _, basePos in ipairs(basePositions) do
+        if autoPlaceStop then
+            print("[AutoPlace] Stopped by user")
+            break
+        end
+        if autoPlacePlaced >= config.MaxPlacements then
+            print("[AutoPlace] Reached max placements: " .. config.MaxPlacements)
+            break
+        end
+        
+        -- Check if position is already occupied
+        if IsPositionOccupied(basePos) then
+            continue
+        end
+        
+        -- Try each Y variation
+        for _, yOffset in ipairs(config.YVariations) do
+            if autoPlaceStop then break end
+            if autoPlacePlaced >= config.MaxPlacements then break end
+            
+            local tryPos = Vector3.new(basePos.X, yOffset, basePos.Z)
+            
+            -- Try each tower type at this position
+            for _, towerName in ipairs(towersToPlace) do
+                if autoPlaceStop then break end
+                if autoPlacePlaced >= config.MaxPlacements then break end
+                
+                -- Check again if position got occupied
+                if IsPositionOccupied(tryPos) then
+                    break
+                end
+                
+                local success, result = TryPlaceTower(towerName, tryPos)
+                if success then
+                    autoPlacePlaced = autoPlacePlaced + 1
+                    print("[AutoPlace] Placed " .. towerName .. " at " .. tostring(tryPos) .. " (" .. autoPlacePlaced .. "/" .. config.MaxPlacements .. ")")
+                    task.wait(0.3) -- Small delay between placements
+                    break -- Move to next position after successful placement
+                end
+            end
+        end
+    end
+    
+    print("[AutoPlace] Finished! Placed " .. autoPlacePlaced .. " towers")
+    autoPlaceRunning = false
+    
+    -- Update UI
+    if autoPlaceUI and autoPlaceUI.status then
+        autoPlaceUI.status.Text = "Status: Idle (Placed " .. autoPlacePlaced .. ")"
+    end
+end
+
+-- // ===== CREATE VISUAL SPHERE =====
+local function UpdateAutoPlaceSphere()
+    if autoPlaceSphere then
+        autoPlaceSphere:Destroy()
+        autoPlaceSphere = nil
+    end
+    
+    if config.Enabled then
+        autoPlaceSphere = Instance.new("Part")
+        autoPlaceSphere.Name = "AutoPlaceSphere"
+        autoPlaceSphere.Shape = Enum.PartType.Ball
+        autoPlaceSphere.Size = Vector3.new(1, 1, 1)
+        autoPlaceSphere.Color = Color3.fromRGB(0, 200, 255)
+        autoPlaceSphere.Transparency = 0.6
+        autoPlaceSphere.Anchored = true
+        autoPlaceSphere.CanCollide = false
+        autoPlaceSphere.Material = Enum.Material.Neon
+        autoPlaceSphere.Parent = workspace
+        mouse.TargetFilter = autoPlaceSphere
+    end
+end
+
+-- // ===== SAVE/LOAD CONFIG =====
+local function SaveConfig()
+    if writefile then
+        local saveData = {
+            Radius = config.Radius,
+            Step = config.Step,
+            UseAllEquipped = config.UseAllEquipped,
+            MaxPlacements = config.MaxPlacements,
+            CustomTowers = config.CustomTowers,
+            YVariations = config.YVariations
+        }
+        writefile(SETTINGS_FILE, HttpService:JSONEncode(saveData))
+    end
+end
+
+local function LoadConfig()
+    if isfile and isfile(SETTINGS_FILE) then
+        local success, data = pcall(function()
+            return HttpService:JSONDecode(readfile(SETTINGS_FILE))
+        end)
+        if success and type(data) == "table" then
+            if data.Radius then config.Radius = data.Radius end
+            if data.Step then config.Step = data.Step end
+            if data.UseAllEquipped ~= nil then config.UseAllEquipped = data.UseAllEquipped end
+            if data.MaxPlacements then config.MaxPlacements = data.MaxPlacements end
+            if data.CustomTowers then config.CustomTowers = data.CustomTowers end
+            if data.YVariations then config.YVariations = data.YVariations end
+        end
+    end
+end
+
+LoadConfig()
+
+-- // ===== UI CREATION =====
+local autoPlaceUI = nil
+
+local function CreateUI()
+    -- Remove old UI if exists
+    local oldGui = CoreGui:FindFirstChild("AutoPlaceUI")
+    if oldGui then
+        oldGui:Destroy()
+    end
+    
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "AutoPlaceUI"
+    gui.ResetOnSpawn = false
+    gui.Parent = CoreGui
+    
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 300, 0, 280)
+    frame.Position = UDim2.new(0.5, -150, 0.75, -140)
+    frame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
+    frame.BorderSizePixel = 0
+    frame.Parent = gui
+    
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 14)
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(60, 60, 80)
+    stroke.Thickness = 2
+    stroke.Parent = frame
+    
+    -- Header
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, -24, 0, 38)
+    header.Position = UDim2.new(0, 12, 0, 12)
+    header.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
+    header.BorderSizePixel = 0
+    header.Parent = frame
+    
+    Instance.new("UICorner", header).CornerRadius = UDim.new(0, 12)
+    
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 200, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 50, 200))
+    })
+    gradient.Parent = header
+    
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 1, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "Auto Place Towers"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextScaled = true
+    title.Font = Enum.Font.GothamBold
+    title.TextXAlignment = Enum.TextXAlignment.Center
+    title.Parent = header
+    
+    local titleConstraint = Instance.new("UITextSizeConstraint")
+    titleConstraint.MaxTextSize = 22
+    titleConstraint.MinTextSize = 15
+    titleConstraint.Parent = title
+    
+    -- Status
+    local statusDisplay = Instance.new("TextLabel")
+    statusDisplay.Size = UDim2.new(1, -24, 0, 22)
+    statusDisplay.Position = UDim2.new(0, 12, 0, 58)
+    statusDisplay.BackgroundTransparency = 1
+    statusDisplay.Text = "Status: Idle"
+    statusDisplay.TextColor3 = Color3.fromRGB(200, 200, 200)
+    statusDisplay.TextScaled = true
+    statusDisplay.Font = Enum.Font.GothamBold
+    statusDisplay.TextXAlignment = Enum.TextXAlignment.Center
+    statusDisplay.Parent = frame
+    
+    -- Instructions
+    local instructions = Instance.new("TextLabel")
+    instructions.Size = UDim2.new(1, -24, 0, 30)
+    instructions.Position = UDim2.new(0, 12, 0, 82)
+    instructions.BackgroundTransparency = 1
+    instructions.Text = "Enable then click anywhere to scan & place"
+    instructions.TextColor3 = Color3.fromRGB(150, 150, 150)
+    instructions.TextScaled = true
+    instructions.Font = Enum.Font.Gotham
+    instructions.TextXAlignment = Enum.TextXAlignment.Center
+    instructions.Parent = frame
+    
+    -- Toggle button
+    local toggle = Instance.new("TextButton")
+    toggle.Size = UDim2.new(0, 120, 0, 30)
+    toggle.Position = UDim2.new(0.5, -60, 0, 118)
+    toggle.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
+    toggle.Text = "Enable"
+    toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggle.TextScaled = true
+    toggle.Font = Enum.Font.GothamBold
+    toggle.Parent = frame
+    
+    Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 10)
+    
+    -- Settings section
+    local settingsLabel = Instance.new("TextLabel")
+    settingsLabel.Size = UDim2.new(1, -24, 0, 18)
+    settingsLabel.Position = UDim2.new(0, 12, 0, 155)
+    settingsLabel.BackgroundTransparency = 1
+    settingsLabel.Text = "Settings:"
+    settingsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    settingsLabel.TextScaled = true
+    settingsLabel.Font = Enum.Font.GothamBold
+    settingsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    settingsLabel.Parent = frame
+    
+    -- Radius slider
+    local radiusLabel = Instance.new("TextLabel")
+    radiusLabel.Size = UDim2.new(0, 80, 0, 18)
+    radiusLabel.Position = UDim2.new(0, 12, 0, 175)
+    radiusLabel.BackgroundTransparency = 1
+    radiusLabel.Text = "Radius: " .. config.Radius
+    radiusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    radiusLabel.TextScaled = true
+    radiusLabel.Font = Enum.Font.Gotham
+    radiusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    radiusLabel.Parent = frame
+    
+    local radiusDown = Instance.new("TextButton")
+    radiusDown.Size = UDim2.new(0, 22, 0, 22)
+    radiusDown.Position = UDim2.new(0, 95, 0, 173)
+    radiusDown.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    radiusDown.Text = "-"
+    radiusDown.TextColor3 = Color3.fromRGB(255, 255, 255)
+    radiusDown.TextScaled = true
+    radiusDown.Font = Enum.Font.GothamBold
+    radiusDown.Parent = frame
+    Instance.new("UICorner", radiusDown).CornerRadius = UDim.new(0, 6)
+    
+    local radiusUp = Instance.new("TextButton")
+    radiusUp.Size = UDim2.new(0, 22, 0, 22)
+    radiusUp.Position = UDim2.new(0, 122, 0, 173)
+    radiusUp.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    radiusUp.Text = "+"
+    radiusUp.TextColor3 = Color3.fromRGB(255, 255, 255)
+    radiusUp.TextScaled = true
+    radiusUp.Font = Enum.Font.GothamBold
+    radiusUp.Parent = frame
+    Instance.new("UICorner", radiusUp).CornerRadius = UDim.new(0, 6)
+    
+    -- Step slider
+    local stepLabel = Instance.new("TextLabel")
+    stepLabel.Size = UDim2.new(0, 80, 0, 18)
+    stepLabel.Position = UDim2.new(0, 12, 0, 200)
+    stepLabel.BackgroundTransparency = 1
+    stepLabel.Text = "Step: " .. config.Step
+    stepLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    stepLabel.TextScaled = true
+    stepLabel.Font = Enum.Font.Gotham
+    stepLabel.TextXAlignment = Enum.TextXAlignment.Left
+    stepLabel.Parent = frame
+    
+    local stepDown = Instance.new("TextButton")
+    stepDown.Size = UDim2.new(0, 22, 0, 22)
+    stepDown.Position = UDim2.new(0, 95, 0, 198)
+    stepDown.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    stepDown.Text = "-"
+    stepDown.TextColor3 = Color3.fromRGB(255, 255, 255)
+    stepDown.TextScaled = true
+    stepDown.Font = Enum.Font.GothamBold
+    stepDown.Parent = frame
+    Instance.new("UICorner", stepDown).CornerRadius = UDim.new(0, 6)
+    
+    local stepUp = Instance.new("TextButton")
+    stepUp.Size = UDim2.new(0, 22, 0, 22)
+    stepUp.Position = UDim2.new(0, 122, 0, 198)
+    stepUp.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    stepUp.Text = "+"
+    stepUp.TextColor3 = Color3.fromRGB(255, 255, 255)
+    stepUp.TextScaled = true
+    stepUp.Font = Enum.Font.GothamBold
+    stepUp.Parent = frame
+    Instance.new("UICorner", stepUp).CornerRadius = UDim.new(0, 6)
+    
+    -- Max placements
+    local maxLabel = Instance.new("TextLabel")
+    maxLabel.Size = UDim2.new(0, 100, 0, 18)
+    maxLabel.Position = UDim2.new(0, 155, 0, 175)
+    maxLabel.BackgroundTransparency = 1
+    maxLabel.Text = "Max: " .. config.MaxPlacements
+    maxLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    maxLabel.TextScaled = true
+    maxLabel.Font = Enum.Font.Gotham
+    maxLabel.TextXAlignment = Enum.TextXAlignment.Left
+    maxLabel.Parent = frame
+    
+    local maxDown = Instance.new("TextButton")
+    maxDown.Size = UDim2.new(0, 22, 0, 22)
+    maxDown.Position = UDim2.new(0, 238, 0, 173)
+    maxDown.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    maxDown.Text = "-"
+    maxDown.TextColor3 = Color3.fromRGB(255, 255, 255)
+    maxDown.TextScaled = true
+    maxDown.Font = Enum.Font.GothamBold
+    maxDown.Parent = frame
+    Instance.new("UICorner", maxDown).CornerRadius = UDim.new(0, 6)
+    
+    local maxUp = Instance.new("TextButton")
+    maxUp.Size = UDim2.new(0, 22, 0, 22)
+    maxUp.Position = UDim2.new(0, 265, 0, 173)
+    maxUp.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    maxUp.Text = "+"
+    maxUp.TextColor3 = Color3.fromRGB(255, 255, 255)
+    maxUp.TextScaled = true
+    maxUp.Font = Enum.Font.GothamBold
+    maxUp.Parent = frame
+    Instance.new("UICorner", maxUp).CornerRadius = UDim.new(0, 6)
+    
+    -- Stop button
+    local stopBtn = Instance.new("TextButton")
+    stopBtn.Size = UDim2.new(0, 80, 0, 24)
+    stopBtn.Position = UDim2.new(0.5, -40, 1, -32)
+    stopBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
+    stopBtn.Text = "Stop"
+    stopBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    stopBtn.TextScaled = true
+    stopBtn.Font = Enum.Font.GothamBold
+    stopBtn.Parent = frame
+    Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0, 8)
+    
+    -- // ===== BUTTON CALLBACKS =====
+    
+    -- Toggle
+    toggle.MouseButton1Click:Connect(function()
+        config.Enabled = not config.Enabled
+        if config.Enabled then
+            toggle.Text = "ON"
+            toggle.BackgroundColor3 = Color3.fromRGB(0, 170, 80)
+            statusDisplay.Text = "Status: Click a position to scan"
+            UpdateAutoPlaceSphere()
+        else
+            toggle.Text = "Enable"
+            toggle.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
+            statusDisplay.Text = "Status: Disabled"
+            autoPlaceStop = true
+            if autoPlaceSphere then
+                autoPlaceSphere:Destroy()
+                autoPlaceSphere = nil
+            end
+        end
+        SaveConfig()
+    end)
+    
+    -- Radius controls
+    radiusDown.MouseButton1Click:Connect(function()
+        config.Radius = math.max(3, config.Radius - 1)
+        radiusLabel.Text = "Radius: " .. config.Radius
+        SaveConfig()
+    end)
+    
+    radiusUp.MouseButton1Click:Connect(function()
+        config.Radius = math.min(50, config.Radius + 1)
+        radiusLabel.Text = "Radius: " .. config.Radius
+        SaveConfig()
+    end)
+    
+    -- Step controls
+    stepDown.MouseButton1Click:Connect(function()
+        config.Step = math.max(1, config.Step - 0.5)
+        stepLabel.Text = "Step: " .. config.Step
+        SaveConfig()
+    end)
+    
+    stepUp.MouseButton1Click:Connect(function()
+        config.Step = math.min(10, config.Step + 0.5)
+        stepLabel.Text = "Step: " .. config.Step
+        SaveConfig()
+    end)
+    
+    -- Max controls
+    maxDown.MouseButton1Click:Connect(function()
+        config.MaxPlacements = math.max(1, config.MaxPlacements - 5)
+        maxLabel.Text = "Max: " .. config.MaxPlacements
+        SaveConfig()
+    end)
+    
+    maxUp.MouseButton1Click:Connect(function()
+        config.MaxPlacements = math.min(200, config.MaxPlacements + 5)
+        maxLabel.Text = "Max: " .. config.MaxPlacements
+        SaveConfig()
+    end)
+    
+    -- Stop button
+    stopBtn.MouseButton1Click:Connect(function()
+        autoPlaceStop = true
+        statusDisplay.Text = "Status: Stopping..."
+    end)
+    
+    -- Dragging
+    local dragging = false
+    local dragInput
+    local dragStart
+    local startPos
+    
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    return {
+        title = title,
+        status = statusDisplay,
+        toggle = toggle,
+        frame = frame
+    }
+end
+
+-- // ===== MOUSE CLICK HANDLER =====
+mouse.Button1Down:Connect(function()
+    if config.Enabled and not autoPlaceRunning then
+        local hit = mouse.Hit
+        if hit then
+            local clickPos = hit.Position
+            print("[AutoPlace] Clicked at: " .. tostring(clickPos))
+            
+            -- Update sphere position
+            if autoPlaceSphere then
+                autoPlaceSphere.Position = clickPos
+            end
+            
+            -- Run auto place
+            task.spawn(function()
+                RunAutoPlace(clickPos)
+            end)
+        end
+    end
+end)
+
+-- // ===== RENDER LOOP FOR SPHERE =====
+RunService.RenderStepped:Connect(function()
+    if config.Enabled and autoPlaceSphere then
+        local hit = mouse.Hit
+        if hit then
+            autoPlaceSphere.Position = hit.Position
+        end
+    end
+end)
+
+-- // ===== INITIALIZATION =====
+print("[AutoPlaceTowers] Loading Auto Place Towers addon...")
+print("[AutoPlaceTowers] Enable the feature, then click anywhere to scan & place towers")
+print("[AutoPlaceTowers] It will try every equipped tower at each position until one works")
+
+-- Create UI
+autoPlaceUI = CreateUI()
+
+-- Expose functions globally
+getgenv().AutoPlaceTowers = {
+    Start = RunAutoPlace,
+    Stop = function() autoPlaceStop = true end,
+    Config = config,
+    GetEquippedTowers = GetEquippedTowers
+}
+
+print("[AutoPlaceTowers] Loaded successfully!")
