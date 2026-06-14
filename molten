@@ -1,0 +1,258 @@
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+ 
+TDS:Loadout("Crook Boss", "Mortar", "Military Base", "Rocketeer", "Hunter")
+TDS:Mode("Molten")
+TDS:GameInfo("Summer Castle", {})
+ 
+TDS:Ready()
+TDS:Place("Military Base", 3.1328353881835938, 0.996557891368866, 47.349609375)
+ 
+-- [ Wave 1 ] --
+TDS:VoteSkip(1)
+ 
+-- [ Wave 2 ] --
+TDS:VoteSkip(2)
+ 
+-- [ Wave 3 ] --
+TDS:Upgrade(1)
+TDS:VoteSkip(3)
+ 
+-- [ Wave 5 ] --
+TDS:VoteSkip(5)
+TDS:Place("Hunter", 9.999187469482422, 0.9706454277038574, 24.69734764099121)
+ 
+-- [ Wave 6 ] --
+TDS:Upgrade(1)
+TDS:Place("Mortar", 10.495726585388184, 4.0675740242004395, 8.656983375549316)
+ 
+-- [ Wave 7 ] --
+TDS:VoteSkip(7)
+ 
+-- [ Wave 8 ] --
+TDS:VoteSkip(8)
+TDS:Place("Crook Boss", 11.065515518188477, 0.9307880401611328, 12.161721229553223)
+ 
+-- [ Wave 9 ] --
+TDS:Upgrade(2)
+TDS:SetTarget(2, "Last")
+TDS:SetTarget(2, "Strongest")
+TDS:Place("Military Base", -1.5494461059570312, 0.9692919254302979, 47.18967819213867)
+TDS:Place("Military Base", -6.250616073608398, 0.9520657062530518, 47.241390228271484)
+TDS:Upgrade(4)
+ 
+-- [ Wave 10 ] --
+TDS:Upgrade(3)
+ 
+-- [ Wave 11 ] --
+TDS:VoteSkip(11)
+ 
+-- [ Wave 12 ] --
+TDS:VoteSkip(12)
+TDS:Upgrade(4)
+ 
+-- [ Wave 13 ] --
+TDS:Place("Mortar", 13.774327278137207, 4.371501445770264, 7.149172782897949)
+TDS:Upgrade(7)
+TDS:Place("Hunter", 13.100181579589844, 0.9756345748901367, 25.656728744506836)
+TDS:SetTarget(8, "Last")
+TDS:SetTarget(8, "Strongest")
+ 
+-- [ Wave 14 ] --
+TDS:Upgrade(8)
+TDS:Place("Crook Boss", 7.987354278564453, 0.917593240737915, 11.765317916870117)
+TDS:Upgrade(9)
+ 
+-- [ Wave 15 ] --
+TDS:Upgrade(6)
+TDS:Upgrade(6)
+TDS:Place("Military Base", -10.779293060302734, 0.9171948432922363, 47.45954895019531)
+TDS:Place("Military Base", -15.320085525512695, 0.8468680381774902, 47.51549530029297)
+TDS:VoteSkip(15)
+TDS:Upgrade(11)
+TDS:Upgrade(10)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+TDS:Upgrade(5)
+TDS:Upgrade(5)
+ 
+-- [ Wave 16 ] --
+TDS:Place("Rocketeer", 3.3145484924316406, 0.9573900699615479, 19.464618682861328)
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+ 
+-- [ Wave 17 ] --
+TDS:Place("Rocketeer", 6.373302459716797, 0.9613292217254639, 19.16786003112793)
+TDS:Place("Rocketeer", 9.403512954711914, 0.9654684066772461, 19.173343658447266)
+TDS:Upgrade(14)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:Upgrade(14)
+ 
+-- [ Wave 18 ] --
+TDS:Place("Rocketeer", 3.1267261505126953, 0.9596552848815918, 22.656585693359375)
+TDS:Upgrade(15)
+TDS:Upgrade(15)
+ 
+-- [ Wave 19 ] --
+TDS:Place("Crook Boss", 4.948427200317383, 0.9201422333717346, 11.552055358886719)
+TDS:Place("Crook Boss", 1.823026180267334, 0.9305358529090881, 11.225982666015625)
+TDS:Place("Crook Boss", 4.728324890136719, 0.9134256839752197, 8.462430000305176)
+TDS:Upgrade(16)
+TDS:Upgrade(17)
+TDS:Upgrade(18)
+ 
+-- [ Wave 20 ] --
+TDS:Upgrade(9)
+TDS:Upgrade(16)
+TDS:Upgrade(18)
+ 
+-- [ Wave 21 ] --
+TDS:Upgrade(17)
+TDS:Place("Mortar", 7.0515923500061035, 4.3855791091918945, 7.167340278625488)
+TDS:Upgrade(19)
+TDS:Place("Hunter", 10.964317321777344, 0.9744443893432617, 27.839290618896484)
+TDS:Upgrade(20)
+TDS:SetTarget(20, "Last")
+TDS:SetTarget(20, "Strongest")
+TDS:Upgrade(2)
+ 
+-- [ Wave 22 ] --
+TDS:Upgrade(7)
+TDS:Upgrade(3)
+TDS:Upgrade(19)
+TDS:Place("Rocketeer", 6.165651321411133, 0.9635071754455566, 22.283283233642578)
+TDS:Upgrade(21)
+TDS:Upgrade(21)
+TDS:VoteSkip(22)
+ 
+-- [ Wave 23 ] --
+TDS:Upgrade(4)
+ 
+-- [ Wave 24 ] --
+TDS:Upgrade(12)
+TDS:Upgrade(13)
+ 
+-- [ Wave 25 ] --
+TDS:Upgrade(9)
+TDS:Upgrade(14)
+ 
+-- [ Wave 26 ] --
+TDS:Upgrade(1)
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+TDS:Place("Hunter", 7.933433532714844, 0.9695963859558105, 26.937744140625)
+TDS:Place("Hunter", 8.477699279785156, 0.972900390625, 30.17974853515625)
+TDS:SetTarget(23, "Last")
+TDS:SetTarget(23, "Strongest")
+TDS:SetTarget(22, "Last")
+TDS:SetTarget(22, "Strongest")
+TDS:Upgrade(22)
+TDS:Upgrade(23)
+TDS:Upgrade(16)
+TDS:Upgrade(17)
+ 
+-- [ Wave 27 ] --
+TDS:Upgrade(18)
+ 
+-- [ Wave 28 ] --
+TDS:Upgrade(21)
+TDS:Upgrade(15)
+TDS:Upgrade(8)
+TDS:Upgrade(22)
+TDS:Upgrade(20)
+TDS:Upgrade(23)
+ 
+-- [ Wave 29 ] --
+TDS:Upgrade(7)
+TDS:Upgrade(3)
+TDS:Upgrade(19)
+TDS:VoteSkip(29)
+ 
+-- [ Wave 30 ] --
+TDS:Upgrade(4)
+TDS:Upgrade(9)
+ 
+-- [ Wave 31 ] --
+TDS:Upgrade(1)
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+TDS:Ability(1, "Airstrike", {directionCFrame = CFrame.new(20.413345336914062, 1.1263532638549805, 33.15199279785156, 0.18714572489261627, 0, 0.982332170009613, 0, 1, -0, -0.982332170009613, 0, 0.18714572489261627), pathName = 1, pointToEnd = 273.25212985277176})
+TDS:Ability(5, "Airstrike", {directionCFrame = CFrame.new(20.438365936279297, 1.1263513565063477, 33.469242095947266, 0.19737695157527924, 0, 0.9803276658058167, 0, 1, -0, -0.9803276658058167, 0, 0.19737695157527924), pathName = 1, pointToEnd = 272.0037986636162})
+TDS:Ability(6, "Airstrike", {directionCFrame = CFrame.new(15.997457504272461, 1.125, 36.53174591064453, 0.4747033417224884, 0, 0.8801458477973938, 0, 1, -0, -0.8801459670066833, 0, 0.47470328211784363), pathName = 1, pointToEnd = 264.6328537762165})
+TDS:Upgrade(16)
+ 
+-- [ Wave 32 ] --
+TDS:Upgrade(17)
+TDS:Ability(1, "Airstrike", {directionCFrame = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1), pointToEnd = 0})
+TDS:Ability(5, "Airstrike", {directionCFrame = CFrame.new(9.46337604522705, 1.125, 16.45880889892578, 0.5441710352897644, 0, 0.8389743566513062, 0, 1.0000001192092896, -0, -0.8389743566513062, 0, 0.5441710352897644), pathName = 1, pointToEnd = 222.19323143363})
+TDS:Ability(6, "Airstrike", {directionCFrame = CFrame.new(11.165852546691895, 1.125, 16.44107437133789, 0.49831053614616394, 0, 0.8669986128807068, 0, 1, -0, -0.8669987320899963, 0, 0.49831047654151917), pathName = 1, pointToEnd = 221.28569826483727})
+TDS:Upgrade(18)
+TDS:Upgrade(13)
+ 
+-- [ Wave 33 ] --
+TDS:Upgrade(14)
+TDS:Upgrade(21)
+TDS:Upgrade(15)
+TDS:Upgrade(7)
+TDS:Upgrade(19)
+TDS:Upgrade(3)
+ 
+-- [ Wave 34 ] --
+TDS:Upgrade(2)
+TDS:Upgrade(8)
+TDS:Upgrade(20)
+TDS:Upgrade(20)
+TDS:Upgrade(22)
+TDS:Upgrade(23)
+TDS:Upgrade(1)
+TDS:Upgrade(5)
+TDS:Place("Rocketeer", 4.7912139892578125, 0.9640524387359619, 25.347396850585938)
+TDS:Upgrade(24)
+TDS:Upgrade(24)
+TDS:Upgrade(24)
+TDS:Upgrade(2)
+TDS:Upgrade(6)
+TDS:Ability(6, "Airstrike", {directionCFrame = CFrame.new(25.418073654174805, 1.125, -4.7282233238220215, -0.628126323223114, 0, 0.7781113982200623, 0, 1, -0, -0.7781113982200623, 0, -0.628126323223114), pathName = 1, pointToEnd = 176.33000832796097})
+TDS:Ability(5, "Airstrike", {directionCFrame = CFrame.new(25.00401496887207, 1.125, -5.707087516784668, -0.6468921899795532, 0, 0.7625815272331238, 0, 1.0000001192092896, -0, -0.7625815272331238, 0, -0.6468921899795532), pathName = 1, pointToEnd = 175.48003888130188})
+TDS:Ability(1, "Airstrike", {directionCFrame = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1), pathName = 1, pointToEnd = 174.68242156505585})
+ 
+-- [ Wave 35 ] --
+TDS:Upgrade(24)
+TDS:Upgrade(12)
+TDS:Upgrade(19)
+TDS:Upgrade(3)
+TDS:Upgrade(7)
+TDS:Upgrade(8)
+TDS:Upgrade(23)
+TDS:Upgrade(22)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+TDS:Upgrade(11)
+TDS:Upgrade(10)
+TDS:Place("Hunter", 17.48459243774414, 0.9616968631744385, 11.990333557128906)
+TDS:Upgrade(25)
+TDS:Upgrade(25)
+TDS:Upgrade(25)
+TDS:Upgrade(25)
+TDS:Place("Hunter", 20.216217041015625, 0.968968391418457, 13.602629661560059)
+TDS:Upgrade(26)
+TDS:Upgrade(26)
+TDS:Upgrade(26)
+TDS:Place("Rocketeer", 17.821918487548828, 0.9490742683410645, 16.171728134155273)
+TDS:Upgrade(27)
+TDS:Ability(1, "Airstrike", {directionCFrame = CFrame.new(13.5, 1.125, 16.5, 0.1601390391588211, 0, -0.9870944619178772, -0, 1.0000001192092896, -0, 0.9870945811271667, 0, 0.1601390242576599), pathName = 1, pointToEnd = 218.2588263452053})
+TDS:Ability(5, "Airstrike", {directionCFrame = CFrame.new(18.091440200805664, 1.125, 21.588409423828125, 0.420339971780777, 0, -0.9073666334152222, -0, 1, -0, 0.9073667526245117, 0, 0.4203399121761322), pathName = 1, pointToEnd = 208.5030648112297})
+TDS:Ability(6, "Airstrike", {directionCFrame = CFrame.new(25.500001907348633, 1.125, 4.208242416381836, -0.17423167824745178, 0, -0.9847046732902527, 0, 1.0000001192092896, -0, 0.9847047924995422, -0, -0.1742316633462906), pathName = 1, pointToEnd = 184.84503573179245})
+TDS:Ability(10, "Airstrike", {directionCFrame = CFrame.new(25.5, 1.125, 3.532139301300049, -0.20540989935398102, 0, -0.9786760210990906, 0, 1, -0, 0.9786760210990906, -0, -0.20540989935398102), pathName = 1, pointToEnd = 184.84503573179245})
+TDS:Ability(11, "Airstrike", {directionCFrame = CFrame.new(25.504928588867188, 1.125, 2.835319995880127, -0.25789588689804077, 0, -0.9661726951599121, 0, 1.0000001192092896, -0, 0.9661728143692017, -0, -0.2578958570957184), pathName = 1, pointToEnd = 183.24031776189804})
+TDS:Upgrade(27)
+TDS:Upgrade(27)
+TDS:Upgrade(27)
+TDS:Upgrade(26)
+TDS:Place("Rocketeer", 14.368850708007812, 0.9424011707305908, 13.33615493774414)
+TDS:Upgrade(28)
+TDS:Upgrade(28)
+TDS:Upgrade(28)
+TDS:Upgrade(28)
