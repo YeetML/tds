@@ -1,82 +1,96 @@
 local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
- 
-TDS:Loadout("Assassin", "Commander", "DJ Booth", "None", "None")
+
+TDS:Loadout("Militant", "None", "None", "None", "None")
 TDS:Mode("Easy")
-TDS:GameInfo("Simplicity", {})
- 
+TDS:GameInfo("Dead Ahead", {})
+
 TDS:Ready()
-TDS:VoteSkip(1, 19) 
-TDS:Place("Assassin", -20.517, 1.000, -12.092, true)
-TDS:Place("Assassin", -20.535, 1.000, -14.161, true)
-TDS:Place("Assassin", -18.505, 1.000, -11.887, true)
-TDS:Place("Assassin", -18.499, 1.000, -14.066, true)
+-- [ Wave 1 ] --
+TDS:Place("Militant", -5.196896553039551, 1.000004529953003, -27.884521484375)
+
+-- [ Wave 2 ] --
+TDS:Place("Militant", -0.15355290472507477, 1.0200034379959106, -27.79210662841797)
+
+-- [ Wave 3 ] --
+TDS:Place("Militant", 2.9448766708374023, 1.000004529953003, -28.171045303344727)
+
+-- [ Wave 4 ] --
+TDS:Place("Militant", -5.355027198791504, 1.0000050067901611, -30.932861328125)
 TDS:Upgrade(4)
-TDS:Upgrade(3)
+
+-- [ Wave 6 ] --
+TDS:Place("Militant", 0.9997701644897461, 1.0000050067901611, -30.99273109436035)
+TDS:Upgrade(5)
+TDS:Place("Militant", 3.980696678161621, 1.0000051259994507, -31.38999366760254)
+
+-- [ Wave 7 ] --
 TDS:Upgrade(1)
 TDS:Upgrade(2)
-TDS:Upgrade(2)
-TDS:Upgrade(1)
 TDS:Upgrade(3)
-TDS:Upgrade(4)
-TDS:Place("Assassin", -18.575, 1.000, -9.806, true)
-TDS:Upgrade(5)
-TDS:Upgrade(5)
-TDS:Place("Assassin", -16.533, 1.000, -9.726, true)
 TDS:Upgrade(6)
-TDS:Upgrade(6)
-TDS:Place("Assassin", -16.430, 1.000, -11.766, true)
+TDS:Place("Militant", 1.1601972579956055, 0.9999992847442627, -34.20176696777344)
+
+-- [ Wave 8 ] --
+TDS:Place("Militant", -6.331752300262451, 1, -33.81801986694336)
+TDS:Place("Militant", 4.457477569580078, 0.9999963641166687, -34.662960052490234)
+TDS:Upgrade(1)
 TDS:Upgrade(7)
-TDS:Upgrade(7)
-TDS:Place("Assassin", -18.192, 1.000, -7.802, true)
-TDS:Upgrade(8)
-TDS:Upgrade(8)
-TDS:Place("DJ Booth", -12.477, 1.000, -9.025, true)
 TDS:Upgrade(9)
-TDS:Upgrade(9)
-TDS:SetOption(9, "Track", "Red")
-TDS:Place("Commander", -14.091, 1.000, -12.783, true)
-TDS:Upgrade(10)
-TDS:Upgrade(10)
-TDS:Place("Commander", -16.150, 1.000, -15.035, true)
-TDS:Upgrade(11)
-TDS:Upgrade(11)
-TDS:Place("Commander", -13.101, 1.000, -15.655, true)
-TDS:Upgrade(12)
-TDS:Upgrade(12)
-TDS:Place("Assassin", -18.147, 1.000, -5.702, true)
-TDS:Upgrade(13)
-TDS:Upgrade(13)
-TDS:Place("Assassin", -18.073, 1.000, -3.551, true)
-TDS:Upgrade(14)
-TDS:Upgrade(14)
-TDS:Place("Assassin", -23.853, 1.000, -6.510, true)
-TDS:Upgrade(15)
-TDS:Upgrade(15)
-TDS:Place("Assassin", -23.785, 1.000, -4.447, true)
-TDS:Upgrade(16)
-TDS:Upgrade(16)
-TDS:Place("Assassin", -25.937, 1.000, -6.993, true)
-TDS:Upgrade(17)
-TDS:Upgrade(17)
-TDS:Place("Assassin", -23.868, 1.000, -2.320, true)
-TDS:Upgrade(18)
-TDS:Upgrade(18)
+
+-- [ Wave 9 ] --
+TDS:Upgrade(8)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+
+-- [ Wave 11 ] --
 TDS:Upgrade(1)
 TDS:Upgrade(2)
+
+-- [ Wave 12 ] --
+TDS:VoteSkip(12)
+
+-- [ Wave 13 ] --
+TDS:Upgrade(3)
 TDS:Upgrade(4)
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+
+-- [ Wave 14 ] --
+TDS:Upgrade(7)
+TDS:Upgrade(8)
+TDS:VoteSkip(14)
+TDS:Upgrade(4)
+
+-- [ Wave 15 ] --
+TDS:Upgrade(9)
+TDS:VoteSkip(15)
+
+-- [ Wave 18 ] --
+TDS:Upgrade(1)
+TDS:Upgrade(2)
+
+-- [ Wave 19 ] --
 TDS:Upgrade(3)
 TDS:Upgrade(5)
+TDS:VoteSkip(19)
+TDS:Upgrade(6)
 TDS:Upgrade(7)
-TDS:Upgrade(6)
+
+-- [ Wave 20 ] --
+TDS:Place("Militant", -8.279631614685059, 1.000004529953003, -27.648073196411133)
+TDS:Place("Militant", -9.316068649291992, 0.9499779343605042, -32.86772155761719)
+TDS:Place("Militant", 1.131124496459961, 1.0000040531158447, -24.94552993774414)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+TDS:Upgrade(12)
 TDS:Upgrade(8)
-TDS:Upgrade(13)
-TDS:Upgrade(14)
-TDS:Upgrade(15)
-TDS:Upgrade(17)
-TDS:Upgrade(16)
-TDS:Upgrade(14)
-TDS:Upgrade(13)
-TDS:Upgrade(8)
-TDS:Upgrade(6)
-TDS:Upgrade(5)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+TDS:Upgrade(9)
+TDS:Upgrade(12)
+TDS:Upgrade(10)
 TDS:Upgrade(4)
+TDS:Upgrade(12)
+TDS:Upgrade(11)
+TDS:Upgrade(9)
+TDS:Upgrade(6)
