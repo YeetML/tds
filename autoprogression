@@ -789,12 +789,6 @@ task.spawn(function()
     end
 end)
 
--- // ===== INITIALIZATION =====
-print("[AutoProgression] Loading Auto Progression Companion Script...")
-print("[AutoProgression] This script adds BuyTower, 5 strategies, and auto-progression to Aether Hub")
-print("[AutoProgression] Level thresholds: < 25 = Easy (multi-map), 25-49 = Pizza, 50-99 = Hardcore, 100+ = Stop")
-print("[AutoProgression] Easy strategies: easy1 (Crossroads), easy2 (Gilded Path), easy3 (Simplicity)")
-
 -- Create the UI
 local ui = CreateUI()
 
