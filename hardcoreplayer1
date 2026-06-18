@@ -1,7 +1,6 @@
 local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Library.lua"))()
 
 TDS:Loadout("Minigunner", "Engineer", "DJ Booth", "Farm", "Gatling Gun")
-TDS:Mode("Easy")
 
 TDS:Place("Farm", -21.026893615722656, -0.5299627780914307, 5.896492958068848)
 TDS:Place("Farm", -22.759910583496094, -0.5048575401306152, 2.7221765518188477)
