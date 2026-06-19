@@ -7,6 +7,19 @@
 Library = {}
 SaveTheme = {}
 
+local function copyFunction(template)
+	local function deepCopy(t)
+		if type(t) ~= "table" then return t end
+		local copy = {}
+		for k, v in pairs(t) do
+			copy[k] = deepCopy(v)
+		end
+		return copy
+	end
+	return deepCopy(template.Function)
+end
+
+
 -----------------------------------------------------------
 -- 1. THEME DEFINITIONS (colors + particle configs)
 -----------------------------------------------------------
@@ -338,19 +351,6 @@ local themes = {
 		particle = { type = "ghosts", id = 899714698, count = 15, speed = 0.5, drift = true }
 	},
 }
-
--- Helper to copy Function table from Dark (so we don't have to redefine for each theme)
-local function copyFunction(template)
-	local function deepCopy(t)
-		if type(t) ~= "table" then return t end
-		local copy = {}
-		for k, v in pairs(t) do
-			copy[k] = deepCopy(v)
-		end
-		return copy
-	end
-	return deepCopy(template.Function)
-end
 
 -- Fill function for all non-default themes
 for name, theme in pairs(themes) do
