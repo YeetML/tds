@@ -356,13 +356,6 @@ local themes = {
 	},
 }
 
--- Fill function for all non-default themes
-for name, theme in pairs(themes) do
-	if name ~= "index" and name ~= "Default" and name ~= "Dark" then
-		theme.Function = copyFunction(themes.Dark)
-	end
-end
-
 -----------------------------------------------------------
 -- 2. PARTICLE ENGINE (handles all 30 animations)
 -----------------------------------------------------------
@@ -5391,8 +5384,18 @@ function Library:Window(p)
 		end
 
 		local CallTheme = function(v)
-			IsTheme = v
 			local t = themes[v]
+    if not t then
+        t = themes.Default
+        v = "Default"
+        Tabs:Notify({
+            Title = "Theme Error",
+            Desc = "Theme not found, using Default.",
+            Time = 3,
+            Type = "error"
+        })
+    end
+    IsTheme = v
 			Library:setTheme({
 				['Shadow'] = t.Shadow,
 				['Background'] = t.Background,
