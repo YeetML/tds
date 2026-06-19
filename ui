@@ -8,15 +8,19 @@ Library = {}
 SaveTheme = {}
 
 local function copyFunction(template)
-	local function deepCopy(t)
-		if type(t) ~= "table" then return t end
-		local copy = {}
-		for k, v in pairs(t) do
-			copy[k] = deepCopy(v)
-		end
-		return copy
-	end
-	return deepCopy(template.Function)
+    if not template or not template.Function then
+        -- fallback to Default's Function structure
+        return deepCopy(themes.Default.Function)
+    end
+    local function deepCopy(t)
+        if type(t) ~= "table" then return t end
+        local copy = {}
+        for k, v in pairs(t) do
+            copy[k] = deepCopy(v)
+        end
+        return copy
+    end
+    return deepCopy(template.Function)
 end
 
 
