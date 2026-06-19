@@ -466,7 +466,7 @@ local function RunYeetHardcore()
     
     getgenv().AutoPremium = false
     getgenv().AutoSkip = true
-    getgenv().AutoRejoin = true
+    getgenv().AutoRejoin = false
     getgenv().TimeScaleEnabled = true
     getgenv().TimeScaleValue = 2
     
