@@ -177,6 +177,7 @@ local AllModifiers = {
 }
 
 local DefaultSettings = {
+    HardcoreMinigunner = false,
     PathVisuals = false,
     MilitaryPath = false,
     MercenaryPath = false,
@@ -1113,6 +1114,44 @@ local function StartEasyMode()
         repeat task.wait(2) until not Globals.Easy or (GameState == "GAME" and not game:IsLoaded())
 
         EasyModeRunning = false
+    end)
+end
+
+local HardcoreMinigunnerRunning = false
+
+local function StartHardcoreMinigunner()
+    if HardcoreMinigunnerRunning then return end
+    HardcoreMinigunnerRunning = true
+
+    task.spawn(function()
+        local content = nil
+
+        while Globals.HardcoreMinigunner and content == nil do
+            local success, res = pcall(function()
+                return game:HttpGet("https://pastebin.com/kicscFFu")
+            end)
+
+            if success and type(res) == "string" then
+                content = res
+            else
+                task.wait(1)
+            end
+        end
+
+        if content then
+            while not (TDS and TDS.Loadout) do 
+                task.wait(0.5) 
+            end
+
+            local func = loadstring(content)
+            if func then
+                pcall(func)
+                Window:Notify({Title = "ADS", Desc = "Hardcore Minigunner Strategy Loaded!", Time = 5})
+            end
+        end
+
+        repeat task.wait(2) until not Globals.HardcoreMinigunner
+        HardcoreMinigunnerRunning = false
     end)
 end
 
@@ -2158,6 +2197,19 @@ local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) d
             end
         end
     })
+
+    Strategies:Toggle({
+    Title = "Hardcore Minigunner (Wretched Front)",
+    Desc = "Requires: Minigunner\nMap: Wretched Front",
+    Value = Globals.HardcoreMinigunner or false,
+    Callback = function(v)
+        Globals.HardcoreMinigunner = v
+        SetSetting("HardcoreMinigunner", v)  -- Add this to DefaultSettings too!
+        if v then
+            StartHardcoreMinigunner()
+        end
+    end
+})
 
 --[[
     Strategies:Toggle({
