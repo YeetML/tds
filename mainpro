@@ -1189,7 +1189,7 @@ task.spawn(function()
 end)
 
 -- // ui
-local Library = loadstring(game:HttpGet("loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/ui"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/ui"))()
 
 local Window = Library:Window({
     Title = "Aether Hub",
