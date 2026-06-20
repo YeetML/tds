@@ -375,9 +375,6 @@ local function RunYeetEasy()
     getgenv().AutoRejoin = true
     getgenv().TimeScaleEnabled = false
     
-    local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
-    RemoveAether()
-    
     if not IsInLobby() then
         local vetoAttempts = 0
         local maxVetos = GetRemainingVetos() or 3
@@ -439,9 +436,6 @@ local function RunFrostStrategy()
     getgenv().AutoRejoin = true
     getgenv().TimeScaleEnabled = true
     getgenv().TimeScaleValue = 2
-    
-    local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
-    RemoveAether() -- remove any duplicate UI
     
     if not IsInLobby() then
         local vetoAttempts = 0
