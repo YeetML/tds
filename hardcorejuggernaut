@@ -1,0 +1,160 @@
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")  -- NEW
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local activeStratThread = nil
+
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+getgenv().AutoSkip = true
+getgenv().AutoGatling = false
+getgenv().AutoRejoin = false
+
+TDS:Loadout("Shotgunner", "Pyromancer", "EvolvedJuggernaut", "None", "None")
+TDS:Mode("Hardcore")
+TDS:GameInfo("Wretched Front", {})
+
+-- ===== NEW: Consecutive loss counter & threshold =====
+local LOSS_THRESHOLD = 30
+local lossCount = 0
+local LOBBY_ID = 3260590327
+
+-- ===== NEW: Smart teleport to lobby =====
+local function SmartTeleportToLobby()
+    local IsMobile = (game:GetService("UserInputService"):GetPlatform() == Enum.Platform.IOS or 
+                      game:GetService("UserInputService"):GetPlatform() == Enum.Platform.Android)
+    pcall(function()
+        if not IsMobile and getgenv().PrivateCode and getgenv().PrivateCode ~= "" then
+            game:GetService("ExperienceService"):LaunchExperience({
+                placeId = LOBBY_ID,
+                linkCode = getgenv().PrivateCode
+            })
+        else
+            TeleportService:Teleport(LOBBY_ID)
+        end
+    end)
+end
+
+local function StartStrategy()
+    wait(1)
+    TDS:RemoveIndex()
+    TDS:Ready()
+
+    -- [ Wave 1 ] --
+    TDS:VoteSkip(1)
+    TDS:Place("Shotgunner", -7.348933219909668, 0.9631980657577515, -31.4650821685791)
+
+    -- [ Wave 2 ] --
+    TDS:VoteSkip(2)
+    TDS:Upgrade(1)
+    TDS:Place("Pyromancer", -2.962110996246338, 1.011309266090393, -35.372745513916016)
+
+    -- [ Wave 3 ] --
+    TDS:VoteSkip(3)
+
+    -- [ Wave 4 ] --
+    TDS:VoteSkip(4)
+    TDS:Place("EvolvedJuggernaut", 0.03527641296386719, 1.455162525177002, 30.37386131286621)
+end
+
+local function GetMatchStatus()
+    local success, status = pcall(function()
+        local uiRoot = PlayerGui:FindFirstChild("ReactGameNewRewards")
+        if not uiRoot then return nil end
+
+        local mainFrame = uiRoot:FindFirstChild("Frame")
+        if not mainFrame or not mainFrame.Visible then return nil end
+
+        local gameOver = mainFrame:FindFirstChild("gameOver")
+        if not gameOver or not gameOver.Visible then return nil end
+
+        local rewardsScreen = gameOver:FindFirstChild("RewardsScreen")
+        if not rewardsScreen or not rewardsScreen.Visible then return nil end
+
+        local topBanner = rewardsScreen:FindFirstChild("RewardBanner")
+        if not topBanner then return nil end
+
+        local label = topBanner:FindFirstChild("textLabel") or topBanner:FindFirstChildOfClass("TextLabel")
+        if not label then return nil end
+
+        local txt = label.Text:upper()
+        if txt == "" then return nil end
+
+        if txt:find("TRIUMPH") or txt:find("VICTORY") or txt:find("WIN") then
+            return "WIN"
+        elseif txt:find("LOST") or txt:find("DEFEAT") or txt:find("FAIL") then
+            return "LOSS"
+        end
+        return nil
+    end)
+    
+    if success then return status end
+    return nil
+end
+
+local function fireSkipVote()
+    local Event = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
+    
+    while true do
+        local success, result = pcall(function()
+            return Event:InvokeServer("Voting", "Skip")
+        end)
+
+        if success and result == true then
+            print("Skip vote successful!")
+            break
+        else
+            print("Skip vote failed or rejected. Retrying in 1 second...")
+            task.wait(1)
+        end
+    end
+end
+
+task.spawn(function()
+    activeStratThread = task.spawn(StartStrategy)
+
+    while true do
+        task.wait(0.5)
+
+        local currentStatus = GetMatchStatus()
+        
+        if currentStatus == "LOSS" then
+            lossCount = lossCount + 1
+            print(string.format("Loss #%d / %d detected.", lossCount, LOSS_THRESHOLD))
+
+            if lossCount >= LOSS_THRESHOLD then
+                print("Reached loss threshold! Teleporting to lobby to reset matchmaking.")
+                SmartTeleportToLobby()
+                break  -- exit the while loop; script will reload on rejoin
+            end
+
+            if activeStratThread and coroutine.status(activeStratThread) ~= "dead" then
+                task.cancel(activeStratThread)
+                activeStratThread = nil
+            end
+
+            print("Firing restart remote until completed...")
+            fireSkipVote()
+
+            print("Waiting for match screen to clear...")
+            repeat 
+                task.wait(1) 
+            until GetMatchStatus() == nil
+
+            task.wait(1)
+
+            print("Starting new strategy match!")
+            activeStratThread = task.spawn(StartStrategy)
+
+        elseif currentStatus == "WIN" then
+            if lossCount > 0 then
+                print("Win detected! Resetting loss counter.")
+                lossCount = 0
+            end
+        end
+    end
+end)
