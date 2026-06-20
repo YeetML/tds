@@ -246,11 +246,28 @@ local EasyStrategies = {
     },
 }
 
+local FrostStrategies = {
+    {
+        name = "frost1",
+        mapName = "Abyssal Trench",
+        url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost1",
+        loadout = {"Gatling Gun", "Trapper", "Hacker", "DJ Booth", "Mercenary Base"},
+        mode = "Frost"
+    },
+
+    {
+        name = "frost2",
+        mapName = "Lay By",
+        url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost2",
+        loadout = {"Gatling Gun", "Trapper", "Hacker", "DJ Booth", "Mercenary Base"},
+        mode = "Frost"
+    },
+}
+
 -- // ===== STRATEGY RUNNERS =====
 local runningEasy = false
-local runningMolten = false
-local runningPizza = false
 local runningHardcore = false
+local runningFrost = false
 local AutoProgressionRunning = false
 local AutoProgressionEnabled = false
 
@@ -376,6 +393,71 @@ local function RunYeetEasy()
     runningEasy = false
 end
 
+local function RunFrostStrategy()
+    if runningFrost then return end
+    runningFrost = true
+    
+    print("[AutoProgression] Starting Frost strategy...")
+    
+    -- Optional: disable premium/skip/rejoin (adjust as needed)
+    getgenv().AutoPremium = false
+    getgenv().AutoSkip = false
+    getgenv().AutoRejoin = true
+    getgenv().TimeScaleEnabled = true
+    getgenv().TimeScaleValue = 2
+    
+    local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+    RemoveAether() -- remove any duplicate UI
+    
+    if not IsInLobby() then
+        local vetoAttempts = 0
+        local maxVetos = GetRemainingVetos() or 3
+        
+        while vetoAttempts < maxVetos do
+            local availableMaps = GetAvailableMaps()
+            local mapKeys = GetKeys(availableMaps)
+            print("[AutoProgression] Available maps: " .. (#mapKeys > 0 and table.concat(mapKeys, ", ") or "none"))
+            
+            local availableStrategies = {}
+            for _, strategy in ipairs(FrostStrategies) do
+                if availableMaps[strategy.mapName] then
+                    table.insert(availableStrategies, strategy)
+                    print("[AutoProgression] Found available Frost map: " .. strategy.mapName)
+                end
+            end
+            
+            if #availableStrategies > 0 then
+                local chosenStrategy = availableStrategies[math.random(1, #availableStrategies)]
+                print("[AutoProgression] Selected Frost: " .. chosenStrategy.name .. " on " .. chosenStrategy.mapName)
+                print("[AutoProgression] Loading Frost strategy from: " .. chosenStrategy.url)
+                loadstring(game:HttpGet(chosenStrategy.url))()
+                runningFrost = false
+                return
+            else
+                print("[AutoProgression] No suitable Frost map. Veto attempt " .. (vetoAttempts+1) .. "/" .. maxVetos)
+                local vetoSuccess = VetoMap()
+                if not vetoSuccess then
+                    print("[AutoProgression] Veto failed (no vetoes left?). Breaking.")
+                    break
+                end
+                vetoAttempts = vetoAttempts + 1
+            end
+        end
+        
+        print("[AutoProgression] No Frost maps available after using all vetoes. Teleporting to lobby...")
+        runningFrost = false
+        SmartTeleportToLobby()
+        return
+    else
+        -- In lobby, randomly pick a Frost strategy (no map check, but we still pick one)
+        local chosenStrategy = FrostStrategies[math.random(1, #FrostStrategies)]
+        print("[AutoProgression] In lobby, randomly selected Frost: " .. chosenStrategy.name .. " strategy")
+        print("[AutoProgression] Loading Frost strategy from: " .. chosenStrategy.url)
+        loadstring(game:HttpGet(chosenStrategy.url))()
+    end
+    
+    runningFrost = false
+end
 -- // ==========================================================
 -- // MODIFIED AUTO PROGRESSION LOGIC (with level 100+ branch)
 -- // ==========================================================
@@ -411,7 +493,7 @@ elseif result == "Gems" then
     return
 end
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost1"))()
+RunFrostStrategy()
         
         AutoProgressionRunning = false
         return
