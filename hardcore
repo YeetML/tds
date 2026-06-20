@@ -1,194 +1,173 @@
--- ===================================================================
--- Hardcore Auto-Restart Script + Embedded DuxiiT Strategy
--- ===================================================================
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
-local MAX_LOSSES = 30 -- Teleport after this many consecutive losses (set to 0 to disable)
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local activeStratThread = nil
 
 local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+getgenv().AutoSkip = true
+getgenv().AutoGatling = false
+getgenv().AutoRejoin = false
 
--- ---------- YOUR STRATEGY ----------
-local function runStrategy()
-    TDS:Loadout("Minigunner", "None", "None", "None", "None")
-    TDS:Mode("Hardcore")
-    TDS:GameInfo("Wretched Front", {})
-    TDS:Ready()
-    
-    -- [ Wave 1 ] --
-    TDS:VoteSkip(1)
-    
-    -- [ Wave 2 ] --
-    TDS:VoteSkip(2)
-    TDS:Place("Minigunner", 1.432370662689209, 1.436934232711792, 27.87601661682129)
-    
-    -- [ Wave 3 ] --
-    TDS:VoteSkip(3)
-    TDS:Upgrade(1)
-    
-    -- [ Wave 4 ] --
-    TDS:VoteSkip(4)
-    
-    -- [ Wave 5 ] --
-    TDS:VoteSkip(5)
-    TDS:Place("Minigunner", 4.546943187713623, 1.407247543334961, 27.872900009155273)
-    
-    -- [ Wave 6 ] --
-    TDS:VoteSkip(6)
-    TDS:Upgrade(2)
-    
-    -- [ Wave 7 ] --
-    TDS:VoteSkip(7)
-    
-    -- [ Wave 8 ] --
-    TDS:VoteSkip(8)
-    TDS:Place("Minigunner", 5.792983055114746, 1.337424397468567, 22.332794189453125)
-    
-    -- [ Wave 9 ] --
-    TDS:Upgrade(3)
-    TDS:VoteSkip(9)
-    
-    -- [ Wave 10 ] --
-    TDS:VoteSkip(10)
-    
-    -- [ Wave 11 ] --
-    TDS:Place("Minigunner", 2.372230052947998, 1.3786046504974365, 22.456092834472656)
-    TDS:VoteSkip(11)
-    TDS:Upgrade(4)
-    
-    -- [ Wave 12 ] --
-    TDS:VoteSkip(12)
-    TDS:Upgrade(3)
-    
-    -- [ Wave 13 ] --
-    TDS:VoteSkip(13)
-    TDS:Upgrade(4)
-    
-    -- [ Wave 14 ] --
-    TDS:VoteSkip(14)
-    TDS:Upgrade(2)
-    
-    -- [ Wave 15 ] --
-    TDS:VoteSkip(15)
-    TDS:Upgrade(1)
-    
-    -- [ Wave 16 ] --
-    TDS:VoteSkip(16)
-    
-    -- [ Wave 17 ] --
-    TDS:VoteSkip(17)
+TDS:Loadout("Minigunner", "None", "None", "None", "None")
+TDS:Mode("Hardcore")
+TDS:GameInfo("Wretched Front", {})
+
+local function StartStrategy()
+wait(1)
+TDS:RemoveIndex()
+TDS:Ready()
+ 
+-- [ Wave 1 ] --
+TDS:VoteSkip(1)
+ 
+-- [ Wave 2 ] --
+TDS:VoteSkip(2)
+TDS:Place("Minigunner", 1.432370662689209, 1.436934232711792, 27.87601661682129)
+ 
+-- [ Wave 3 ] --
+TDS:VoteSkip(3)
+TDS:Upgrade(1)
+ 
+-- [ Wave 4 ] --
+TDS:VoteSkip(4)
+ 
+-- [ Wave 5 ] --
+TDS:VoteSkip(5)
+TDS:Place("Minigunner", 4.546943187713623, 1.407247543334961, 27.872900009155273)
+ 
+-- [ Wave 6 ] --
+TDS:VoteSkip(6)
+TDS:Upgrade(2)
+ 
+-- [ Wave 7 ] --
+TDS:VoteSkip(7)
+ 
+-- [ Wave 8 ] --
+TDS:VoteSkip(8)
+TDS:Place("Minigunner", 5.792983055114746, 1.337424397468567, 22.332794189453125)
+ 
+-- [ Wave 9 ] --
+TDS:Upgrade(3)
+TDS:VoteSkip(9)
+ 
+-- [ Wave 10 ] --
+TDS:VoteSkip(10)
+ 
+-- [ Wave 11 ] --
+TDS:Place("Minigunner", 2.372230052947998, 1.3786046504974365, 22.456092834472656)
+TDS:VoteSkip(11)
+TDS:Upgrade(4)
+ 
+-- [ Wave 12 ] --
+TDS:VoteSkip(12)
+TDS:Upgrade(3)
+ 
+-- [ Wave 13 ] --
+TDS:VoteSkip(13)
+TDS:Upgrade(4)
+ 
+-- [ Wave 14 ] --
+TDS:VoteSkip(14)
+TDS:Upgrade(2)
+ 
+-- [ Wave 15 ] --
+TDS:VoteSkip(15)
+TDS:Upgrade(1)
+ 
+-- [ Wave 16 ] --
+TDS:VoteSkip(16)
+ 
+-- [ Wave 17 ] --
+TDS:VoteSkip(17)
 end
 
--- ---------- MATCH END DETECTION & REWARD SKIP ----------
-local function waitForMatchEndAndSkip()
-    local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui", 5)
-    if not playerGui then return nil end
+local function GetMatchStatus()
+    local success, status = pcall(function()
+        local uiRoot = PlayerGui:FindFirstChild("ReactGameNewRewards")
+        if not uiRoot then return nil end
 
-    local timeout = 300  -- 5 minutes max wait for the reward screen
-    local startTime = tick()
-    local result = nil
+        local mainFrame = uiRoot:FindFirstChild("Frame")
+        if not mainFrame or not mainFrame.Visible then return nil end
 
-    while tick() - startTime < timeout do
-        local skipButton = nil
-        local resultLabel = nil
+        local gameOver = mainFrame:FindFirstChild("gameOver")
+        if not gameOver or not gameOver.Visible then return nil end
 
-        for _, gui in ipairs(playerGui:GetChildren()) do
-            if gui:IsA("ScreenGui") then
-                for _, obj in ipairs(gui:GetDescendants()) do
-                    if obj:IsA("TextButton") and obj.Text and obj.Text:find("Skip") then
-                        skipButton = obj
-                    end
-                    if obj:IsA("TextLabel") and obj.Text then
-                        if obj.Text:find("Victory") then
-                            resultLabel = "Victory"
-                        elseif obj.Text:find("Defeat") then
-                            resultLabel = "Defeat"
-                        end
-                    end
-                end
-            end
+        local rewardsScreen = gameOver:FindFirstChild("RewardsScreen")
+        if not rewardsScreen or not rewardsScreen.Visible then return nil end
+
+        local topBanner = rewardsScreen:FindFirstChild("RewardBanner")
+        if not topBanner then return nil end
+
+        local label = topBanner:FindFirstChild("textLabel") or topBanner:FindFirstChildOfClass("TextLabel")
+        if not label then return nil end
+
+        local txt = label.Text:upper()
+        if txt == "" then return nil end
+
+        if txt:find("TRIUMPH") or txt:find("VICTORY") or txt:find("WIN") then
+            return "WIN"
+        elseif txt:find("LOST") or txt:find("DEFEAT") or txt:find("FAIL") then
+            return "LOSS"
         end
+        return nil
+    end)
+    
+    if success then return status end
+    return nil
+end
 
-        if skipButton then
-            result = resultLabel or "Unknown"
-            for _ = 1, 5 do
-                skipButton:Click()
-                task.wait(0.3)
-            end
-            local waitStart = tick()
-            while tick() - waitStart < 10 do
-                local stillExists = false
-                for _, gui in ipairs(playerGui:GetChildren()) do
-                    if gui:IsA("ScreenGui") then
-                        for _, obj in ipairs(gui:GetDescendants()) do
-                            if obj:IsA("TextButton") and obj.Text and obj.Text:find("Skip") then
-                                stillExists = true
-                                break
-                            end
-                        end
-                        if stillExists then break end
-                    end
-                end
-                if not stillExists then break end
-                task.wait(0.5)
-            end
+local function fireSkipVote()
+    local Event = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
+    
+    while true do
+       
+        local success, result = pcall(function()
+            return Event:InvokeServer("Voting", "Skip")
+        end)
+
+        if success and result == true then
+            print("Skip vote successful!")
             break
+        else
+            print("Skip vote failed or rejected. Retrying in 1 second...")
+            task.wait(1)
         end
-        task.wait(1)
     end
-
-    task.wait(2)
-    return result
 end
 
--- ---------- LOADING PROTECTION ----------
-local function waitForLoadingToFinish()
-    local start = tick()
-    while tick() - start < 60 do
-        local playerGui = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
-        if playerGui then
-            local loading = false
-            for _, gui in ipairs(playerGui:GetChildren()) do
-                if gui:IsA("ScreenGui") and gui.Name:lower():find("loading") then
-                    loading = true
-                    break
-                end
+task.spawn(function()
+    activeStratThread = task.spawn(StartStrategy)
+
+    while true do
+        task.wait(0.5)
+
+        local currentStatus = GetMatchStatus()
+        
+        if currentStatus == "LOSS" then
+            print("Loss detected! Stopping old thread...")
+
+            if activeStratThread and coroutine.status(activeStratThread) ~= "dead" then
+                task.cancel(activeStratThread)
+                activeStratThread = nil
             end
-            if not loading then return true end
+
+            print("Firing restart remote until completed...")
+            fireSkipVote() -- Calls the independent function above
+
+            print("Waiting for match screen to clear...")
+            repeat 
+                task.wait(1) 
+            until GetMatchStatus() == nil
+
+            task.wait(1)
+
+            print("Starting new strategy match!")
+            activeStratThread = task.spawn(StartStrategy)
         end
-        task.wait(1)
     end
-    warn("Loading screen timeout – teleporting to lobby.")
-    game:GetService("TeleportService"):Teleport(game.PlaceId)
-    task.wait(5)
-    return false
-end
-
--- ---------- MAIN LOOP ----------
-local lossCount = 0
-
-while true do
-    if not waitForLoadingToFinish() then break end
-
-    -- Execute your strategy using task.spawn so the loop can still monitor the game
-    task.spawn(runStrategy)
-
-    local matchResult = waitForMatchEndAndSkip()
-
-    if matchResult == "Defeat" then
-        lossCount = lossCount + 1
-        print("Loss #" .. lossCount)
-    elseif matchResult == "Victory" then
-        lossCount = 0
-        print("Victory! Loss streak reset.")
-    else
-        print("Match result unknown – keeping loss count at " .. lossCount)
-    end
-
-    if MAX_LOSSES > 0 and lossCount >= MAX_LOSSES then
-        print("Reached " .. MAX_LOSSES .. " consecutive losses. Teleporting to lobby.")
-        game:GetService("TeleportService"):Teleport(game.PlaceId)
-        task.wait(5)
-        break 
-    end
-
-    task.wait(1)
-end
+end)
