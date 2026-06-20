@@ -1,0 +1,81 @@
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+
+TDS:Loadout("Militant", "Shotgunner", "None", "None", "None")
+TDS:Mode("Easy")
+TDS:GameInfo("Mason Arch", {})
+
+TDS:Ready()
+
+TDS:Place("Militant", -2.904860496520996, 1.3999929428100586, 43.462890625)
+
+-- [ Wave 5 ] --
+TDS:Place("Shotgunner", -4.630975723266602, 1.3999931812286377, 41.43323516845703)
+
+-- [ Wave 7 ] --
+TDS:Place("Shotgunner", 5.333619117736816, 1.3999929428100586, 42.89619445800781)
+
+-- [ Wave 8 ] --
+TDS:Place("Militant", 3.9753828048706055, 1.3999934196472168, 40.126914978027344)
+TDS:Upgrade(1)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+TDS:Upgrade(4)
+TDS:Place("Militant", -3.751622200012207, 1.399993658065796, 38.843017578125)
+TDS:Place("Militant", 3.91420578956604, 1.3999934196472168, 36.96519088745117)
+TDS:Upgrade(1)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+TDS:Upgrade(4)
+
+-- [ Wave 9 ] --
+TDS:Place("Militant", -4.087948799133301, 1.399994134902954, 35.589046478271484)
+
+
+-- [ Wave 11 ] --
+TDS:Place("Shotgunner", 5.143916130065918, 1.0806553363800049, 60.69318389892578)
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+TDS:Upgrade(7)
+TDS:Upgrade(8)
+TDS:Place("Shotgunner", -5.7329936027526855, 1.0806553363800049, 60.38489532470703)
+
+-- [ Wave 14 ] --
+TDS:Place("Militant", 2.6297998428344727, 1.0806553363800049, 59.98552322387695)
+TDS:Place("Militant", -0.6837396621704102, 1.0806553363800049, 60.3619270324707)
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+TDS:Upgrade(7)
+TDS:Upgrade(8)
+TDS:Upgrade(9)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+TDS:Upgrade(1)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+TDS:Upgrade(4)
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+TDS:Upgrade(7)
+TDS:Upgrade(8)
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+TDS:Upgrade(7)
+TDS:Upgrade(8)
+TDS:Upgrade(9)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+TDS:Upgrade(9)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+TDS:Upgrade(1)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+TDS:Upgrade(4)
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+TDS:Upgrade(7)
+TDS:Upgrade(8)
+TDS:Upgrade(9)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+
