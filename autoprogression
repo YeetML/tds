@@ -321,8 +321,7 @@ local function RunAutoProgression()
     
     print("[AutoProgression] Level: " .. tostring(level) .. ", Coins: " .. tostring(coins))
     
-    -- ===== LEVEL 100+ : DIRECT EXPERT/FALLEN STRATEGY =====
-    if level >= 100 then
+    if level >= 70 then
         
         -- 🔧 CUSTOMIZE: list of towers to buy for 100+ (name, cost)
         AutoBuyTowers({
