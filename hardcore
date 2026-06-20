@@ -1,9 +1,25 @@
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local activeStratThread = nil
+
 local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
- 
+getgenv().AutoSkip = true
+getgenv().AutoGatling = false
+getgenv().AutoRejoin = false
+
 TDS:Loadout("Minigunner", "None", "None", "None", "None")
 TDS:Mode("Hardcore")
 TDS:GameInfo("Wretched Front", {})
- 
+
+local function StartStrategy()
+wait(1)
+TDS:RemoveIndex()
 TDS:Ready()
  
 -- [ Wave 1 ] --
@@ -68,3 +84,91 @@ TDS:VoteSkip(16)
  
 -- [ Wave 17 ] --
 TDS:VoteSkip(17)
+
+end
+
+local function GetMatchStatus()
+    local success, status = pcall(function()
+        local uiRoot = PlayerGui:FindFirstChild("ReactGameNewRewards")
+        if not uiRoot then return nil end
+
+        local mainFrame = uiRoot:FindFirstChild("Frame")
+        if not mainFrame or not mainFrame.Visible then return nil end
+
+        local gameOver = mainFrame:FindFirstChild("gameOver")
+        if not gameOver or not gameOver.Visible then return nil end
+
+        local rewardsScreen = gameOver:FindFirstChild("RewardsScreen")
+        if not rewardsScreen or not rewardsScreen.Visible then return nil end
+
+        local topBanner = rewardsScreen:FindFirstChild("RewardBanner")
+        if not topBanner then return nil end
+
+        local label = topBanner:FindFirstChild("textLabel") or topBanner:FindFirstChildOfClass("TextLabel")
+        if not label then return nil end
+
+        local txt = label.Text:upper()
+        if txt == "" then return nil end
+
+        if txt:find("TRIUMPH") or txt:find("VICTORY") or txt:find("WIN") then
+            return "WIN"
+        elseif txt:find("LOST") or txt:find("DEFEAT") or txt:find("FAIL") then
+            return "LOSS"
+        end
+        return nil
+    end)
+    
+    if success then return status end
+    return nil
+end
+
+local function fireSkipVote()
+    local Event = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
+    
+    while true do
+       
+        local success, result = pcall(function()
+            return Event:InvokeServer("Voting", "Skip")
+        end)
+
+        if success and result == true then
+            print("Skip vote successful!")
+            break
+        else
+            print("Skip vote failed or rejected. Retrying in 1 second...")
+            task.wait(1)
+        end
+    end
+end
+
+task.spawn(function()
+    activeStratThread = task.spawn(StartStrategy)
+
+    while true do
+        task.wait(0.5)
+
+        local currentStatus = GetMatchStatus()
+        
+        if currentStatus == "LOSS" then
+            print("Loss detected! Stopping old thread...")
+
+            if activeStratThread and coroutine.status(activeStratThread) ~= "dead" then
+                task.cancel(activeStratThread)
+                activeStratThread = nil
+            end
+
+            print("Firing restart remote until completed...")
+            fireSkipVote() -- Calls the independent function above
+
+            print("Waiting for match screen to clear...")
+            repeat 
+                task.wait(1) 
+            until GetMatchStatus() == nil
+
+            task.wait(1)
+
+            print("Starting new strategy match!")
+            activeStratThread = task.spawn(StartStrategy)
+        end
+    end
+end)
