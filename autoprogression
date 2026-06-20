@@ -96,25 +96,87 @@ local function OwnsTower(towerName)
 end
 
 -- // ===== AUTO BUY TOWERS =====
+-- // ===== AUTO BUY TOWERS (supports multiple formats) =====
 local function AutoBuyTowers(towerList)
     print("[AutoProgression] Checking towers to buy...")
-    for _, towerData in ipairs(towerList) do
-        local towerName = towerData[1]
-        local towerCost = towerData[2]
-        local coins = GetStat("Coins")
-        
-        if not OwnsTower(towerName) then
-            if coins >= towerCost then
-                print("[AutoProgression] Buying " .. towerName .. " for " .. tostring(towerCost) .. " coins")
-                BuyTower(towerName)
-                task.wait(1)
+
+    -- Helper to parse a single tower entry
+    local function parseTowerData(data)
+        local name = data[1]
+        local requiredCoins = 0
+        local requiredGems = 0
+
+        if #data == 2 then
+            -- {"Tower", cost} -> Coins only
+            requiredCoins = data[2]
+        elseif #data == 3 then
+            -- {"Tower", cost, "Gems"} -> Gems only (or "Coins")
+            local cost = data[2]
+            local currency = data[3]
+            if currency == "Gems" then
+                requiredGems = cost
             else
-                print("[AutoProgression] Not enough coins for " .. towerName .. " (need " .. tostring(towerCost) .. ", have " .. tostring(coins) .. ")")
+                requiredCoins = cost
             end
+        elseif #data == 5 then
+            -- {"Tower", cost1, "Coins", cost2, "Gems"} -> both
+            local cost1 = data[2]
+            local cur1 = data[3]
+            local cost2 = data[4]
+            local cur2 = data[5]
+
+            if cur1 == "Coins" then requiredCoins = cost1
+            elseif cur1 == "Gems" then requiredGems = cost1 end
+
+            if cur2 == "Coins" then requiredCoins = cost2
+            elseif cur2 == "Gems" then requiredGems = cost2 end
+        elseif type(data[2]) == "table" then
+            -- {"Tower", {Coins = x, Gems = y}} -> both (table style)
+            local costTable = data[2]
+            requiredCoins = costTable.Coins or 0
+            requiredGems = costTable.Gems or 0
         else
-            print("[AutoProgression] Already own " .. towerName)
+            warn("[AutoProgression] Unknown format for tower: " .. name)
         end
+
+        return name, requiredCoins, requiredGems
     end
+
+    for _, towerData in ipairs(towerList) do
+        local towerName, needCoins, needGems = parseTowerData(towerData)
+
+        local hasCoins = GetStat("Coins") >= needCoins
+        local hasGems  = GetStat("Gems")  >= needGems
+
+        if not OwnsTower(towerName) then
+    if not hasCoins then
+        print("[AutoProgression] Not enough Coins for " .. towerName)
+        return "Coins"
+    end
+
+    if not hasGems then
+        print("[AutoProgression] Not enough Gems for " .. towerName)
+        return "Gems"
+    end
+
+    local msg = ("[AutoProgression] Buying %s"):format(towerName)
+
+    if needCoins > 0 and needGems > 0 then
+        msg = msg .. (" (need %d Coins + %d Gems)"):format(needCoins, needGems)
+    elseif needCoins > 0 then
+        msg = msg .. (" (need %d Coins)"):format(needCoins)
+    elseif needGems > 0 then
+        msg = msg .. (" (need %d Gems)"):format(needGems)
+    end
+
+    print(msg)
+    BuyTower(towerName)
+    task.wait(1)
+else
+    print("[AutoProgression] Already own " .. towerName)
+end
+    end
+    return "OK"
 end
 
 -- // ===== CHECK IF IN LOBBY =====
@@ -320,6 +382,34 @@ local function RunAutoProgression()
     local coins = GetStat("Coins")
     
     print("[AutoProgression] Level: " .. tostring(level) .. ", Coins: " .. tostring(coins))
+
+    if level >= 176 then
+        
+        -- 🔧 CUSTOMIZE: list of towers to buy for 100+ (name, cost)
+        local result = AutoBuyTowers({
+    {"Gatling Gun", 35000, "Coins"},
+    {"Trapper", 3000, "Coins"},
+    {"Hacker", 5500, "Gems"},
+})
+
+if result == "Coins" then
+    print("[AutoProgression] Farming Coins...")
+    RunYeetEasy()
+    AutoProgressionRunning = false
+    return
+elseif result == "Gems" then
+    print("[AutoProgression] Farming Gems...")
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
+    AutoProgressionRunning = false
+    return
+end
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost1"))()
+        
+        AutoProgressionRunning = false
+        return
+    end
+    
     
     if level >= 70 then
         
@@ -578,5 +668,3 @@ getgenv().RunYeetHardcore = function()
     print("RunYeetHardcore is deprecated – use direct load instead")
 end
 getgenv().RunAutoProgression = RunAutoProgression
-
-print("[AutoProgression] Loaded successfully! (Level 100+ now uses direct load)")
