@@ -4,8 +4,7 @@
 
 local MAX_LOSSES = 30 -- Teleport after this many consecutive losses (set to 0 to disable)
 
--- Load the DuxiiT Library
-local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Library.lua"))()
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
 
 TDS:Loadout("Minigunner", "None", "None", "None", "None")
 TDS:Mode("Hardcore")
