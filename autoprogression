@@ -503,148 +503,108 @@ local function RunAutoProgression()
     if AutoProgressionRunning then return end
     AutoProgressionRunning = true
     
-    print("[AutoProgression] Starting Auto Progression...")
     task.wait(3)
     local level = GetStat("Level")
     local coins = GetStat("Coins")
-    
-    print("[AutoProgression] Level: " .. tostring(level) .. ", Coins: " .. tostring(coins))
 
-    if level >= 176 then
-    print("[AutoProgression] Level 176+ – preparing for Frost.")
 
-    -- Check ownership first (with UI wait)
-    local haveGatling = OwnsTower("Gatling Gun")
-    local haveTrapper = OwnsTower("Trapper")
-    local haveHacker = OwnsTower("Hacker")
+        if level >= 176 then
 
-    if haveGatling and haveTrapper and haveHacker then
-        print("[AutoProgression] All Frost towers already owned – running Frost directly.")
-        RunFrostStrategy()
-        AutoProgressionRunning = false
-        return
-    end
+        local haveGatling = OwnsTower("Gatling Gun")
+        local haveTrapper = OwnsTower("Trapper")
+        local haveHacker = OwnsTower("Hacker")
 
-    -- Not all owned – enter buy loop (with fallback farming)
-    local maxAttempts = 10
-    for attempt = 1, maxAttempts do
-        print("[AutoProgression] Attempt " .. attempt .. " to buy missing Frost towers.")
-        local result = AutoBuyTowers({
-            {"Gatling Gun", 35000, "Coins"},
-            {"Trapper", 3000, "Coins"},
-            {"Hacker", 5500, "Gems"},
-        })
-
-        if result == "OK" then
-            print("[AutoProgression] All Frost towers ready – running Frost.")
+        if haveGatling and haveTrapper and haveHacker then
             RunFrostStrategy()
             AutoProgressionRunning = false
             return
-        elseif result == "Coins" then
-            print("[AutoProgression] Missing coins – farming coins with Easy strategy...")
-            RunYeetEasy()  -- this will run one Easy game, then the loop continues
-        elseif result == "Gems" then
-            print("[AutoProgression] Missing gems – farming gems with Hardcore strategy...")
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
-        else
-            print("[AutoProgression] Unknown result from AutoBuyTowers – stopping.")
-            break
         end
-        task.wait(3) -- wait before retrying after farming
-    end
 
-    print("[AutoProgression] Could not acquire all Frost towers after " .. maxAttempts .. " attempts. Exiting.")
-    AutoProgressionRunning = false
-    return
-end
+        local maxAttempts = 10
+        for attempt = 1, maxAttempts do
 
-RunFrostStrategy()
-        
+            local result = AutoBuyTowers({
+                {"Gatling Gun", 35000, "Coins"},
+                {"Trapper", 3000, "Coins"},
+                {"Hacker", 5500, "Gems"},
+            })
+
+            if result == "OK" then
+                RunFrostStrategy()
+                AutoProgressionRunning = false
+                return
+            elseif result == "Coins" then
+                RunYeetEasy()
+            elseif result == "Gems" then
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
+            else
+                break
+            end
+            task.wait(3)
+        end
+
         AutoProgressionRunning = false
         return
     end
 
     if level >= 110 then
-        
         local result = AutoBuyTowers({
-    {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"},
-})
+            {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"},
+        })
 
-if result == "Coins" then
-    print("[AutoProgression] Farming Coins...")
-    RunYeetEasy()
-    AutoProgressionRunning = false
-    return
-elseif result == "Gems" then
-    print("[AutoProgression] Farming Gems...")
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
-    AutoProgressionRunning = false
-    return
-end
+        if result == "Coins" then
+            RunYeetEasy()
+            AutoProgressionRunning = false
+            return
+        elseif result == "Gems" then
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
+            AutoProgressionRunning = false
+            return
+        end
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorejuggernaut"))()
-        
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorejuggernaut"))()
         AutoProgressionRunning = false
         return
     end
 
     if level >= 90 then
-        
         local result = AutoBuyTowers({
-    {"EvolvedOperator", 15000, "Coins", 4500, "Gems"},
-})
+            {"EvolvedOperator", 15000, "Coins", 4500, "Gems"},
+        })
 
-if result == "Coins" then
-    print("[AutoProgression] Farming Coins...")
-    RunYeetEasy()
-    AutoProgressionRunning = false
-    return
-elseif result == "Gems" then
-    print("[AutoProgression] Farming Gems...")
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
-    AutoProgressionRunning = false
-    return
-end
+        if result == "Coins" then
+            RunYeetEasy()
+            AutoProgressionRunning = false
+            return
+        elseif result == "Gems" then
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
+            AutoProgressionRunning = false
+            return
+        end
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreoperator"))()
-        
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreoperator"))()
         AutoProgressionRunning = false
         return
     end
-    
-    
+
     if level >= 70 then
-        
         AutoBuyTowers({
             {"Pyromancer", 1250},
         })
-        
-        -- 🔧 CUSTOMIZE: URL to your 100+ strategy script
         loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
-        
         AutoProgressionRunning = false
         return
     end
-    
+
     if level >= 51 then
-        print("[AutoProgression] Level " .. level .. " >= 51, using Hardcore strategy (direct load)")
-        
-        -- 🔧 CUSTOMIZE: list of towers for Hardcore (name, cost)
         AutoBuyTowers({
             {"Minigunner", 8000},
         })
-        
-        -- 🔧 CUSTOMIZE: URL to your Hardcore script (if different)
         loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
-        
         AutoProgressionRunning = false
         return
     end
-    
-    -- ===== LEVEL 0-50 : EASY STRATEGY (with map detection) =====
-    print("[AutoProgression] Level " .. level .. " < 51, using Easy strategy (multi-map)")
-    
-    -- 🔧 CUSTOMIZE: towers needed for Easy strategies
+
     AutoBuyTowers({
         {"Soldier", 350},
         {"Shotgunner", 850},
@@ -653,11 +613,11 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads
         {"DJ Booth", 5000},
         {"Militant", 800},
     })
-    
     RunYeetEasy()
-    
+
     AutoProgressionRunning = false
 end
+
 
 -- // ===== UI CREATION (unchanged) =====
 local function CreateUI()
