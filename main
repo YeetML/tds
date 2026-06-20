@@ -1116,37 +1116,70 @@ local function StartEasyMode()
     end)
 end
 
-local function AutoSetDJSong(tower)
+-- // Tower audio control (searches for any of the listed towers owned by you)
+local function AutoSetDJSong(tower)   -- tower param is ignored; we search globally
     task.spawn(function()
-        local replicator = tower:WaitForChild("TowerReplicator", 10)
-        if not replicator then return end
-        if replicator:GetAttribute("Name") ~= "DJ Booth" then return end
-        if replicator:GetAttribute("OwnerId") ~= LocalPlayer.UserId then return end
-        
-        local songIdNum = tonumber(Globals.DJCustomSongID)
-        if not songIdNum then return end
-        
-        pcall(function()
-            RemoteFunc:InvokeServer(
-                "Troops",
-                "Execute",
-                {
-                    Data = { songIdNum },
-                    Name = "Music",
-                    Tower = tower
-                }
-            )
-        end)
+        local ownerId = LocalPlayer.UserId
+
+        -- List of tower names to check
+        local towerNames = {
+            "Default", "Neon Rave", "Neko", "Ghost", "Plushie",
+            "Masquerade", "Mako", "Garage Band", "Ducky", "Seal",
+            "Gingerbread"
+        }
+
+        local songId = Globals.DJCustomSongID
+        if not songId or songId == "" then
+            return  -- no ID set, do nothing
+        end
+        local fullId = "rbxassetid://" .. songId
+
+        while true do
+            local towersFolder = workspace:FindFirstChild("Towers")
+            if towersFolder then
+                -- Check each tower name in the list
+                for _, name in ipairs(towerNames) do
+                    local towerModel = towersFolder:FindFirstChild(name)
+                    if towerModel then
+                        -- Check Owner
+                        local ownerVal = towerModel:FindFirstChild("Owner")
+                        if ownerVal and ownerVal.Value == ownerId then
+                            -- Found it! Set the audio
+                            local hrp = towerModel:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local audioPlayer = hrp:FindFirstChild("AudioPlayer")
+                                if audioPlayer then
+                                    -- Try AssetId, fallback to SoundId
+                                    if pcall(function() return audioPlayer.AssetId end) then
+                                        audioPlayer.AssetId = fullId
+                                        print("Audio set for " .. name .. " to " .. fullId)
+                                        pcall(function() audioPlayer:Play() end)
+                                    elseif pcall(function() return audioPlayer.SoundId end) then
+                                        audioPlayer.SoundId = fullId
+                                        print("Audio set for " .. name .. " to " .. fullId)
+                                        pcall(function() audioPlayer:Play() end)
+                                    else
+                                        warn("Could not set audio for " .. name .. " – unknown property.")
+                                    end
+                                    return  -- exit after setting
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(1)  -- wait and retry
+        end
     end)
 end
 
 task.spawn(function()
     local Towers = workspace:WaitForChild("Towers", 10)
     if not Towers then return end
+    -- Apply immediately if your tower already exists
+    AutoSetDJSong()
+    -- Re‑apply when any new tower is added
     Towers.ChildAdded:Connect(AutoSetDJSong)
-    for _, tower in ipairs(Towers:GetChildren()) do
-        AutoSetDJSong(tower)
-    end
 end)
 
 -- // ui
@@ -1268,23 +1301,17 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
     })
 
     Automation:Textbox({
-        Title = "DJ Custom Music",
-        Desc = "Custom audio ID for your DJ Booth (Requires Gamepass)",
-        Placeholder = "Audio ID",
-        Value = Globals.DJCustomSongID or "",
-        ClearTextOnFocus = false,
-        Callback = function(value)
-            SetSetting("DJCustomSongID", value or "")
-            if not tonumber(value) then return end
-            task.spawn(function()
-                local TowersFolder = workspace:FindFirstChild("Towers")
-                if not TowersFolder then return end
-                for _, tower in ipairs(TowersFolder:GetChildren()) do
-                    AutoSetDJSong(tower)
-                end
-            end)
-        end
-    })
+    Title = "DJ Custom Music",
+    Desc = "Custom audio ID for your owned tower (Default, Neon Rave, Neko, etc.)",
+    Placeholder = "Audio ID",
+    Value = Globals.DJCustomSongID or "",
+    ClearTextOnFocus = false,
+    Callback = function(value)
+        SetSetting("DJCustomSongID", value or "")
+        if not tonumber(value) then return end
+        AutoSetDJSong()   -- the new function will search for your tower
+    end
+})
 
     Automation:Toggle({
         Title = "Auto Necro",
