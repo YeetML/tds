@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")  -- NEW
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -18,26 +19,46 @@ TDS:Loadout("Shotgunner", "Minigunner", "None", "None", "None")
 TDS:Mode("Hardcore")
 TDS:GameInfo("Wretched Front", {})
 
+-- ===== NEW: Consecutive loss counter & threshold =====
+local LOSS_THRESHOLD = 30
+local lossCount = 0
+local LOBBY_ID = 3260590327
+
+-- ===== NEW: Smart teleport to lobby =====
+local function SmartTeleportToLobby()
+    local IsMobile = (game:GetService("UserInputService"):GetPlatform() == Enum.Platform.IOS or 
+                      game:GetService("UserInputService"):GetPlatform() == Enum.Platform.Android)
+    pcall(function()
+        if not IsMobile and getgenv().PrivateCode and getgenv().PrivateCode ~= "" then
+            game:GetService("ExperienceService"):LaunchExperience({
+                placeId = LOBBY_ID,
+                linkCode = getgenv().PrivateCode
+            })
+        else
+            TeleportService:Teleport(LOBBY_ID)
+        end
+    end)
+end
+
 local function StartStrategy()
-wait(1)
-TDS:RemoveIndex()
-TDS:Ready()
+    wait(1)
+    TDS:RemoveIndex()
+    TDS:Ready()
 
--- [ Wave 1 ] --
-TDS:VoteSkip(1)
-TDS:Place("Shotgunner", -7.348933219909668, 0.9631980657577515, -31.4650821685791)
+    -- [ Wave 1 ] --
+    TDS:VoteSkip(1)
+    TDS:Place("Shotgunner", -7.348933219909668, 0.9631980657577515, -31.4650821685791)
 
--- [ Wave 2 ] --
-TDS:VoteSkip(2)
-TDS:Upgrade(1)
+    -- [ Wave 2 ] --
+    TDS:VoteSkip(2)
+    TDS:Upgrade(1)
 
--- [ Wave 3 ] --
-TDS:VoteSkip(3)
+    -- [ Wave 3 ] --
+    TDS:VoteSkip(3)
 
--- [ Wave 4 ] --
-TDS:VoteSkip(4)
-TDS:Place("Minigunner", -1.223823070526123, 0.32780420780181885, -16.418508529663086)
-
+    -- [ Wave 4 ] --
+    TDS:VoteSkip(4)
+    TDS:Place("Minigunner", -1.223823070526123, 0.32780420780181885, -16.418508529663086)
 end
 
 local function GetMatchStatus()
@@ -79,7 +100,6 @@ local function fireSkipVote()
     local Event = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
     
     while true do
-       
         local success, result = pcall(function()
             return Event:InvokeServer("Voting", "Skip")
         end)
@@ -103,7 +123,14 @@ task.spawn(function()
         local currentStatus = GetMatchStatus()
         
         if currentStatus == "LOSS" then
-            print("Loss detected! Stopping old thread...")
+            lossCount = lossCount + 1
+            print(string.format("Loss #%d / %d detected.", lossCount, LOSS_THRESHOLD))
+
+            if lossCount >= LOSS_THRESHOLD then
+                print("Reached loss threshold! Teleporting to lobby to reset matchmaking.")
+                SmartTeleportToLobby()
+                break  -- exit the while loop; script will reload on rejoin
+            end
 
             if activeStratThread and coroutine.status(activeStratThread) ~= "dead" then
                 task.cancel(activeStratThread)
@@ -111,7 +138,7 @@ task.spawn(function()
             end
 
             print("Firing restart remote until completed...")
-            fireSkipVote() -- Calls the independent function above
+            fireSkipVote()
 
             print("Waiting for match screen to clear...")
             repeat 
@@ -122,6 +149,13 @@ task.spawn(function()
 
             print("Starting new strategy match!")
             activeStratThread = task.spawn(StartStrategy)
+
+        elseif currentStatus == "WIN" then
+            -- Reset loss counter on a win
+            if lossCount > 0 then
+                print("Win detected! Resetting loss counter.")
+                lossCount = 0
+            end
         end
     end
 end)
