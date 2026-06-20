@@ -76,25 +76,45 @@ local function RemoveAether()
     end)
 end
 
--- // ===== CHECK IF TOWER IS OWNED =====
+-- // ===== CHECK IF TOWER IS OWNED (GUI-based) =====
 local function OwnsTower(towerName)
-    local success, result = pcall(function()
-        return RemoteFunc:InvokeServer("Shop", "GetOwned", "Tower", towerName)
-    end)
-    if success and result == true then
-        return true
-    end
-    -- Fallback: check inventory
-    local inv = LocalPlayer:FindFirstChild("Inventory")
-    if inv then
-        local towers = inv:FindFirstChild("Towers")
-        if towers then
-            return towers:FindFirstChild(towerName) ~= nil
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return false end
+
+    local inventoryView = playerGui:FindFirstChild("ReactUniversalInventoryView")
+    if not inventoryView then return false end
+
+    local holder = inventoryView:FindFirstChild("Holder")
+    if not holder then return false end
+
+    local windowFrame = holder:FindFirstChild("windowFrame")
+    if not windowFrame then return false end
+
+    local towersFrame = windowFrame:FindFirstChild("towersInventoryFrame")
+    if not towersFrame then return false end
+
+    local towerContainer = towersFrame:FindFirstChild("towerContainer")
+    if not towerContainer then return false end
+
+    -- Search all children whose name ends with "scrolling" (e.g., 1scrolling, 2scrolling, etc.)
+    for _, child in ipairs(towerContainer:GetChildren()) do
+        if string.find(child.Name, "scrolling") then
+            local towerFrame = child:FindFirstChild(towerName)
+            if towerFrame then
+                local main = towerFrame:FindFirstChild("main")
+                if main then
+                    local topThing = main:FindFirstChild("topThing")
+                    if topThing then
+                        -- Visible = NOT owned; invisible = owned
+                        return not topThing.Visible
+                    end
+                end
+            end
         end
     end
+
     return false
 end
-
 -- // ===== AUTO BUY TOWERS =====
 -- // ===== AUTO BUY TOWERS (supports multiple formats) =====
 local function AutoBuyTowers(towerList)
