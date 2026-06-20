@@ -348,7 +348,7 @@ local function RunYeetHardcore()
     getgenv().AutoPremium = false
     getgenv().AutoSkip = true
     getgenv().AutoRejoin = true
-    getgenv().TimeScaleEnabled = true
+    getgenv().TimeScaleEnabled = false
     getgenv().TimeScaleValue = 2
     
     if not IsInLobby() then
