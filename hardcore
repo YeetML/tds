@@ -1,10 +1,9 @@
 -- ===================================================================
--- Hardcore Auto-Restart Script (Minigunner Strategy)
--- Uses DuxiiT AutoStrat Library
--- Strategy: Wretched Front, all commands through Wave 17
+-- Hardcore Auto-Restart Script (YeetML Custom Links)
 -- ===================================================================
 
-local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Library.lua"))()
+-- Updated library to your custom main link
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
 
 -- ---------- CONFIGURATION ----------
 local MAX_LOSSES = 30          -- Teleport after this many consecutive losses (set to 0 to disable)
@@ -18,75 +17,10 @@ TDS:Loadout(table.unpack(LOADOUT))
 TDS:Mode(MODE)
 TDS:GameInfo(MAP, {})
 
--- ---------- STRATEGY (your exact code) ----------
+-- ---------- STRATEGY ----------
 local function runStrategy()
-    TDS:Ready()   -- starts the match
-    task.wait(1)  -- brief load buffer
-
-    -- [ Wave 1 ]
-    TDS:VoteSkip(1)
-
-    -- [ Wave 2 ]
-    TDS:VoteSkip(2)
-    TDS:Place("Minigunner", 1.432370662689209, 1.436934232711792, 27.87601661682129)
-
-    -- [ Wave 3 ]
-    TDS:VoteSkip(3)
-    TDS:Upgrade(1)
-
-    -- [ Wave 4 ]
-    TDS:VoteSkip(4)
-
-    -- [ Wave 5 ]
-    TDS:VoteSkip(5)
-    TDS:Place("Minigunner", 4.546943187713623, 1.407247543334961, 27.872900009155273)
-
-    -- [ Wave 6 ]
-    TDS:VoteSkip(6)
-    TDS:Upgrade(2)
-
-    -- [ Wave 7 ]
-    TDS:VoteSkip(7)
-
-    -- [ Wave 8 ]
-    TDS:VoteSkip(8)
-    TDS:Place("Minigunner", 5.792983055114746, 1.337424397468567, 22.332794189453125)
-
-    -- [ Wave 9 ]
-    TDS:Upgrade(3)
-    TDS:VoteSkip(9)
-
-    -- [ Wave 10 ]
-    TDS:VoteSkip(10)
-
-    -- [ Wave 11 ]
-    TDS:Place("Minigunner", 2.372230052947998, 1.3786046504974365, 22.456092834472656)
-    TDS:VoteSkip(11)
-    TDS:Upgrade(4)
-
-    -- [ Wave 12 ]
-    TDS:VoteSkip(12)
-    TDS:Upgrade(3)
-
-    -- [ Wave 13 ]
-    TDS:VoteSkip(13)
-    TDS:Upgrade(4)
-
-    -- [ Wave 14 ]
-    TDS:VoteSkip(14)
-    TDS:Upgrade(2)
-
-    -- [ Wave 15 ]
-    TDS:VoteSkip(15)
-    TDS:Upgrade(1)
-
-    -- [ Wave 16 ]
-    TDS:VoteSkip(16)
-
-    -- [ Wave 17 ]
-    TDS:VoteSkip(17)
-
-    -- After this, the library handles the rest of the match automatically.
+    -- Executes your custom hardcore strategy directly
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"))()
 end
 
 -- ---------- MATCH END DETECTION & REWARD SKIP ----------
@@ -208,7 +142,6 @@ while true do
         lossCount = 0
         print("Victory! Loss streak reset.")
     else
-        -- If we couldn't determine, don't reset but also don't count as loss? We'll keep as is.
         print("Match result unknown – keeping loss count at " .. lossCount)
     end
 
