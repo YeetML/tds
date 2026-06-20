@@ -307,59 +307,65 @@ local function RunYeetEasy()
     runningEasy = false
 end
 
--- // ===== RUN HARDCORE – REMOVED all extra logic, now simply loads the hardcore script =====
--- (kept as a function for possible manual use, but not used by auto‑progression anymore)
-local function RunYeetHardcore()
-    if runningHardcore then return end
-    runningHardcore = true
-    print("[AutoProgression] Running Hardcore directly (no map checks, no veto, no teleport).")
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"))()
-    runningHardcore = false
-end
-
--- // ===== AUTO PROGRESSION LOGIC – MODIFIED for level 51+ =====
+-- // ==========================================================
+-- // MODIFIED AUTO PROGRESSION LOGIC (with level 100+ branch)
+-- // ==========================================================
 local function RunAutoProgression()
     if AutoProgressionRunning then return end
     AutoProgressionRunning = true
     
     print("[AutoProgression] Starting Auto Progression...")
-    
     task.wait(3)
     local level = GetStat("Level")
     local coins = GetStat("Coins")
     
     print("[AutoProgression] Level: " .. tostring(level) .. ", Coins: " .. tostring(coins))
     
+    -- ===== LEVEL 100+ : DIRECT EXPERT/FALLEN STRATEGY =====
     if level >= 100 then
-        print("[AutoProgression] Level 100+ reached! Stopping progression.")
+        
+        -- 🔧 CUSTOMIZE: list of towers to buy for 100+ (name, cost)
+        AutoBuyTowers({
+            {"Pyromancer", 1250},
+        })
+        
+        -- 🔧 CUSTOMIZE: URL to your 100+ strategy script
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
+        
         AutoProgressionRunning = false
         return
-    elseif level >= 51 then
-        -- Level 51-99: Hardcore strategy
-        -- Buy required towers, then directly load the hardcore script (NO main hub, NO map checking, NO veto, NO reset)
+    end
+    
+    -- ===== LEVEL 51-99 : HARDCORE (direct load, no main hub) =====
+    if level >= 51 then
         print("[AutoProgression] Level " .. level .. " >= 51, using Hardcore strategy (direct load)")
         
+        -- 🔧 CUSTOMIZE: list of towers for Hardcore (name, cost)
         AutoBuyTowers({
             {"Minigunner", 8000},
         })
         
-        -- Directly load hardcore script – this is what the user requested
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"))()
-    else
-        -- Level 0-50: Easy strategy (uses the main hub and map detection)
-        print("[AutoProgression] Level " .. level .. " < 51, using Easy strategy (multi-map)")
+        -- 🔧 CUSTOMIZE: URL to your Hardcore script (if different)
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
         
-        AutoBuyTowers({
-            {"Soldier", 350},
-            {"Shotgunner", 850},
-            {"Assassin", 800},
-            {"Commander", 4000},
-            {"DJ Booth", 5000},
-            {"Militant", 800},
-        })
-        
-        RunYeetEasy()
+        AutoProgressionRunning = false
+        return
     end
+    
+    -- ===== LEVEL 0-50 : EASY STRATEGY (with map detection) =====
+    print("[AutoProgression] Level " .. level .. " < 51, using Easy strategy (multi-map)")
+    
+    -- 🔧 CUSTOMIZE: towers needed for Easy strategies
+    AutoBuyTowers({
+        {"Soldier", 350},
+        {"Shotgunner", 850},
+        {"Assassin", 800},
+        {"Commander", 4000},
+        {"DJ Booth", 5000},
+        {"Militant", 800},
+    })
+    
+    RunYeetEasy()
     
     AutoProgressionRunning = false
 end
@@ -455,7 +461,6 @@ local function CreateUI()
     
     Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 10)
     
-    -- Load saved state
     local savedState = false
     if isfile and isfile(SETTINGS_FILE) then
         local success, data = pcall(function()
@@ -570,7 +575,9 @@ local ui = CreateUI()
 -- Expose functions globally
 getgenv().BuyTower = BuyTower
 getgenv().RunYeetEasy = RunYeetEasy
-getgenv().RunYeetHardcore = RunYeetHardcore
+getgenv().RunYeetHardcore = function() 
+    print("RunYeetHardcore is deprecated – use direct load instead")
+end
 getgenv().RunAutoProgression = RunAutoProgression
 
-print("[AutoProgression] Loaded successfully! (Hardcore now uses direct load without main hub/reset)")
+print("[AutoProgression] Loaded successfully! (Level 100+ now uses direct load)")
