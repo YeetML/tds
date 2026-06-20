@@ -188,7 +188,7 @@ local EasyStrategies = {
 local HardcoreStrategies = {
     {
         name = "hardcore1",
-        mapName = "Wrecked Battlefield",  -- correct map from the YeetML script
+        mapName = "Wretched Front",  -- correct map from the YeetML script
         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore",
         mode = "Hardcore"
     },
