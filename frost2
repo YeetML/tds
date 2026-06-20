@@ -1,4 +1,4 @@
-local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Library.lua"))()
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
 
 TDS:Loadout("Gatling Gun", "DJ Booth", "Trapper", "Mercenary Base", "Hacker")
 TDS:Mode("Frost")
