@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")  -- NEW
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -18,79 +19,99 @@ TDS:Loadout("Scout", "Pyromancer", "None", "None", "None")
 TDS:Mode("Hardcore")
 TDS:GameInfo("Wretched Front", {})
 
+-- ===== NEW: Consecutive loss counter & threshold =====
+local LOSS_THRESHOLD = 30
+local lossCount = 0
+local LOBBY_ID = 3260590327
+
+-- ===== NEW: Smart teleport to lobby =====
+local function SmartTeleportToLobby()
+    local IsMobile = (game:GetService("UserInputService"):GetPlatform() == Enum.Platform.IOS or 
+                      game:GetService("UserInputService"):GetPlatform() == Enum.Platform.Android)
+    pcall(function()
+        if not IsMobile and getgenv().PrivateCode and getgenv().PrivateCode ~= "" then
+            game:GetService("ExperienceService"):LaunchExperience({
+                placeId = LOBBY_ID,
+                linkCode = getgenv().PrivateCode
+            })
+        else
+            TeleportService:Teleport(LOBBY_ID)
+        end
+    end)
+end
+
 local function StartStrategy()
-wait(1)
-TDS:RemoveIndex()
-TDS:Place("Pyromancer", -6.165842056274414, 0.9550924301147461, -31.96164321899414)
-TDS:SetTarget(1, "Random")
-TDS:SetTarget(1, "Farthest")
-TDS:SetTarget(1, "Farthest")
-TDS:Ready()
+    wait(1)
+    TDS:RemoveIndex()
+    TDS:Place("Pyromancer", -6.165842056274414, 0.9550924301147461, -31.96164321899414)
+    TDS:SetTarget(1, "Random")
+    TDS:SetTarget(1, "Farthest")
+    TDS:SetTarget(1, "Farthest")
+    TDS:Ready()
 
--- [ Wave 1 ] --
-TDS:VoteSkip(1)
-TDS:VoteSkip(1)
-TDS:Upgrade(1)
+    -- [ Wave 1 ] --
+    TDS:VoteSkip(1)
+    TDS:VoteSkip(1)
+    TDS:Upgrade(1)
 
--- [ Wave 2 ] --
-TDS:VoteSkip(2)
+    -- [ Wave 2 ] --
+    TDS:VoteSkip(2)
 
--- [ Wave 3 ] --
-TDS:VoteSkip(3)
-TDS:Upgrade(1)
+    -- [ Wave 3 ] --
+    TDS:VoteSkip(3)
+    TDS:Upgrade(1)
 
--- [ Wave 4 ] --
-TDS:Place("Scout", -3.4579029083251953, 0.9635961055755615, -30.392202377319336)
-TDS:Upgrade(2)
-TDS:VoteSkip(4)
-TDS:Upgrade(2)
+    -- [ Wave 4 ] --
+    TDS:Place("Scout", -3.4579029083251953, 0.9635961055755615, -30.392202377319336)
+    TDS:Upgrade(2)
+    TDS:VoteSkip(4)
+    TDS:Upgrade(2)
 
--- [ Wave 5 ] --
-TDS:VoteSkip(5)
+    -- [ Wave 5 ] --
+    TDS:VoteSkip(5)
 
--- [ Wave 6 ] --
-TDS:VoteSkip(6)
+    -- [ Wave 6 ] --
+    TDS:VoteSkip(6)
 
--- [ Wave 7 ] --
-TDS:Upgrade(1)
-TDS:VoteSkip(7)
+    -- [ Wave 7 ] --
+    TDS:Upgrade(1)
+    TDS:VoteSkip(7)
 
--- [ Wave 8 ] --
-TDS:Place("Scout", -3.4693498611450195, 0.989535927772522, -33.52726745605469)
-TDS:Place("Scout", -6.29301643371582, 0.9873062372207642, -35.10028839111328)
-TDS:Upgrade(4)
-TDS:Upgrade(4)
-TDS:VoteSkip(8)
-TDS:Place("Scout", -9.48401927947998, 1.0186105966567993, -34.72258758544922)
+    -- [ Wave 8 ] --
+    TDS:Place("Scout", -3.4693498611450195, 0.989535927772522, -33.52726745605469)
+    TDS:Place("Scout", -6.29301643371582, 0.9873062372207642, -35.10028839111328)
+    TDS:Upgrade(4)
+    TDS:Upgrade(4)
+    TDS:VoteSkip(8)
+    TDS:Place("Scout", -9.48401927947998, 1.0186105966567993, -34.72258758544922)
 
--- [ Wave 9 ] --
-TDS:Place("Scout", -10.331202507019043, 0.9965579509735107, -31.65950584411621)
-TDS:Upgrade(6)
-TDS:Upgrade(6)
-TDS:Place("Scout", -10.232104301452637, 0.9631879925727844, -28.540401458740234)
-TDS:Upgrade(7)
-TDS:Upgrade(7)
-TDS:VoteSkip(9)
+    -- [ Wave 9 ] --
+    TDS:Place("Scout", -10.331202507019043, 0.9965579509735107, -31.65950584411621)
+    TDS:Upgrade(6)
+    TDS:Upgrade(6)
+    TDS:Place("Scout", -10.232104301452637, 0.9631879925727844, -28.540401458740234)
+    TDS:Upgrade(7)
+    TDS:Upgrade(7)
+    TDS:VoteSkip(9)
 
--- [ Wave 10 ] --
-TDS:Place("Scout", -6.601086616516113, 0.924750804901123, -28.4224796295166)
-TDS:Upgrade(8)
-TDS:Upgrade(8)
-TDS:VoteSkip(10)
+    -- [ Wave 10 ] --
+    TDS:Place("Scout", -6.601086616516113, 0.924750804901123, -28.4224796295166)
+    TDS:Upgrade(8)
+    TDS:Upgrade(8)
+    TDS:VoteSkip(10)
 
--- [ Wave 11 ] --
-TDS:VoteSkip(11)
+    -- [ Wave 11 ] --
+    TDS:VoteSkip(11)
 
--- [ Wave 12 ] --
-TDS:VoteSkip(12)
-TDS:Upgrade(1)
+    -- [ Wave 12 ] --
+    TDS:VoteSkip(12)
+    TDS:Upgrade(1)
 
--- [ Wave 13 ] --
-TDS:VoteSkip(13)
+    -- [ Wave 13 ] --
+    TDS:VoteSkip(13)
 
--- [ Wave 14 ] --
-TDS:VoteSkip(14)
-
+    -- [ Wave 14 ] --
+    TDS:VoteSkip(14)
 end
 
 local function GetMatchStatus()
@@ -132,7 +153,6 @@ local function fireSkipVote()
     local Event = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
     
     while true do
-       
         local success, result = pcall(function()
             return Event:InvokeServer("Voting", "Skip")
         end)
@@ -156,7 +176,14 @@ task.spawn(function()
         local currentStatus = GetMatchStatus()
         
         if currentStatus == "LOSS" then
-            print("Loss detected! Stopping old thread...")
+            lossCount = lossCount + 1
+            print(string.format("Loss #%d / %d detected.", lossCount, LOSS_THRESHOLD))
+
+            if lossCount >= LOSS_THRESHOLD then
+                print("Reached loss threshold! Teleporting to lobby to reset matchmaking.")
+                SmartTeleportToLobby()
+                break  -- exit the while loop; script will reload on rejoin
+            end
 
             if activeStratThread and coroutine.status(activeStratThread) ~= "dead" then
                 task.cancel(activeStratThread)
@@ -164,7 +191,7 @@ task.spawn(function()
             end
 
             print("Firing restart remote until completed...")
-            fireSkipVote() -- Calls the independent function above
+            fireSkipVote()
 
             print("Waiting for match screen to clear...")
             repeat 
@@ -175,6 +202,12 @@ task.spawn(function()
 
             print("Starting new strategy match!")
             activeStratThread = task.spawn(StartStrategy)
+
+        elseif currentStatus == "WIN" then
+            if lossCount > 0 then
+                print("Win detected! Resetting loss counter.")
+                lossCount = 0
+            end
         end
     end
 end)
