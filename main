@@ -1269,7 +1269,7 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
 
     Automation:Textbox({
         Title = "DJ Custom Music",
-        Desc = "Custom audio ID for your DJ Booth",
+        Desc = "Custom audio ID for your DJ Booth (Requires Gamepass)",
         Placeholder = "Audio ID",
         Value = Globals.DJCustomSongID or "",
         ClearTextOnFocus = false,
@@ -4370,6 +4370,30 @@ local function StartSellFarm()
     end)
 end
 
+function TDS:RemoveIndex()
+	self.PlacedTowers = {}
+    self.PlacedTraps = {}
+    self.MapInteractions = {}
+  
+    if UpgradeHistory then
+        table.clear(UpgradeHistory)
+    end
+	
+	Logger:Log("CLEARED EVERYTHING: All indexes, upgrade histories, and automated execution loops have been completely reset.")
+end
+
+function TDS:WaitForWave(targetWave)
+    if GameState ~= "GAME" then return false end
+    while self:GetWave() < targetWave do
+        task.wait(0.5)
+    end
+    return true
+end
+
+function TDS:Rejoin()
+SmartTeleportToLobby()
+end
+
 task.spawn(function()
     while true do
         if Globals.AutoPickups and not AutoPickupsRunning then
@@ -4447,4 +4471,3 @@ end
 MissionsUIFix()
 
 return TDS
-
