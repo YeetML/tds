@@ -262,6 +262,20 @@ local FrostStrategies = {
         loadout = {"Gatling Gun", "Trapper", "Hacker", "DJ Booth", "Mercenary Base"},
         mode = "Frost"
     },
+    {
+        name = "frost3",
+        mapName = "Crossroads",
+        url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost3",
+        loadout = {"Gatling Gun", "Trapper", "Hacker", "DJ Booth", "Mercenary Base"},
+        mode = "Frost"
+    },
+    {
+        name = "frost4",
+        mapName = "Retro Crossroads",
+        url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost4",
+        loadout = {"Gatling Gun", "Trapper", "Hacker", "DJ Booth", "Mercenary Base"},
+        mode = "Frost"
+    },
 }
 
 -- // ===== STRATEGY RUNNERS =====
@@ -401,7 +415,7 @@ local function RunFrostStrategy()
     
     -- Optional: disable premium/skip/rejoin (adjust as needed)
     getgenv().AutoPremium = false
-    getgenv().AutoSkip = false
+    getgenv().AutoSkip = true
     getgenv().AutoRejoin = true
     getgenv().TimeScaleEnabled = true
     getgenv().TimeScaleValue = 2
