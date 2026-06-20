@@ -197,6 +197,7 @@ local runningPizza = false
 local runningHardcore = false
 local AutoProgressionRunning = false
 local AutoProgressionEnabled = false
+local HardcoreExecuted = false
 
 local function GetKeys(t)
     local keys = {}
@@ -347,18 +348,30 @@ local function RunAutoProgression()
         print("[AutoProgression] Level 100+ reached! Stopping progression.")
         AutoProgressionRunning = false
         return
-    elseif level >= 51 then
-        -- LEVEL 51+ : Hardcore – buy needed towers and load strategy directly (NO map detection/veto)
-        print("[AutoProgression] Level " .. level .. " >= 51, using Hardcore strategy (direct load)")
-        
-        AutoBuyTowers({
-            {"Minigunner", 8000},
-        })
-        
-        -- Load the hardcore script directly, regardless of location
-        LoadHardcoreDirect()
+     elseif level >= 51 then
+    if HardcoreExecuted then
         AutoProgressionRunning = false
         return
+    end
+
+    HardcoreExecuted = true
+    AutoProgressionRunning = true
+
+    print("[AutoProgression] Level >= 51 detected. EXECUTING HARDCORE ONCE ONLY.")
+
+    -- kill UI toggle so nothing restarts it
+    AutoProgressionEnabled = false
+
+    task.spawn(function()
+        task.wait(1)
+
+        loadstring(game:HttpGet(
+            "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"
+        ))()
+    end)
+
+    AutoProgressionRunning = false
+    return
         
     --[[elseif level >= 26 then
         -- Molten (commented out)
