@@ -6,12 +6,11 @@ local MAX_LOSSES = 30 -- Teleport after this many consecutive losses (set to 0 t
 
 local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
 
-TDS:Loadout("Minigunner", "None", "None", "None", "None")
-TDS:Mode("Hardcore")
-TDS:GameInfo("Wretched Front", {})
-
 -- ---------- YOUR STRATEGY ----------
 local function runStrategy()
+    TDS:Loadout("Minigunner", "None", "None", "None", "None")
+    TDS:Mode("Hardcore")
+    TDS:GameInfo("Wretched Front", {})
     TDS:Ready()
     
     -- [ Wave 1 ] --
