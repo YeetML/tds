@@ -1,8 +1,3 @@
-
--- // Auto Progression Companion Script for Aether Hub
--- // Load this AFTER the main Aether Hub script
--- // It adds BuyTower function, 5 strategies, and auto-progression logic
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
@@ -506,20 +501,28 @@ end
     
     runningFrost = false
 end
--- // ==========================================================
--- // MODIFIED AUTO PROGRESSION LOGIC (with level 100+ branch)
--- // ==========================================================
+
 local function RunAutoProgression()
     if AutoProgressionRunning then return end
     AutoProgressionRunning = true
-    
+
     task.wait(3)
+
     local level = GetStat("Level")
     local coins = GetStat("Coins")
 
+    local state = ReplicatedStorage:FindFirstChild("State")
+    local difficulty = state and state:FindFirstChild("Difficulty")
+    local currentDifficulty = difficulty and difficulty.Value or nil
 
-        if level >= 176 then
+    if currentDifficulty == "Frost" and level < 176 then
+        print("[AutoProgression] In Frost match but level < 176 – teleporting to lobby.")
+        AutoProgressionRunning = false
+        SmartTeleportToLobby()
+        return
+    end
 
+    if level >= 176 then
         local haveGatling = OwnsTower("Gatling Gun")
         local haveTrapper = OwnsTower("Trapper")
         local haveHacker = OwnsTower("Hacker")
@@ -532,7 +535,6 @@ local function RunAutoProgression()
 
         local maxAttempts = 10
         for attempt = 1, maxAttempts do
-
             local result = AutoBuyTowers({
                 {"Gatling Gun", 35000, "Coins"},
                 {"Trapper", 3000, "Coins"},
@@ -544,9 +546,23 @@ local function RunAutoProgression()
                 AutoProgressionRunning = false
                 return
             elseif result == "Coins" then
-                RunYeetEasy()
+                if currentDifficulty == "Frost" then
+                    print("[AutoProgression] In Frost match but need Coins – teleporting to lobby to farm.")
+                    AutoProgressionRunning = false
+                    SmartTeleportToLobby()
+                    return
+                else
+                    RunYeetEasy()
+                end
             elseif result == "Gems" then
-                loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
+                if currentDifficulty == "Frost" then
+                    print("[AutoProgression] In Frost match but need Gems – teleporting to lobby to farm.")
+                    AutoProgressionRunning = false
+                    SmartTeleportToLobby()
+                    return
+                else
+                    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
+                end
             else
                 break
             end
