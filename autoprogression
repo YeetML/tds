@@ -453,8 +453,18 @@ local function RunFrostStrategy()
         
         while vetoAttempts < maxVetos do
             local availableMaps = GetAvailableMaps()
-            local mapKeys = GetKeys(availableMaps)
-            print("[AutoProgression] Available maps: " .. (#mapKeys > 0 and table.concat(mapKeys, ", ") or "none"))
+            -- Build a sorted list of map names from availableMaps
+local mapList = {}
+for name in pairs(availableMaps) do
+    table.insert(mapList, name)
+end
+table.sort(mapList)
+
+-- Update the debug label in the UI
+if getgenv().AutoProgressionUI and getgenv().AutoProgressionUI.debug then
+    getgenv().AutoProgressionUI.debug.Text =
+        "Frost Maps:\n" .. (#mapList > 0 and table.concat(mapList, "\n") or "None")
+end
             
             local availableStrategies = {}
             for _, strategy in ipairs(FrostStrategies) do
@@ -632,7 +642,7 @@ local function CreateUI()
     gui.Parent = CoreGui
     
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 260, 0, 160)
+    frame.Size = UDim2.new(0, 260, 0, 210)
     frame.Position = UDim2.new(0.5, -130, 0.85, -80)
     frame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
     frame.BorderSizePixel = 0
@@ -697,10 +707,24 @@ local function CreateUI()
     statusDisplay.Font = Enum.Font.GothamBold
     statusDisplay.TextXAlignment = Enum.TextXAlignment.Center
     statusDisplay.Parent = frame
+
+    local debugDisplay = Instance.new("TextLabel")
+    debugDisplay.Size = UDim2.new(1, -20, 0, 40)
+    debugDisplay.Position = UDim2.new(0, 10, 0, 112)
+    debugDisplay.BackgroundTransparency = 1
+    debugDisplay.Text = "Frost Maps: None"
+    debugDisplay.TextColor3 = Color3.fromRGB(255, 255, 0)
+    debugDisplay.TextScaled = false
+    debugDisplay.TextSize = 14
+    debugDisplay.Font = Enum.Font.Code
+    debugDisplay.TextWrapped = true
+    debugDisplay.TextXAlignment = Enum.TextXAlignment.Left
+    debugDisplay.TextYAlignment = Enum.TextYAlignment.Top
+    debugDisplay.Parent = frame
     
     local toggle = Instance.new("TextButton")
     toggle.Size = UDim2.new(0, 90, 0, 30)
-    toggle.Position = UDim2.new(0.5, -45, 1, -40)
+    toggle.Position = UDim2.new(0.5, -45, 1, -45)
     toggle.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
     toggle.Text = "OFF"
     toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -800,12 +824,13 @@ local function CreateUI()
         end
     end)
     
-    return { 
-        title = title, 
-        status = statusDisplay, 
-        toggle = toggle,
-        levelDisplay = levelDisplay
-    }
+    return {
+    title = title,
+    status = statusDisplay,
+    toggle = toggle,
+    levelDisplay = levelDisplay,
+    debug = debugDisplay   
+}
 end
 
 -- // ===== UI RECOVERY LOOP =====
@@ -820,8 +845,8 @@ end)
 
 -- Create the UI
 local ui = CreateUI()
+getgenv().AutoProgressionUI = ui
 
--- Expose functions globally
 getgenv().BuyTower = BuyTower
 getgenv().RunYeetEasy = RunYeetEasy
 getgenv().RunYeetHardcore = function() 
