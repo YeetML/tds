@@ -416,11 +416,34 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads
         AutoProgressionRunning = false
         return
     end
+
+    if level >= 90 then
+        
+        local result = AutoBuyTowers({
+    {"EvolvedOperator", 15000, "Coins", 4500, "Gems"},
+})
+
+if result == "Coins" then
+    print("[AutoProgression] Farming Coins...")
+    RunYeetEasy()
+    AutoProgressionRunning = false
+    return
+elseif result == "Gems" then
+    print("[AutoProgression] Farming Gems...")
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
+    AutoProgressionRunning = false
+    return
+end
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreoperator"))()
+        
+        AutoProgressionRunning = false
+        return
+    end
     
     
     if level >= 70 then
         
-        -- 🔧 CUSTOMIZE: list of towers to buy for 100+ (name, cost)
         AutoBuyTowers({
             {"Pyromancer", 1250},
         })
@@ -432,7 +455,6 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads
         return
     end
     
-    -- ===== LEVEL 51-99 : HARDCORE (direct load, no main hub) =====
     if level >= 51 then
         print("[AutoProgression] Level " .. level .. " >= 51, using Hardcore strategy (direct load)")
         
