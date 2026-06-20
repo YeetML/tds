@@ -1,3 +1,4 @@
+
 -- // Auto Progression Companion Script for Aether Hub
 -- // Load this AFTER the main Aether Hub script
 -- // It adds BuyTower function, 5 strategies, and auto-progression logic
@@ -149,6 +150,9 @@ local function GetAvailableMaps()
 end
 
 -- // ===== EASY STRATEGIES (Level 0-24) =====
+-- All strategies are loaded from YeetML URLs
+-- When running, we check ALL available maps and randomly pick one matching strategy
+
 local EasyStrategies = {
     {
         name = "easy1",
@@ -181,13 +185,16 @@ local EasyStrategies = {
 }
 
 -- // ===== HARDCORE STRATEGIES (Level 50-99) =====
+-- // Add the maps that your Hardcore strategy actually works on
 local HardcoreStrategies = {
     {
         name = "hardcore1",
-        mapName = "Wretched Front",
+        mapName = "Wretched Front",  -- correct map from the YeetML script
         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore",
         mode = "Hardcore"
     },
+    -- If the same strategy works on other Hardcore maps, add them here:
+    -- { name = "hardcore2", mapName = "Badlands", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore", mode = "Hardcore" },
 }
 
 -- // ===== STRATEGY RUNNERS =====
@@ -197,13 +204,15 @@ local runningPizza = false
 local runningHardcore = false
 local AutoProgressionRunning = false
 local AutoProgressionEnabled = false
-local HardcoreExecuted = false
 
+-- Helper to get keys from a table
 local function GetKeys(t)
     local keys = {}
+
     for k in pairs(t) do
         keys[#keys + 1] = k
     end
+
     return keys
 end
 
@@ -227,6 +236,7 @@ local function GetRemainingVetos()
     local VetoButton = Buttons:FindFirstChild("veto")
     if not VetoButton then return nil end
     
+    -- Look for a TextLabel with text like "Veto 1/3"
     for _, child in pairs(VetoButton:GetChildren()) do
         if child:IsA("TextLabel") then
             local text = child.Text
@@ -252,7 +262,7 @@ local function VetoMap()
         RemoteEvent:FireServer("LobbyVoting", "Veto")
         print("[AutoProgression] Veto fired. Remaining vetos: " .. tostring(remaining))
     end)
-    task.wait(1)
+    task.wait(1) -- wait for map rotation
     return true
 end
 
@@ -268,18 +278,21 @@ local function RunYeetEasy()
     getgenv().AutoRejoin = true
     getgenv().TimeScaleEnabled = false
     
+    -- Load the YeetML main loader
     local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
     RemoveAether()
     
+    -- Check if we're in a game (not the lobby)
     if not IsInLobby() then
         local vetoAttempts = 0
-        local maxVetos = GetRemainingVetos() or 3
+        local maxVetos = GetRemainingVetos() or 3  -- fallback to 3 if detection fails
         
         while vetoAttempts < maxVetos do
             local availableMaps = GetAvailableMaps()
             local mapKeys = GetKeys(availableMaps)
             print("[AutoProgression] Available maps: " .. (#mapKeys > 0 and table.concat(mapKeys, ", ") or "none"))
             
+            -- Find strategies whose maps are available
             local availableStrategies = {}
             for _, strategy in ipairs(EasyStrategies) do
                 if availableMaps[strategy.mapName] then
@@ -289,6 +302,7 @@ local function RunYeetEasy()
             end
             
             if #availableStrategies > 0 then
+                -- Randomly pick one of the available strategies
                 local chosenStrategy = availableStrategies[math.random(1, #availableStrategies)]
                 print("[AutoProgression] Selected: " .. chosenStrategy.name .. " on " .. chosenStrategy.mapName)
                 print("[AutoProgression] Loading strategy from: " .. chosenStrategy.url)
@@ -306,11 +320,13 @@ local function RunYeetEasy()
             end
         end
         
+        -- If we exit loop, no map found after using all vetoes
         print("[AutoProgression] No easy maps available after using all vetoes. Teleporting to lobby...")
         runningEasy = false
         SmartTeleportToLobby()
         return
     else
+        -- In lobby: just pick a random easy strategy
         local chosenStrategy = EasyStrategies[math.random(1, #EasyStrategies)]
         print("[AutoProgression] In lobby, randomly selected: " .. chosenStrategy.name .. " strategy")
         print("[AutoProgression] Loading strategy from: " .. chosenStrategy.url)
@@ -320,15 +336,68 @@ local function RunYeetEasy()
     runningEasy = false
 end
 
--- // ===== DIRECT HARDCORE LOAD (NEW – for level 51+) =====
-local function LoadHardcoreDirect()
-    print("[AutoProgression] Loading Hardcore strategy directly (no map detection/veto)")
+local function RunYeetHardcore()
+    if runningHardcore then return end
+    runningHardcore = true
+
+    local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+    RemoveAether()
+    
+    print("[AutoProgression] Starting Hardcore strategy...")
+    
     getgenv().AutoPremium = false
     getgenv().AutoSkip = true
-    getgenv().AutoRejoin = false
+    getgenv().AutoRejoin = true
     getgenv().TimeScaleEnabled = true
     getgenv().TimeScaleValue = 2
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"))()
+    
+    if not IsInLobby() then
+        local vetoAttempts = 0
+        local maxVetos = GetRemainingVetos() or 3
+        
+        while vetoAttempts < maxVetos do
+            local availableMaps = GetAvailableMaps()
+            local mapKeys = GetKeys(availableMaps)
+            print("[AutoProgression] Available maps: " .. (#mapKeys > 0 and table.concat(mapKeys, ", ") or "none"))
+            
+            -- Find hardcore strategies with available maps
+            local availableStrategies = {}
+            for _, strategy in ipairs(HardcoreStrategies) do
+                if availableMaps[strategy.mapName] then
+                    table.insert(availableStrategies, strategy)
+                    print("[AutoProgression] Found available map: " .. strategy.mapName)
+                end
+            end
+            
+            if #availableStrategies > 0 then
+                local chosenStrategy = availableStrategies[math.random(1, #availableStrategies)]
+                print("[AutoProgression] Selected: " .. chosenStrategy.name .. " on " .. chosenStrategy.mapName)
+                print("[AutoProgression] Loading strategy from: " .. chosenStrategy.url)
+                loadstring(game:HttpGet(chosenStrategy.url))()
+                runningHardcore = false
+                return
+            else
+                print("[AutoProgression] No hardcore map available. Veto attempt " .. (vetoAttempts+1) .. "/" .. maxVetos)
+                local vetoSuccess = VetoMap()
+                if not vetoSuccess then
+                    print("[AutoProgression] Veto failed (no vetoes left?). Breaking.")
+                    break
+                end
+                vetoAttempts = vetoAttempts + 1
+            end
+        end
+        
+        print("[AutoProgression] No hardcore maps after using all vetoes. Teleporting to lobby...")
+        runningHardcore = false
+        SmartTeleportToLobby()
+        return
+    else
+        -- In lobby: run the default hardcore strategy (YeetML script handles map joining)
+        print("[AutoProgression] In lobby, running default hardcore strategy")
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"))()
+    end
+    
+    runningHardcore = false
 end
 
 -- // ===== AUTO PROGRESSION LOGIC =====
@@ -338,48 +407,52 @@ local function RunAutoProgression()
     
     print("[AutoProgression] Starting Auto Progression...")
     
+    -- Wait for data to load
     task.wait(3)
     local level = GetStat("Level")
     local coins = GetStat("Coins")
     
     print("[AutoProgression] Level: " .. tostring(level) .. ", Coins: " .. tostring(coins))
     
+    -- Level-based strategy selection
     if level >= 100 then
         print("[AutoProgression] Level 100+ reached! Stopping progression.")
         AutoProgressionRunning = false
         return
-     elseif level >= 51 then
-    if HardcoreExecuted then
-        AutoProgressionRunning = false
-        return
-    end
-
-    HardcoreExecuted = true
-    AutoProgressionRunning = true
-
-    print("[AutoProgression] Level >= 51 detected. EXECUTING HARDCORE ONCE ONLY.")
-
-    -- kill UI toggle so nothing restarts it
-    AutoProgressionEnabled = false
-
-    task.spawn(function()
-        task.wait(1)
-
-        loadstring(game:HttpGet(
-            "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"
-        ))()
-    end)
-
-    AutoProgressionRunning = false
-    return
+    elseif level >= 51 then
+        -- Level 50-99: Hardcore strategy
+        -- Required towers: Electroshocker (2500), Freezer (650), Pyromancer (1250), Crook Boss (free)
+        print("[AutoProgression] Level " .. level .. " >= 50, using Hardcore strategy")
+        
+        -- Auto-buy required towers
+        AutoBuyTowers({
+            {"Electroshocker", 2500},
+            {"Freezer", 650},
+            {"Pyromancer", 1250},
+            {"Crook Boss", 0}
+        })
+        
+        RunYeetHardcore()
         
     --[[elseif level >= 26 then
-        -- Molten (commented out)
-    ]]
-    else
-        -- LEVEL 0‑50 : Easy strategy (with map detection / veto)
-        print("[AutoProgression] Level " .. level .. " < 51, using Easy strategy (multi-map)")
+        -- Level 26-49: Molten strategy
+        print("[AutoProgression] Level " .. level .. " >= 26, using Molten strategy")
         
+        -- Auto-buy required towers for the Molten strategy
+        AutoBuyTowers({
+            {"Electroshocker", 2500},      -- Adjust price if needed
+            {"Military Base", 4000}, -- Adjust price if needed
+            {"Hunter", 1000}        -- Adjust price if needed
+        })
+        
+        RunYeetMolten()]]
+        
+    else
+        -- Level 0-25: Easy strategy (multi-map support)
+        -- Required towers: Scout (free), Soldier (350), Shotgunner (850), Assassin (800), Commander (4000), DJ Booth (5000)
+        print("[AutoProgression] Level " .. level .. " < 50, using Easy strategy (multi-map)")
+        
+        -- Auto-buy towers needed by easy strategies
         AutoBuyTowers({
             {"Soldier", 350},
             {"Shotgunner", 850},
@@ -395,10 +468,13 @@ local function RunAutoProgression()
     AutoProgressionRunning = false
 end
 
--- // ===== UI CREATION (unchanged) =====
+-- // ===== UI CREATION =====
 local function CreateUI()
+    -- Remove old UI if exists
     local oldGui = CoreGui:FindFirstChild("AutoProgressionUI")
-    if oldGui then oldGui:Destroy() end
+    if oldGui then
+        oldGui:Destroy()
+    end
     
     local gui = Instance.new("ScreenGui")
     gui.Name = "AutoProgressionUI"
@@ -413,6 +489,7 @@ local function CreateUI()
     frame.Parent = gui
     
     Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 14)
+    
     local stroke = Instance.new("UIStroke")
     stroke.Color = Color3.fromRGB(60, 60, 80)
     stroke.Thickness = 2
@@ -424,6 +501,7 @@ local function CreateUI()
     header.BackgroundColor3 = Color3.fromRGB(70, 130, 255)
     header.BorderSizePixel = 0
     header.Parent = frame
+    
     Instance.new("UICorner", header).CornerRadius = UDim.new(0, 12)
     
     local gradient = Instance.new("UIGradient")
@@ -442,6 +520,7 @@ local function CreateUI()
     title.Font = Enum.Font.GothamBold
     title.TextXAlignment = Enum.TextXAlignment.Center
     title.Parent = header
+    
     local titleConstraint = Instance.new("UITextSizeConstraint")
     titleConstraint.MaxTextSize = 22
     titleConstraint.MinTextSize = 15
@@ -478,8 +557,10 @@ local function CreateUI()
     toggle.TextScaled = true
     toggle.Font = Enum.Font.GothamBold
     toggle.Parent = frame
+    
     Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 10)
     
+    -- Load saved state
     local savedState = false
     if isfile and isfile(SETTINGS_FILE) then
         local success, data = pcall(function()
@@ -490,8 +571,11 @@ local function CreateUI()
         end
     end
     
+    -- Toggle logic
     toggle.MouseButton1Click:Connect(function()
         AutoProgressionEnabled = not AutoProgressionEnabled
+        
+        -- Save state
         if writefile then
             local saveData = { AutoProgression = AutoProgressionEnabled }
             writefile(SETTINGS_FILE, HttpService:JSONEncode(saveData))
@@ -511,6 +595,7 @@ local function CreateUI()
         end
     end)
     
+    -- Auto-start if was enabled
     if savedState then
         AutoProgressionEnabled = true
         toggle.Text = "ON"
@@ -520,16 +605,19 @@ local function CreateUI()
         task.spawn(RunAutoProgression)
     end
     
-    -- Dragging (unchanged)
+    -- Dragging
     local dragging = false
     local dragInput
     local dragStart
     local startPos
+    
     frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
             startPos = frame.Position
+            
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
@@ -537,11 +625,14 @@ local function CreateUI()
             end)
         end
     end)
+    
     frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
             dragInput = input
         end
     end)
+    
     UserInputService.InputChanged:Connect(function(input)
         if input == dragInput and dragging then
             local delta = input.Position - dragStart
@@ -554,6 +645,7 @@ local function CreateUI()
         end
     end)
     
+    -- Update level display
     task.spawn(function()
         while task.wait(1) do
             local level = GetStat("Level")
@@ -563,15 +655,21 @@ local function CreateUI()
         end
     end)
     
-    return { title = title, status = statusDisplay, toggle = toggle, levelDisplay = levelDisplay }
+    return { 
+        title = title, 
+        status = statusDisplay, 
+        toggle = toggle,
+        levelDisplay = levelDisplay
+    }
 end
 
 -- // ===== UI RECOVERY LOOP =====
+-- Keep the UI alive even if other scripts destroy CoreGui elements
 task.spawn(function()
     while task.wait(5) do
         if AutoProgressionEnabled and not CoreGui:FindFirstChild("AutoProgressionUI") then
             print("[AutoProgression] UI was destroyed, recreating...")
-            CreateUI()
+            local ui = CreateUI()
         end
     end
 end)
@@ -579,10 +677,10 @@ end)
 -- Create the UI
 local ui = CreateUI()
 
--- Expose functions globally
+-- Expose functions globally so they can be called from other scripts
 getgenv().BuyTower = BuyTower
 getgenv().RunYeetEasy = RunYeetEasy
-getgenv().LoadHardcoreDirect = LoadHardcoreDirect    -- new direct loader
+getgenv().RunYeetHardcore = RunYeetHardcore
 getgenv().RunAutoProgression = RunAutoProgression
 
 print("[AutoProgression] Loaded successfully!")
