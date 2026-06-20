@@ -77,43 +77,52 @@ local function RemoveAether()
     end)
 end
 
--- // ===== CHECK IF TOWER IS OWNED (GUI-based) =====
 local function OwnsTower(towerName)
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return false end
-
-    local inventoryView = playerGui:FindFirstChild("ReactUniversalInventoryView")
-    if not inventoryView then return false end
-
-    local holder = inventoryView:FindFirstChild("Holder")
-    if not holder then return false end
-
-    local windowFrame = holder:FindFirstChild("windowFrame")
-    if not windowFrame then return false end
-
-    local towersFrame = windowFrame:FindFirstChild("towersInventoryFrame")
-    if not towersFrame then return false end
-
-    local towerContainer = towersFrame:FindFirstChild("towerContainer")
-    if not towerContainer then return false end
-
-    -- Search all children whose name ends with "scrolling" (e.g., 1scrolling, 2scrolling, etc.)
-    for _, child in ipairs(towerContainer:GetChildren()) do
-        if string.find(child.Name, "scrolling") then
-            local towerFrame = child:FindFirstChild(towerName)
-            if towerFrame then
-                local main = towerFrame:FindFirstChild("main")
-                if main then
-                    local topThing = main:FindFirstChild("topThing")
-                    if topThing then
-                        -- Visible = NOT owned; invisible = owned
-                        return not topThing.Visible
+    local maxAttempts = 15   -- ~7.5 seconds to find the UI
+    for attempt = 1, maxAttempts do
+        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if playerGui then
+            local inventoryView = playerGui:FindFirstChild("ReactUniversalInventoryView")
+            if inventoryView then
+                local holder = inventoryView:FindFirstChild("Holder")
+                if holder then
+                    local windowFrame = holder:FindFirstChild("windowFrame")
+                    if windowFrame then
+                        local towersFrame = windowFrame:FindFirstChild("towersInventoryFrame")
+                        if towersFrame then
+                            local towerContainer = towersFrame:FindFirstChild("towerContainer")
+                            if towerContainer then
+                                -- UI is now loaded – wait 2 seconds for it to stabilise
+                                task.wait(2)
+                                
+                                -- Now do a fresh check
+                                for _, child in ipairs(towerContainer:GetChildren()) do
+                                    if string.find(child.Name, "scrolling") then
+                                        local towerFrame = child:FindFirstChild(towerName)
+                                        if towerFrame then
+                                            local main = towerFrame:FindFirstChild("main")
+                                            if main then
+                                                local topThing = main:FindFirstChild("topThing")
+                                                if topThing then
+                                                    -- Return ownership based on topThing visibility
+                                                    local owned = not topThing.Visible
+                                                    return owned
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                                -- Tower not found => not owned
+                                return false
+                            end
+                        end
                     end
                 end
             end
         end
+        task.wait(0.5)
     end
-
+    warn("[AutoProgression] Timeout waiting for inventory UI – assuming tower NOT owned.")
     return false
 end
 -- // ===== AUTO BUY TOWERS =====
@@ -502,22 +511,49 @@ local function RunAutoProgression()
     print("[AutoProgression] Level: " .. tostring(level) .. ", Coins: " .. tostring(coins))
 
     if level >= 176 then
-        
-        -- 🔧 CUSTOMIZE: list of towers to buy for 100+ (name, cost)
-        local result = AutoBuyTowers({
-    {"Gatling Gun", 35000, "Coins"},
-    {"Trapper", 3000, "Coins"},
-    {"Hacker", 5500, "Gems"},
-})
+    print("[AutoProgression] Level 176+ – preparing for Frost.")
 
-if result == "Coins" then
-    print("[AutoProgression] Farming Coins...")
-    RunYeetEasy()
-    AutoProgressionRunning = false
-    return
-elseif result == "Gems" then
-    print("[AutoProgression] Farming Gems...")
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
+    -- Check ownership first (with UI wait)
+    local haveGatling = OwnsTower("Gatling Gun")
+    local haveTrapper = OwnsTower("Trapper")
+    local haveHacker = OwnsTower("Hacker")
+
+    if haveGatling and haveTrapper and haveHacker then
+        print("[AutoProgression] All Frost towers already owned – running Frost directly.")
+        RunFrostStrategy()
+        AutoProgressionRunning = false
+        return
+    end
+
+    -- Not all owned – enter buy loop (with fallback farming)
+    local maxAttempts = 10
+    for attempt = 1, maxAttempts do
+        print("[AutoProgression] Attempt " .. attempt .. " to buy missing Frost towers.")
+        local result = AutoBuyTowers({
+            {"Gatling Gun", 35000, "Coins"},
+            {"Trapper", 3000, "Coins"},
+            {"Hacker", 5500, "Gems"},
+        })
+
+        if result == "OK" then
+            print("[AutoProgression] All Frost towers ready – running Frost.")
+            RunFrostStrategy()
+            AutoProgressionRunning = false
+            return
+        elseif result == "Coins" then
+            print("[AutoProgression] Missing coins – farming coins with Easy strategy...")
+            RunYeetEasy()  -- this will run one Easy game, then the loop continues
+        elseif result == "Gems" then
+            print("[AutoProgression] Missing gems – farming gems with Hardcore strategy...")
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
+        else
+            print("[AutoProgression] Unknown result from AutoBuyTowers – stopping.")
+            break
+        end
+        task.wait(3) -- wait before retrying after farming
+    end
+
+    print("[AutoProgression] Could not acquire all Frost towers after " .. maxAttempts .. " attempts. Exiting.")
     AutoProgressionRunning = false
     return
 end
