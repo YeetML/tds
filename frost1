@@ -5,8 +5,6 @@ TDS:Mode("Frost")
 TDS:GameInfo("Abyssal Trench", {})
 local prol = { Glass = true, Committed = true, HiddenEnemies = true, Quarantine = true, Limitation= true, ExplodingEnemies = true }
 game:GetService("ReplicatedStorage").Network.Modifiers["RF:BulkVoteModifiers"]:InvokeServer(prol)
-TDS:UnlockTimeScale()
-TDS:TimeScale(2)
  
  
 TDS:Place("Trapper", -3.7282562255859375, 0.4474773406982422, -3.986520290374756)
