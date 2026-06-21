@@ -5,6 +5,8 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local TeleportService = game:GetService("TeleportService")
 
+local Globals = getgenv().Globals or _G.Globals   -- Reference main script's Globals
+
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
 local RemoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent")
@@ -17,26 +19,31 @@ local SETTINGS_FILE = "AutoProgression.json"
 _G.AutoProgSettings = _G.AutoProgSettings or {}
 
 local function ApplyStrategySettings(strategy)
-    -- Compute desired values
+    -- Reference Globals from main script
+    local MainGlobals = getgenv().Globals or _G.Globals
+
     local settings = {
-        AutoSkip = (strategy.autoSkip ~= nil) and strategy.autoSkip or false,       
-        AutoPremium = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
-        AutoRejoin = (strategy.autoRejoin ~= nil) and strategy.autoRejoin or true,
-        TimeScaleEnabled = (strategy.timeScaleEnabled ~= nil) and strategy.timeScaleEnabled or false,
-        TimeScaleValue = (strategy.timeScaleValue ~= nil) and strategy.timeScaleValue or 1,
+        AutoSkip          = (strategy.autoSkip ~= nil) and strategy.autoSkip or false,
+        AutoPremium       = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
+        AutoRejoin        = (strategy.autoRejoin ~= nil) and strategy.autoRejoin or true,
+        TimeScaleEnabled  = (strategy.timeScaleEnabled ~= nil) and strategy.timeScaleEnabled or false,
+        TimeScaleValue    = (strategy.timeScaleValue ~= nil) and strategy.timeScaleValue or 1,
     }
 
+    print("[AutoProgression] Applying & LOCKING settings...")
+
     for key, value in pairs(settings) do
-        getgenv()[key] = value
-        
-        if Globals then
-            Globals[key] = value
+        getgenv()[key] = value                    -- Global environment
+        _G.AutoProgSettings[key] = value          -- Lock table
+
+        if MainGlobals then
+            MainGlobals[key] = value              -- Direct write to main script's Globals
         end
-        
-        _G.AutoProgSettings[key] = value
     end
     
     _G.AutoProgSettings.__locked = true
+
+    print("[AutoProgression] ✅ SETTINGS LOCKED:")
     for key, value in pairs(settings) do
         print("   → " .. key .. " = " .. tostring(value))
     end
