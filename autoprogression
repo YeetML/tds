@@ -595,6 +595,20 @@ local function RunAutoProgression()
         return
     end
 
+    if currentDifficulty == "Easy" and level < 51 then
+    print("[AutoProgression] Already in Easy match – continuing with Easy strategy.")
+    RunYeetEasy()
+    AutoProgressionRunning = false
+    return
+    end
+
+    if currentDifficulty == "Easy" and level >= 176 then
+    print("[AutoProgression] In Easy match but should be running Frost – teleporting to lobby.")
+    AutoProgressionRunning = false
+    SmartTeleportToLobby()
+    return
+    end
+
     if level >= 176 then
         local haveGatling = OwnsTower("Gatling Gun")
         local haveTrapper = OwnsTower("Trapper")
