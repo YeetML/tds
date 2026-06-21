@@ -688,7 +688,7 @@ local function RunAutoProgression()
         return
     end
 
-    if level >= 110 then
+    if level >= 120 then
         local result = AutoBuyTowers({
             {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"},
         })
