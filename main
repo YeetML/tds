@@ -6,6 +6,8 @@ local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
+_G.AutoProgSettings = _G.AutoProgSettings or {}
+
 local function SmartTeleportToLobby()
     local lobbyId = 3260590327
     pcall(function()
@@ -324,11 +326,17 @@ end
 
 local function SetSetting(name, value)
     if DefaultSettings[name] ~= nil then
+        -- If AutoProgSettings is locked for this key, ignore the change
+        if _G.AutoProgSettings.__locked and _G.AutoProgSettings[name] ~= nil then
+            return  -- AutoProgression is controlling this setting
+        end
         if name == "TimeScaleValue" then
             value = CoerceTimeScaleValue(value, Globals.TimeScaleValue or 2)
         end
         Globals[name] = value
         SaveSettings()
+        -- Also update AutoProgSettings so both stay in sync (optional)
+        _G.AutoProgSettings[name] = value
     end
 end
 
@@ -4423,6 +4431,15 @@ end
 
 task.spawn(function()
     while true do
+
+         if _G.AutoProgSettings.__locked then
+            for key, value in pairs(_G.AutoProgSettings) do
+                if key ~= "__locked" then
+                    Globals[key] = value
+                end
+            end
+        end
+        
         if Globals.AutoPickups and not AutoPickupsRunning then
             StartAutoPickups()
         end
