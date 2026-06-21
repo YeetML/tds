@@ -49,18 +49,46 @@ local function ApplyStrategySettings(strategy)
     end
 end
 
--- // ===== BUY TOWER FUNCTION =====
+-- // ===== BUY TOWER FUNCTION (with alias fallback) =====
 local function BuyTower(towerName)
     print("Buying " .. towerName)
-    local success, result = pcall(function()
-        return RemoteFunc:InvokeServer("Shop", "Purchase", "Tower", towerName)
-    end)
-    if success then
-        print("Successfully bought " .. towerName)
-    else
-        print("Failed to buy " .. towerName .. ": " .. tostring(result))
+
+    -- Define aliases for towers that may have different names in the game
+    local aliases = {
+        ["EvolvedOperator"] = "Operator",
+        ["EvolvedJuggernaut"] = "Juggernaut",
+        -- Add more if needed (e.g., other evolved towers)
+    }
+
+    -- Helper to attempt a purchase with a given name
+    local function attemptPurchase(name)
+        local success, result = pcall(function()
+            return RemoteFunc:InvokeServer("Shop", "Purchase", "Tower", name)
+        end)
+        if success then
+            print("Successfully bought " .. name)
+            return true
+        else
+            print("Failed to buy " .. name .. ": " .. tostring(result))
+            return false
+        end
     end
-    return success
+
+    -- Try the primary name
+    if attemptPurchase(towerName) then
+        return true
+    end
+
+    -- If that fails and we have an alias, try that too
+    local alternate = aliases[towerName]
+    if alternate then
+        print("Primary purchase failed, trying alternate: " .. alternate)
+        if attemptPurchase(alternate) then
+            return true
+        end
+    end
+
+    return false
 end
 
 -- // ===== GET STAT FUNCTION =====
