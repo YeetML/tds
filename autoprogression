@@ -19,29 +19,27 @@ _G.AutoProgSettings = _G.AutoProgSettings or {}
 local function ApplyStrategySettings(strategy)
     -- Compute desired values
     local settings = {
-        AutoSkip = (strategy.autoSkip ~= nil) and strategy.autoSkip or true,
+        AutoSkip = (strategy.autoSkip ~= nil) and strategy.autoSkip or false,       
         AutoPremium = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
         AutoRejoin = (strategy.autoRejoin ~= nil) and strategy.autoRejoin or true,
         TimeScaleEnabled = (strategy.timeScaleEnabled ~= nil) and strategy.timeScaleEnabled or false,
         TimeScaleValue = (strategy.timeScaleValue ~= nil) and strategy.timeScaleValue or 1,
     }
 
-    -- Write to global environment (immediate use)
     for key, value in pairs(settings) do
         getgenv()[key] = value
-    end
-
-    -- Write to shared table and lock it
-    for key, value in pairs(settings) do
+        
+        if Globals then
+            Globals[key] = value
+        end
+        
         _G.AutoProgSettings[key] = value
     end
-    _G.AutoProgSettings.__locked = true   -- tell YeetML to stop overwriting
-
-    print("[AutoProgression] Settings applied (locked):",
-        "AutoSkip=" .. tostring(getgenv().AutoSkip),
-        "AutoPremium=" .. tostring(getgenv().AutoPremium),
-        "TimeScale=" .. tostring(getgenv().TimeScaleEnabled) .. "(" .. tostring(getgenv().TimeScaleValue) .. ")"
-    )
+    
+    _G.AutoProgSettings.__locked = true
+    for key, value in pairs(settings) do
+        print("   → " .. key .. " = " .. tostring(value))
+    end
 end
 
 -- // ===== BUY TOWER FUNCTION =====
