@@ -14,7 +14,6 @@ local IsMobile = (platform == Enum.Platform.IOS or platform == Enum.Platform.And
 
 local SETTINGS_FILE = "AutoProgression.json"
 
--- // ===== APPLY PER‑MAP SETTINGS (with lock) =====
 local function ApplyStrategySettings(strategy)
     -- 1. Compute desired values (fallback to defaults)
     local settings = {
@@ -25,36 +24,12 @@ local function ApplyStrategySettings(strategy)
         TimeScaleValue = (strategy.timeScaleValue ~= nil) and strategy.timeScaleValue or 1,
     }
 
-    -- 2. Write to global environment
+    -- 2. Write to global environment (no metatable locking)
     for key, value in pairs(settings) do
         getgenv()[key] = value
     end
 
-    -- 3. Lock these keys so YeetML cannot overwrite them
-    local protectedKeys = {
-        AutoSkip = true,
-        AutoPremium = true,
-        AutoRejoin = true,
-        TimeScaleEnabled = true,
-        TimeScaleValue = true,
-    }
-
-    local env = getgenv()
-    local oldMeta = getmetatable(env) or {}
-    local newMeta = {
-        __index = oldMeta.__index,
-        __newindex = function(t, key, value)
-            if protectedKeys[key] then
-                -- Silently ignore any attempt to overwrite these keys
-                return
-            else
-                rawset(t, key, value)
-            end
-        end
-    }
-    setmetatable(env, newMeta)
-
-    print("[AutoProgression] Settings locked:",
+    print("[AutoProgression] Settings applied:",
         "AutoSkip=" .. tostring(getgenv().AutoSkip),
         "AutoPremium=" .. tostring(getgenv().AutoPremium),
         "TimeScale=" .. tostring(getgenv().TimeScaleEnabled) .. "(" .. tostring(getgenv().TimeScaleValue) .. ")"
