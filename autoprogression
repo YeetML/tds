@@ -14,6 +14,16 @@ local IsMobile = (platform == Enum.Platform.IOS or platform == Enum.Platform.And
 
 local SETTINGS_FILE = "AutoProgression.json"
 
+-- // ===== APPLY PER‑MAP SETTINGS =====
+local function ApplyStrategySettings(strategy)
+    -- Use strategy's values if provided, otherwise fallback to defaults
+    getgenv().AutoSkip = (strategy.autoSkip ~= nil) and strategy.autoSkip or true
+    getgenv().AutoPremium = (strategy.autoPremium ~= nil) and strategy.autoPremium or false
+    getgenv().AutoRejoin = (strategy.autoRejoin ~= nil) and strategy.autoRejoin or true
+    getgenv().TimeScaleEnabled = (strategy.timeScaleEnabled ~= nil) and strategy.timeScaleEnabled or false
+    getgenv().TimeScaleValue = (strategy.timeScaleValue ~= nil) and strategy.timeScaleValue or 1
+end
+
 -- // ===== BUY TOWER FUNCTION =====
 local function BuyTower(towerName)
     print("Buying " .. towerName)
@@ -239,35 +249,55 @@ local EasyStrategies = {
         mapName = "Crossroads",
         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy1",
         loadout = {"Scout", "None", "None", "None", "None"},
-        mode = "Easy"
+        mode = "Easy",
+        autoPremium = false,
+        autoSkip = true,
+        autoRejoin = true,
+        timeScaleEnabled = false,
     },
     {
         name = "easy2",
         mapName = "Gilded Path",
         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy2",
         loadout = {"Soldier", "Shotgunner", "None", "None", "None"},
-        mode = "Easy"
+        mode = "Easy",
+        autoPremium = false,
+        autoSkip = true,
+        autoRejoin = true,
+        timeScaleEnabled = false,
     },
     {
         name = "easy3",
         mapName = "Dead Ahead",
         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy3",
         loadout = {"Militant", "None", "None", "None", "None"},
-        mode = "Easy"
+        mode = "Easy",
+        autoPremium = false,
+        autoSkip = true,
+        autoRejoin = true,
+        timeScaleEnabled = false,
     },
     {
         name = "easy4",
         mapName = "Lay By",
         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy4",
         loadout = {"Militant", "None", "None", "None", "None"},
-        mode = "Easy"
+        mode = "Easy",
+        autoPremium = false,
+        autoSkip = true,
+        autoRejoin = true,
+        timeScaleEnabled = false,
     },
     {
         name = "easy5",
         mapName = "Mason Arch",
         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy5",
         loadout = {"Militant", "Shotgunner", "None", "None", "None"},
-        mode = "Easy"
+        mode = "Easy",
+        autoPremium = false,
+        autoSkip = true,
+        autoRejoin = true,
+        timeScaleEnabled = false,
     },
 }
 
@@ -277,7 +307,12 @@ local FrostStrategies = {
         mapName = "Abyssal Trench",
         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost1",
         loadout = {"Gatling Gun", "Trapper", "Hacker", "DJ Booth", "Mercenary Base"},
-        mode = "Frost"
+        mode = "Frost",
+        autoPremium = false,
+        autoSkip = false,
+        autoRejoin = true,
+        timeScaleEnabled = true,
+        timeScaleValue = 2,
     },
 
     {
@@ -285,21 +320,36 @@ local FrostStrategies = {
         mapName = "Lay By",
         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost2",
         loadout = {"Gatling Gun", "Trapper", "Hacker", "DJ Booth", "Mercenary Base"},
-        mode = "Frost"
+        mode = "Frost",
+        autoPremium = false,
+        autoSkip = true,
+        autoRejoin = true,
+        timeScaleEnabled = true,
+        timeScaleValue = 2,
     },
     {
         name = "frost3",
         mapName = "Crossroads",
         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost3",
         loadout = {"Gatling Gun", "Trapper", "Hacker", "DJ Booth", "Mercenary Base"},
-        mode = "Frost"
+        mode = "Frost",
+        autoPremium = false,
+        autoSkip = true,
+        autoRejoin = true,
+        timeScaleEnabled = true,
+        timeScaleValue = 2,
     },
     {
         name = "frost4",
         mapName = "Retro Crossroads",
         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost4",
         loadout = {"Gatling Gun", "Trapper", "Hacker", "DJ Booth", "Mercenary Base"},
-        mode = "Frost"
+        mode = "Frost",
+        autoPremium = false,
+        autoSkip = true,
+        autoRejoin = true,
+        timeScaleEnabled = true,
+        timeScaleValue = 2,
     },
 }
 
@@ -373,13 +423,6 @@ local function RunYeetEasy()
     if runningEasy then return end
     runningEasy = true
     
-    print("[AutoProgression] Starting Easy strategy...")
-    
-    getgenv().AutoPremium = false
-    getgenv().AutoSkip = true
-    getgenv().AutoRejoin = true
-    getgenv().TimeScaleEnabled = false
-    
     if not IsInLobby() then
         local vetoAttempts = 0
         local maxVetos = GetRemainingVetos() or 3
@@ -399,6 +442,8 @@ local function RunYeetEasy()
             
             if #availableStrategies > 0 then
                 local chosenStrategy = availableStrategies[math.random(1, #availableStrategies)]
+                -- 👇 NEW: Apply per‑map settings
+                ApplyStrategySettings(chosenStrategy)
                 print("[AutoProgression] Selected: " .. chosenStrategy.name .. " on " .. chosenStrategy.mapName)
                 print("[AutoProgression] Loading strategy from: " .. chosenStrategy.url)
                 loadstring(game:HttpGet(chosenStrategy.url))()
@@ -421,6 +466,8 @@ local function RunYeetEasy()
         return
     else
         local chosenStrategy = EasyStrategies[math.random(1, #EasyStrategies)]
+        -- 👇 NEW: Apply per‑map settings
+        ApplyStrategySettings(chosenStrategy)
         print("[AutoProgression] In lobby, randomly selected: " .. chosenStrategy.name .. " strategy")
         print("[AutoProgression] Loading strategy from: " .. chosenStrategy.url)
         loadstring(game:HttpGet(chosenStrategy.url))()
@@ -433,15 +480,6 @@ local function RunFrostStrategy()
     if runningFrost then return end
     runningFrost = true
     
-    print("[AutoProgression] Starting Frost strategy...")
-    
-    -- Optional: disable premium/skip/rejoin (adjust as needed)
-    getgenv().AutoPremium = false
-    getgenv().AutoSkip = true
-    getgenv().AutoRejoin = true
-    getgenv().TimeScaleEnabled = true
-    getgenv().TimeScaleValue = 2
-    
     if not IsInLobby() then
         local vetoAttempts = 0
         local maxVetos = GetRemainingVetos() or 3
@@ -449,17 +487,17 @@ local function RunFrostStrategy()
         while vetoAttempts < maxVetos do
             local availableMaps = GetAvailableMaps()
             -- Build a sorted list of map names from availableMaps
-local mapList = {}
-for name in pairs(availableMaps) do
-    table.insert(mapList, name)
-end
-table.sort(mapList)
+            local mapList = {}
+            for name in pairs(availableMaps) do
+                table.insert(mapList, name)
+            end
+            table.sort(mapList)
 
--- Update the debug label in the UI
-if getgenv().AutoProgressionUI and getgenv().AutoProgressionUI.debug then
-    getgenv().AutoProgressionUI.debug.Text =
-        "Frost Maps:\n" .. (#mapList > 0 and table.concat(mapList, "\n") or "None")
-end
+            -- Update the debug label in the UI
+            if getgenv().AutoProgressionUI and getgenv().AutoProgressionUI.debug then
+                getgenv().AutoProgressionUI.debug.Text =
+                    "Frost Maps:\n" .. (#mapList > 0 and table.concat(mapList, "\n") or "None")
+            end
             
             local availableStrategies = {}
             for _, strategy in ipairs(FrostStrategies) do
@@ -471,6 +509,8 @@ end
             
             if #availableStrategies > 0 then
                 local chosenStrategy = availableStrategies[math.random(1, #availableStrategies)]
+                -- 👇 NEW: Apply per‑map settings
+                ApplyStrategySettings(chosenStrategy)
                 print("[AutoProgression] Selected Frost: " .. chosenStrategy.name .. " on " .. chosenStrategy.mapName)
                 print("[AutoProgression] Loading Frost strategy from: " .. chosenStrategy.url)
                 loadstring(game:HttpGet(chosenStrategy.url))()
@@ -494,6 +534,8 @@ end
     else
         -- In lobby, randomly pick a Frost strategy (no map check, but we still pick one)
         local chosenStrategy = FrostStrategies[math.random(1, #FrostStrategies)]
+        -- 👇 NEW: Apply per‑map settings
+        ApplyStrategySettings(chosenStrategy)
         print("[AutoProgression] In lobby, randomly selected Frost: " .. chosenStrategy.name .. " strategy")
         print("[AutoProgression] Loading Frost strategy from: " .. chosenStrategy.url)
         loadstring(game:HttpGet(chosenStrategy.url))()
