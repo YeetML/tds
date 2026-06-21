@@ -447,7 +447,7 @@ end
 local function RunYeetEasy()
     if runningEasy then return end
     runningEasy = true
-    rawset(getgenv(), "TimeScaleEnabled", false)
+    getgenv().TimeScaleEnabled = false
     
     if not IsInLobby() then
         local vetoAttempts = 0
@@ -507,7 +507,7 @@ end
 local function RunFrostStrategy()
     if runningFrost then return end
     runningFrost = true
-    rawset(getgenv(), "TimeScaleEnabled", false)
+    getgenv().TimeScaleEnabled = false
     
     if not IsInLobby() then
         local vetoAttempts = 0
