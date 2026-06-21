@@ -14,8 +14,10 @@ local IsMobile = (platform == Enum.Platform.IOS or platform == Enum.Platform.And
 
 local SETTINGS_FILE = "AutoProgression.json"
 
+_G.AutoProgSettings = _G.AutoProgSettings or {}
+
 local function ApplyStrategySettings(strategy)
-    -- 1. Compute desired values (fallback to defaults)
+    -- Compute desired values
     local settings = {
         AutoSkip = (strategy.autoSkip ~= nil) and strategy.autoSkip or true,
         AutoPremium = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
@@ -24,12 +26,18 @@ local function ApplyStrategySettings(strategy)
         TimeScaleValue = (strategy.timeScaleValue ~= nil) and strategy.timeScaleValue or 1,
     }
 
-    -- 2. Write to global environment (no metatable locking)
+    -- Write to global environment (immediate use)
     for key, value in pairs(settings) do
         getgenv()[key] = value
     end
 
-    print("[AutoProgression] Settings applied:",
+    -- Write to shared table and lock it
+    for key, value in pairs(settings) do
+        _G.AutoProgSettings[key] = value
+    end
+    _G.AutoProgSettings.__locked = true   -- tell YeetML to stop overwriting
+
+    print("[AutoProgression] Settings applied (locked):",
         "AutoSkip=" .. tostring(getgenv().AutoSkip),
         "AutoPremium=" .. tostring(getgenv().AutoPremium),
         "TimeScale=" .. tostring(getgenv().TimeScaleEnabled) .. "(" .. tostring(getgenv().TimeScaleValue) .. ")"
@@ -835,6 +843,7 @@ local function CreateUI()
             toggle.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
             title.Text = "Auto Progression OFF"
             statusDisplay.Text = "Status: Stopped"
+            _G.AutoProgSettings.__locked = false
         end
     end)
     
