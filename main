@@ -4435,7 +4435,11 @@ task.spawn(function()
          if _G.AutoProgSettings.__locked then
             for key, value in pairs(_G.AutoProgSettings) do
                 if key ~= "__locked" then
-                    Globals[key] = value
+                    -- Force it every iteration while locked
+                    if Globals[key] ~= value then
+                        Globals[key] = value
+                        print("[AutoProg Lock] Forced " .. key .. " = " .. tostring(value))
+                    end
                 end
             end
         end
