@@ -26,8 +26,6 @@ local function ApplyStrategySettings(strategy)
         AutoSkip          = (strategy.autoSkip ~= nil) and strategy.autoSkip or false,
         AutoPremium       = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
         AutoRejoin        = (strategy.autoRejoin ~= nil) and strategy.autoRejoin or true,
-        TimeScaleEnabled  = (strategy.timeScaleEnabled ~= nil) and strategy.timeScaleEnabled or false,
-        TimeScaleValue    = (strategy.timeScaleValue ~= nil) and strategy.timeScaleValue or 1,
     }
 
     print("[AutoProgression] Applying & LOCKING settings...")
@@ -306,7 +304,6 @@ local EasyStrategies = {
         autoPremium = false,
         autoSkip = true,
         autoRejoin = true,
-        timeScaleEnabled = false,
     },
     {
         name = "easy2",
@@ -317,7 +314,6 @@ local EasyStrategies = {
         autoPremium = false,
         autoSkip = true,
         autoRejoin = true,
-        timeScaleEnabled = false,
     },
     {
         name = "easy3",
@@ -328,7 +324,6 @@ local EasyStrategies = {
         autoPremium = false,
         autoSkip = true,
         autoRejoin = true,
-        timeScaleEnabled = false,
     },
     {
         name = "easy4",
@@ -339,7 +334,6 @@ local EasyStrategies = {
         autoPremium = false,
         autoSkip = true,
         autoRejoin = true,
-        timeScaleEnabled = false,
     },
     {
         name = "easy5",
@@ -350,7 +344,6 @@ local EasyStrategies = {
         autoPremium = false,
         autoSkip = true,
         autoRejoin = true,
-        timeScaleEnabled = false,
     },
 }
 
@@ -364,8 +357,6 @@ local FrostStrategies = {
         autoPremium = false,
         autoSkip = false,
         autoRejoin = true,
-        timeScaleEnabled = true,
-        timeScaleValue = 2,
     },
 
     {
@@ -377,8 +368,6 @@ local FrostStrategies = {
         autoPremium = false,
         autoSkip = false,
         autoRejoin = true,
-        timeScaleEnabled = true,
-        timeScaleValue = 2,
     },
     {
         name = "frost3",
@@ -389,8 +378,6 @@ local FrostStrategies = {
         autoPremium = false,
         autoSkip = false,
         autoRejoin = true,
-        timeScaleEnabled = true,
-        timeScaleValue = 2,
     },
     {
         name = "frost4",
@@ -401,8 +388,6 @@ local FrostStrategies = {
         autoPremium = false,
         autoSkip = false,
         autoRejoin = true,
-        timeScaleEnabled = true,
-        timeScaleValue = 2,
     },
 }
 
@@ -535,7 +520,6 @@ end
 local function RunFrostStrategy()
     if runningFrost then return end
     runningFrost = true
-    getgenv().TimeScaleEnabled = false
     
     if not IsInLobby() then
         local vetoAttempts = 0
