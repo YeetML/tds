@@ -5,7 +5,8 @@ TDS:Mode("Frost")
 TDS:GameInfo("Crossroads", {})
 local prol = { Glass = true, Committed = true, HiddenEnemies = true, Quarantine = true, Limitation= true, ExplodingEnemies = true }
 game:GetService("ReplicatedStorage").Network.Modifiers["RF:BulkVoteModifiers"]:InvokeServer(prol)
-
+TDS:UnlockTimeScale()
+TDS:TimeScale(2)
 -- Trapper 1 (index 1)
 TDS:Place("Trapper", -10.67816162109375, 1.0000081062316895, -2.743043899536133)
 TDS:Ready()
