@@ -1,0 +1,163 @@
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+
+TDS:Loadout("Gatling Gun", "DJ Booth", "Mercenary Base", "Trapper", "Hacker")
+TDS:Mode("Frost")
+TDS:GameInfo("Space City", {})
+local prol = { Glass = true, Committed = true, HiddenEnemies = true, Quarantine = true, Limitation= true, ExplodingEnemies = true, Fog = true }
+game:GetService("ReplicatedStorage").Network.Modifiers["RF:BulkVoteModifiers"]:InvokeServer(prol)
+TDS:UnlockTimeScale()
+TDS:TimeScale(2)
+-- ============================================
+-- REORDERED PLACEMENTS TO MATCH ORIGINAL INDEX SEQUENCE
+-- ============================================
+
+-- Index 1 (Trapper) - Wave 1
+TDS:Place("Trapper", 16.06580924987793, 0.9829035997390747, -1.9519295692443848)
+TDS:Ready()
+
+-- Index 2 (Trapper) - Wave 1
+TDS:Place("Trapper", 12.191612243652344, 0.981925904750824, 3.796823024749756)
+
+-- Index 3 (Trapper) - Wave 2
+TDS:Place("Trapper", 15.266265869140625, 0.9792516827583313, 4.315385341644287)
+
+TDS:Upgrade(1)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+
+-- Index 4 (Trapper) - Wave 3
+TDS:Place("Trapper", 19.112812042236328, 0.9828131794929504, -1.5353152751922607)
+TDS:Upgrade(4)
+
+-- Index 5 (Trapper) - Wave 4
+TDS:Place("Trapper", 18.6994571685791, 0.9794263243675232, 4.819033622741699)
+TDS:Upgrade(5)
+
+-- Index 6 (Trapper) - Wave 4
+TDS:Place("Trapper", 21.865320205688477, 0.9791035652160645, 5.295450210571289)
+TDS:Upgrade(6)
+
+-- Index 7 (Trapper) - Wave 5
+TDS:Place("Trapper", 22.38776969909668, 0.9765726923942566, -1.8709564208984375)
+TDS:Upgrade(7)
+
+-- Index 8 (Hacker 1) - Wave 6
+TDS:Place("Hacker", 12.029632568359375, 0.9934704303741455, 6.887489318847656)
+TDS:Upgrade(8)
+TDS:Upgrade(7)
+TDS:SetOption(7, "Trap", "Landmine")
+TDS:Upgrade(3)
+TDS:SetOption(3, "Trap", "Landmine")
+TDS:Upgrade(8)
+TDS:Upgrade(6)
+TDS:SetOption(6, "Trap", "Landmine")
+TDS:Upgrade(2)
+TDS:SetOption(2, "Trap", "Landmine")
+TDS:Upgrade(5)
+TDS:SetOption(5, "Trap", "Landmine")
+TDS:Upgrade(1)
+TDS:SetOption(1, "Trap", "Landmine")
+TDS:Upgrade(4)
+TDS:SetOption(4, "Trap", "Landmine")
+
+-- Index 9 (DJ Booth) - Wave 7
+TDS:Place("DJ Booth", 15.915914535522461, 1.0066713094711304, 8.386220932006836)
+TDS:Upgrade(9)
+TDS:Upgrade(9)
+TDS:Upgrade(9)
+TDS:SetOption(9, "Track", "Green")
+TDS:VoteSkip(14)
+
+-- Index 10 (Gatling Gun) - Wave 3
+TDS:Place("Gatling Gun", 11.304798126220703, 1.6272259950637817, 14.052094459533691)
+TDS:Upgrade(10)
+TDS:VoteSkip(15)
+TDS:Upgrade(10)
+
+-- Index 11 (Hacker 2) - Wave 6
+TDS:Place("Hacker", 12.638940811157227, 0.9838656187057495, -3.3682632446289062)
+TDS:Upgrade(11)
+TDS:Upgrade(11)
+
+-- Index 12 (Mercenary Base 1) - Wave 1
+TDS:Place("Mercenary Base", 4.568292045593262, 0.9987875819206238, 6.798529624938965)
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:SetOption(12, "Unit 2", "Grenadier")
+TDS:SetOption(12, "Unit 1", "Grenadier")
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:SetOption(12, "Unit 3", "Riot Guard")
+
+-- Index 13 (Mercenary Base 2) - Wave 2
+TDS:Place("Mercenary Base", 2.2938880920410156, 0.9823653697967529, 4.201027870178223)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:SetOption(13, "Unit 1", "Riot Guard")
+TDS:SetOption(13, "Unit 2", "Grenadier")
+TDS:SetOption(13, "Unit 3", "Riot Guard")
+TDS:SetOption(13, "Unit 3", "Grenadier")
+TDS:Upgrade(9)
+
+-- Index 14 (Mercenary Base 3) - Wave 2
+TDS:Place("Mercenary Base", -0.5058269500732422, 0.9011355638504028, 6.84193229675293)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:SetOption(14, "Unit 1", "Grenadier")
+TDS:SetOption(14, "Unit 2", "Grenadier")
+TDS:Upgrade(14)
+TDS:SetOption(14, "Unit 3", "Riot Guard")
+
+-- ============================================
+-- REMAINING UPGRADES & SWITCH TO BEAR TRAPS
+-- ============================================
+TDS:Upgrade(3)
+TDS:Upgrade(2)
+TDS:Upgrade(1)
+TDS:Upgrade(4)
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+TDS:Upgrade(7)
+TDS:Upgrade(9)
+TDS:Upgrade(11)
+TDS:Upgrade(8)
+TDS:Upgrade(10)
+TDS:Upgrade(10)
+TDS:Upgrade(4)
+TDS:SetOption(4, "Trap", "Bear Traps")
+TDS:Upgrade(5)
+TDS:SetOption(5, "Trap", "Bear Traps")
+TDS:Upgrade(6)
+TDS:SetOption(6, "Trap", "Bear Traps")
+TDS:Upgrade(7)
+TDS:SetOption(7, "Trap", "Bear Traps")
+TDS:Upgrade(3)
+TDS:SetOption(3, "Trap", "Bear Traps")
+TDS:Upgrade(2)
+TDS:SetOption(2, "Trap", "Bear Traps")
+TDS:Upgrade(1)
+TDS:SetOption(1, "Trap", "Bear Traps")
+TDS:Upgrade(11)
+TDS:Upgrade(8)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:Upgrade(10)
+TDS:Upgrade(10)
+TDS:SetOption(9, "Track", "Red")
+TDS:Upgrade(8, 2)
+TDS:Upgrade(11, 2)
+
+-- ============================================
+-- HACKER ABILITY (CLONES GATLING GUN)
+-- ============================================
+TDS:Ability(8, "Hologram Tower", {
+    towerToClone = 10,
+    towerPosition = Vector3.new(28.28542709350586, 0.9315776824951172, -4.915587425231934)
+}, true)
