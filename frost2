@@ -5,7 +5,8 @@ TDS:Mode("Frost")
 TDS:GameInfo("Lay By", {})
 local prol = { Glass = true, Committed = true, HiddenEnemies = true, Quarantine = true, Limitation= true, ExplodingEnemies = true, Fog = true }
 game:GetService("ReplicatedStorage").Network.Modifiers["RF:BulkVoteModifiers"]:InvokeServer(prol)
-
+TDS:UnlockTimeScale()
+TDS:TimeScale(2)
 TDS:Place("Trapper", -2.601469039916992, 242.99998474121094, 228.82080078125)
 TDS:Ready()
 
