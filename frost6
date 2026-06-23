@@ -2,7 +2,7 @@ local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/td
 TDS:Loadout("Gatling Gun", "DJ Booth", "Mercenary Base", "Trapper", "Hacker")
 TDS:Mode("Frost")
 TDS:GameInfo("Space City", {})
-local prol = { Glass = true, Committed = true, HiddenEnemies = true, Quarantine = true, Limitation= true, ExplodingEnemies = true, Fog = true }
+local prol = { Glass = true, Committed = true, HiddenEnemies = true, Quarantine = true, Limitation= true, ExplodingEnemies = true }
 game:GetService("ReplicatedStorage").Network.Modifiers["RF:BulkVoteModifiers"]:InvokeServer(prol)
 TDS:UnlockTimeScale()
 TDS:TimeScale(2)
