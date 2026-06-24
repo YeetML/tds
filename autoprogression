@@ -352,7 +352,7 @@ local FrostStrategies = {
         name = "frost1",
         mapName = "Abyssal Trench",
         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost1",
-        loadout = {"Gatling Gun", "Trapper", "Hacker", "DJ Booth", "Mercenary Base"},
+        loadout = {"Gatling Gun", "Trapper", "Hacker", "DJ Booth", "Rocketeer"},
         mode = "Frost",
         autoPremium = false,
         autoSkip = false,
@@ -632,11 +632,12 @@ local function RunAutoProgression()
     end
 
     if level >= 176 then
+        local haveRocketeer = OwnsTower("Rocketeer")
         local haveGatling = OwnsTower("Gatling Gun")
         local haveTrapper = OwnsTower("Trapper")
         local haveHacker = OwnsTower("Hacker")
 
-        if haveGatling and haveTrapper and haveHacker then
+        if haveGatling and haveTrapper and haveHacker and haveRocketeer then
             RunFrostStrategy()
             AutoProgressionRunning = false
             return
@@ -648,6 +649,7 @@ local function RunAutoProgression()
                 {"Gatling Gun", 35000, "Coins"},
                 {"Trapper", 3000, "Coins"},
                 {"Hacker", 5500, "Gems"},
+                {"Rocketeer", 2500, "Coins"},
             })
 
             if result == "OK" then
