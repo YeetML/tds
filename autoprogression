@@ -399,16 +399,6 @@ local FrostStrategies = {
         autoSkip = false,
         autoRejoin = true,
     },
-    {
-        name = "frost6",
-        mapName = "Space City",
-        url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost6",
-        loadout = {"Gatling Gun", "Trapper", "Hacker", "DJ Booth", "Mercenary Base"},
-        mode = "Frost",
-        autoPremium = false,
-        autoSkip = false,
-        autoRejoin = true,
-    },
 }
 
 -- // ===== STRATEGY RUNNERS =====
