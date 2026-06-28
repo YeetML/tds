@@ -869,7 +869,8 @@ task.spawn(function()
     while task.wait(5) do
         if AutoProgressionEnabled and not CoreGui:FindFirstChild("AutoProgressionUI") then
             print("[AutoProgression] UI was destroyed, recreating...")
-            CreateUI()
+            local newUI = CreateUI()
+            getgenv().AutoProgressionUI = newUI
         end
     end
 end)
