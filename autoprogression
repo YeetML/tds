@@ -229,41 +229,43 @@ local function GetKeys(t)
     return keys
 end
 
-local function GetRemainingVetos()
+local function GetVetoInfo()
     local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not PlayerGui then return nil end
-    local ReactLobbyHud = PlayerGui:FindFirstChild("ReactLobbyHud")
-    if not ReactLobbyHud then return nil end
-    local Frame = ReactLobbyHud:FindFirstChild("Frame")
+    local Intermission = PlayerGui:FindFirstChild("ReactGameIntermission")
+    if not Intermission then return nil end
+    local Frame = Intermission:FindFirstChild("Frame")
     if not Frame then return nil end
-    local Matchmaking = Frame:FindFirstChild("matchmaking")
-    if not Matchmaking then return nil end
-    local Buttons = Matchmaking:FindFirstChild("buttons")
+    local Buttons = Frame:FindFirstChild("buttons")
     if not Buttons then return nil end
     local VetoButton = Buttons:FindFirstChild("veto")
     if not VetoButton then return nil end
-    for _, child in pairs(VetoButton:GetChildren()) do
-        if child:IsA("TextLabel") then
-            local text = child.Text
-            local remaining = tonumber(text:match("(%d+)/"))
-            if remaining then return remaining end
+    local valueLabel = VetoButton:FindFirstChild("value")
+    if valueLabel and valueLabel:IsA("TextLabel") then
+        local text = valueLabel.Text  -- "Veto (0/1)" or "Veto (1/1)"
+        local used, total = text:match("Veto %((%d+)/(%d+)%)")
+        if used and total then
+            return { used = tonumber(used), total = tonumber(total) }
         end
+    end
+    return nil
+end
+
+local function GetRemainingVetos()
+    local info = GetVetoInfo()
+    if info then
+        return info.total - info.used
     end
     return nil
 end
 
 local function VetoMap()
     print("[AutoProgression] Attempting to veto...")
-    local remaining = GetRemainingVetos()
-    if remaining and remaining <= 0 then
-        print("[AutoProgression] No vetos left, cannot veto.")
-        return false
-    end
     pcall(function()
         RemoteEvent:FireServer("LobbyVoting", "Veto")
-        print("[AutoProgression] Veto fired. Remaining vetos: " .. tostring(remaining))
+        print("[AutoProgression] Veto fired.")
     end)
-    task.wait(1)
+    task.wait(1)  -- give time for UI to update (though in VIP it won't)
     return true
 end
 
@@ -294,10 +296,10 @@ local function RunYeetEasy()
     if runningEasy then return end
     runningEasy = true
     getgenv().TimeScaleEnabled = false
+
     if not IsInLobby() then
-        local vetoAttempts = 0
-        local maxVetos = GetRemainingVetos() or 3
-        while vetoAttempts < maxVetos do
+        while true do
+            -- 1. Check available maps
             local availableMaps = GetAvailableMaps()
             local availableStrategies = {}
             for _, strategy in ipairs(EasyStrategies) do
@@ -305,6 +307,8 @@ local function RunYeetEasy()
                     table.insert(availableStrategies, strategy)
                 end
             end
+
+            -- 2. If a map is found, load it
             if #availableStrategies > 0 then
                 local chosen = availableStrategies[math.random(1, #availableStrategies)]
                 ApplyStrategySettings(chosen)
@@ -313,31 +317,48 @@ local function RunYeetEasy()
                 loadstring(game:HttpGet(chosen.url))()
                 runningEasy = false
                 return
+            end
+
+            -- 3. No map – read the veto text
+            local vetoInfo = GetVetoInfo()
+            if not vetoInfo then
+                print("[AutoProgression] Could not read veto text – assuming no vetoes.")
+                break
+            end
+
+            -- 4. If used < total, we can veto again
+            if vetoInfo.used < vetoInfo.total then
+                print("[AutoProgression] Text: Veto (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ") – vetoing.")
+                VetoMap()
+                -- Wait a moment, then loop again (in VIP, used stays 0, so we'll keep going)
             else
-                print("[AutoProgression] No suitable Easy map. Veto attempt " .. (vetoAttempts+1) .. "/" .. maxVetos)
-                if not VetoMap() then break end
-                vetoAttempts = vetoAttempts + 1
+                print("[AutoProgression] Text: Veto (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ") – no vetoes left.")
+                break
             end
         end
+
         print("[AutoProgression] No Easy maps available. Teleporting to lobby...")
         SmartTeleportToLobby()
     else
+        -- In lobby, just pick a random Easy strategy
         local chosen = EasyStrategies[math.random(1, #EasyStrategies)]
         ApplyStrategySettings(chosen)
         task.wait(0.3)
         print("[AutoProgression] In lobby, selected Easy: " .. chosen.name)
         loadstring(game:HttpGet(chosen.url))()
     end
+
     runningEasy = false
 end
 
 local function RunFrostStrategy()
     if runningFrost then return end
     runningFrost = true
+    getgenv().TimeScaleEnabled = false
+
     if not IsInLobby() then
-        local vetoAttempts = 0
-        local maxVetos = GetRemainingVetos() or 3
-        while vetoAttempts < maxVetos do
+        while true do
+            -- 1. Check available maps
             local availableMaps = GetAvailableMaps()
             local availableStrategies = {}
             for _, strategy in ipairs(FrostStrategies) do
@@ -345,6 +366,8 @@ local function RunFrostStrategy()
                     table.insert(availableStrategies, strategy)
                 end
             end
+
+            -- 2. If a map is found, load it
             if #availableStrategies > 0 then
                 local chosen = availableStrategies[math.random(1, #availableStrategies)]
                 ApplyStrategySettings(chosen)
@@ -353,21 +376,37 @@ local function RunFrostStrategy()
                 loadstring(game:HttpGet(chosen.url))()
                 runningFrost = false
                 return
+            end
+
+            -- 3. No map – read the veto text
+            local vetoInfo = GetVetoInfo()
+            if not vetoInfo then
+                print("[AutoProgression] Could not read veto text – assuming no vetoes.")
+                break
+            end
+
+            -- 4. If used < total, we can veto again
+            if vetoInfo.used < vetoInfo.total then
+                print("[AutoProgression] Text: Veto (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ") – vetoing.")
+                VetoMap()
+                -- loop again; in VIP, used stays 0, so it keeps trying
             else
-                print("[AutoProgression] No suitable Frost map. Veto attempt " .. (vetoAttempts+1) .. "/" .. maxVetos)
-                if not VetoMap() then break end
-                vetoAttempts = vetoAttempts + 1
+                print("[AutoProgression] Text: Veto (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ") – no vetoes left.")
+                break
             end
         end
+
         print("[AutoProgression] No Frost maps available. Teleporting to lobby...")
         SmartTeleportToLobby()
     else
+        -- In lobby, pick a random Frost strategy
         local chosen = FrostStrategies[math.random(1, #FrostStrategies)]
         ApplyStrategySettings(chosen)
         task.wait(0.3)
         print("[AutoProgression] In lobby, selected Frost: " .. chosen.name)
         loadstring(game:HttpGet(chosen.url))()
     end
+
     runningFrost = false
 end
 
