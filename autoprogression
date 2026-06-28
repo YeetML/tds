@@ -4,16 +4,12 @@ local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local TeleportService = game:GetService("TeleportService")
-
 local Globals = getgenv().Globals or _G.Globals
-
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
 local RemoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent")
-
 local platform = UserInputService:GetPlatform()
 local IsMobile = (platform == Enum.Platform.IOS or platform == Enum.Platform.Android)
-
 local SETTINGS_FILE = "AutoProgression.json"
 
 -- Default settings (will be loaded/saved)
@@ -379,7 +375,6 @@ end
 local function RunAutoProgression()
     if AutoProgressionRunning then return end
     AutoProgressionRunning = true
-
     task.wait(3)
 
     -- Check force toggles (mutual exclusivity already enforced in UI)
@@ -396,7 +391,6 @@ local function RunAutoProgression()
         AutoProgressionRunning = false
         return
     elseif forceFrost then
-        -- Check if we have required towers, buy if needed
         local haveRocketeer = OwnsTower("Rocketeer")
         local haveGatling = OwnsTower("Gatling Gun")
         local haveTrapper = OwnsTower("Trapper")
@@ -444,27 +438,25 @@ local function RunAutoProgression()
         AutoProgressionRunning = false
         return
     elseif forceHcJuggernaut then
-    print("[AutoProgression] 🚀 JUGGERNAUT FORCE DETECTED – entering branch")
-    print("[AutoProgression] Current Coins:", GetStat("Coins"))
-    print("[AutoProgression] Current Gems:", GetStat("Gems"))
-    
-    local result = AutoBuyTowers({ {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"} })
-    print("[AutoProgression] AutoBuyTowers result:", result)
-    
-    if result == "Coins" then
-        print("[AutoProgression] Not enough Coins – farming Easy")
-        RunYeetEasy()
-    elseif result == "Gems" then
-        print("[AutoProgression] Not enough Gems – farming Hardcore Minigunner")
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
-    else
-        print("[AutoProgression] ✅ Loading Juggernaut strategy from:")
-        print("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorejuggernaut")
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorejuggernaut"))()
-        print("[AutoProgression] Juggernaut strategy loaded successfully")
-    end
-    AutoProgressionRunning = false
-    return
+        print("[AutoProgression] 🚀 JUGGERNAUT FORCE DETECTED – entering branch")
+        print("[AutoProgression] Current Coins:", GetStat("Coins"))
+        print("[AutoProgression] Current Gems:", GetStat("Gems"))
+        local result = AutoBuyTowers({ {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"} })
+        print("[AutoProgression] AutoBuyTowers result:", result)
+        if result == "Coins" then
+            print("[AutoProgression] Not enough Coins – farming Easy")
+            RunYeetEasy()
+        elseif result == "Gems" then
+            print("[AutoProgression] Not enough Gems – farming Hardcore Minigunner")
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
+        else
+            print("[AutoProgression] ✅ Loading Juggernaut strategy from:")
+            print("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorejuggernaut")
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorejuggernaut"))()
+            print("[AutoProgression] Juggernaut strategy loaded successfully")
+        end
+        AutoProgressionRunning = false
+        return
     end
 
     -- No force – use level-based logic
@@ -553,7 +545,7 @@ local function CreateUI()
     gui.Parent = CoreGui
 
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 300, 0, 470)  -- Increased height for toggles
+    frame.Size = UDim2.new(0, 300, 0, 470)
     frame.Position = UDim2.new(0.5, -150, 0.7, -235)
     frame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
     frame.BorderSizePixel = 0
@@ -710,13 +702,27 @@ local function CreateUI()
         end
     end
 
-    -- Update main UI
+    -- Update main UI (considers both main toggle and force toggles)
     local function updateMainUI()
-        if AutoProgressionEnabled then
+        local anyForceOn = _G.AutoProgSettings.ForceEasy or
+                           _G.AutoProgSettings.ForceFrost or
+                           _G.AutoProgSettings.ForceHardcoreScout or
+                           _G.AutoProgSettings.ForceHardcoreMinigunner or
+                           _G.AutoProgSettings.ForceHardcoreOperator or
+                           _G.AutoProgSettings.ForceHardcoreJuggernaut
+
+        local isRunning = AutoProgressionEnabled or anyForceOn
+
+        if isRunning then
             toggle.Text = "ON"
             toggle.BackgroundColor3 = Color3.fromRGB(0, 170, 80)
-            title.Text = "Auto Progression Running"
-            statusDisplay.Text = "Status: Running..."
+            if anyForceOn then
+                title.Text = "Auto Progression (Forced)"
+                statusDisplay.Text = "Status: Forcing Mode"
+            else
+                title.Text = "Auto Progression Running"
+                statusDisplay.Text = "Status: Running..."
+            end
         else
             toggle.Text = "OFF"
             toggle.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
@@ -725,7 +731,7 @@ local function CreateUI()
         end
     end
 
-    -- Force toggle handler (mutual exclusivity)
+    -- Force toggle handler (mutual exclusivity + auto‑start)
     local function toggleMode(settingKey, btn)
         -- Turn off all other force toggles
         local forceKeys = {
@@ -737,10 +743,11 @@ local function CreateUI()
                 _G.AutoProgSettings[key] = false
             end
         end
+
         -- Toggle the clicked one
         _G.AutoProgSettings[settingKey] = not _G.AutoProgSettings[settingKey]
 
-        -- Update all buttons
+        -- Update all mode buttons
         updateModeButton(easyBtn, "ForceEasy")
         updateModeButton(frostBtn, "ForceFrost")
         updateModeButton(hcScoutBtn, "ForceHardcoreScout")
@@ -748,15 +755,47 @@ local function CreateUI()
         updateModeButton(hcOperatorBtn, "ForceHardcoreOperator")
         updateModeButton(hcJuggernautBtn, "ForceHardcoreJuggernaut")
 
-        saveSettings()
+        -- If a force toggle is turned ON, start the script
+        if _G.AutoProgSettings[settingKey] then
+            AutoProgressionEnabled = true
+            _G.AutoProgSettings.AutoProgressionEnabled = true
+            updateMainUI()
+            saveSettings()
+            task.spawn(RunAutoProgression)
+        else
+            -- If all force toggles are off, we might still have main toggle on
+            -- Update UI accordingly
+            updateMainUI()
+            saveSettings()
+        end
     end
 
     -- Main toggle click
     toggle.MouseButton1Click:Connect(function()
         AutoProgressionEnabled = not AutoProgressionEnabled
         _G.AutoProgSettings.AutoProgressionEnabled = AutoProgressionEnabled
+
+        if not AutoProgressionEnabled then
+            -- Turn off all force toggles
+            local forceKeys = {
+                "ForceEasy", "ForceFrost", "ForceHardcoreScout",
+                "ForceHardcoreMinigunner", "ForceHardcoreOperator", "ForceHardcoreJuggernaut"
+            }
+            for _, key in ipairs(forceKeys) do
+                _G.AutoProgSettings[key] = false
+            end
+            -- Update mode buttons
+            updateModeButton(easyBtn, "ForceEasy")
+            updateModeButton(frostBtn, "ForceFrost")
+            updateModeButton(hcScoutBtn, "ForceHardcoreScout")
+            updateModeButton(hcMinigunnerBtn, "ForceHardcoreMinigunner")
+            updateModeButton(hcOperatorBtn, "ForceHardcoreOperator")
+            updateModeButton(hcJuggernautBtn, "ForceHardcoreJuggernaut")
+        end
+
         updateMainUI()
         saveSettings()
+
         if AutoProgressionEnabled then
             task.spawn(RunAutoProgression)
         else
@@ -765,24 +804,12 @@ local function CreateUI()
     end)
 
     -- Mode button clicks
-    easyBtn.MouseButton1Click:Connect(function()
-        toggleMode("ForceEasy", easyBtn)
-    end)
-    frostBtn.MouseButton1Click:Connect(function()
-        toggleMode("ForceFrost", frostBtn)
-    end)
-    hcScoutBtn.MouseButton1Click:Connect(function()
-        toggleMode("ForceHardcoreScout", hcScoutBtn)
-    end)
-    hcMinigunnerBtn.MouseButton1Click:Connect(function()
-        toggleMode("ForceHardcoreMinigunner", hcMinigunnerBtn)
-    end)
-    hcOperatorBtn.MouseButton1Click:Connect(function()
-        toggleMode("ForceHardcoreOperator", hcOperatorBtn)
-    end)
-    hcJuggernautBtn.MouseButton1Click:Connect(function()
-        toggleMode("ForceHardcoreJuggernaut", hcJuggernautBtn)
-    end)
+    easyBtn.MouseButton1Click:Connect(function() toggleMode("ForceEasy", easyBtn) end)
+    frostBtn.MouseButton1Click:Connect(function() toggleMode("ForceFrost", frostBtn) end)
+    hcScoutBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreScout", hcScoutBtn) end)
+    hcMinigunnerBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreMinigunner", hcMinigunnerBtn) end)
+    hcOperatorBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreOperator", hcOperatorBtn) end)
+    hcJuggernautBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreJuggernaut", hcJuggernautBtn) end)
 
     -- Load saved state
     if isfile and isfile(SETTINGS_FILE) then
@@ -796,8 +823,19 @@ local function CreateUI()
         end
     end
 
-    -- Apply loaded state
+    -- Apply loaded state: if any force toggle is on, start the script
     AutoProgressionEnabled = _G.AutoProgSettings.AutoProgressionEnabled or false
+    local anyForceOn = _G.AutoProgSettings.ForceEasy or
+                       _G.AutoProgSettings.ForceFrost or
+                       _G.AutoProgSettings.ForceHardcoreScout or
+                       _G.AutoProgSettings.ForceHardcoreMinigunner or
+                       _G.AutoProgSettings.ForceHardcoreOperator or
+                       _G.AutoProgSettings.ForceHardcoreJuggernaut
+    if anyForceOn then
+        AutoProgressionEnabled = true
+        _G.AutoProgSettings.AutoProgressionEnabled = true
+    end
+
     updateMainUI()
     updateModeButton(easyBtn, "ForceEasy")
     updateModeButton(frostBtn, "ForceFrost")
@@ -867,7 +905,13 @@ end
 -- ===== UI RECOVERY LOOP =====
 task.spawn(function()
     while task.wait(5) do
-        if AutoProgressionEnabled and not CoreGui:FindFirstChild("AutoProgressionUI") then
+        local anyForceOn = _G.AutoProgSettings.ForceEasy or
+                           _G.AutoProgSettings.ForceFrost or
+                           _G.AutoProgSettings.ForceHardcoreScout or
+                           _G.AutoProgSettings.ForceHardcoreMinigunner or
+                           _G.AutoProgSettings.ForceHardcoreOperator or
+                           _G.AutoProgSettings.ForceHardcoreJuggernaut
+        if (AutoProgressionEnabled or anyForceOn) and not CoreGui:FindFirstChild("AutoProgressionUI") then
             print("[AutoProgression] UI was destroyed, recreating...")
             local newUI = CreateUI()
             getgenv().AutoProgressionUI = newUI
