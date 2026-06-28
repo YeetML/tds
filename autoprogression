@@ -444,16 +444,27 @@ local function RunAutoProgression()
         AutoProgressionRunning = false
         return
     elseif forceHcJuggernaut then
-        local result = AutoBuyTowers({ {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"} })
-        if result == "Coins" then
-            RunYeetEasy()
-        elseif result == "Gems" then
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
-        else
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorejuggernaut"))()
-        end
-        AutoProgressionRunning = false
-        return
+    print("[AutoProgression] 🚀 JUGGERNAUT FORCE DETECTED – entering branch")
+    print("[AutoProgression] Current Coins:", GetStat("Coins"))
+    print("[AutoProgression] Current Gems:", GetStat("Gems"))
+    
+    local result = AutoBuyTowers({ {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"} })
+    print("[AutoProgression] AutoBuyTowers result:", result)
+    
+    if result == "Coins" then
+        print("[AutoProgression] Not enough Coins – farming Easy")
+        RunYeetEasy()
+    elseif result == "Gems" then
+        print("[AutoProgression] Not enough Gems – farming Hardcore Minigunner")
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
+    else
+        print("[AutoProgression] ✅ Loading Juggernaut strategy from:")
+        print("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorejuggernaut")
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorejuggernaut"))()
+        print("[AutoProgression] Juggernaut strategy loaded successfully")
+    end
+    AutoProgressionRunning = false
+    return
     end
 
     -- No force – use level-based logic
