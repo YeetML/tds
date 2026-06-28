@@ -40,7 +40,7 @@ local function SmartTeleportToLobby()
 end
 
 local function StartStrategy()
-    wait(1)
+    wait(0.1)
     TDS:RemoveIndex()
     TDS:Ready()
 
@@ -109,7 +109,7 @@ local function fireSkipVote()
             break
         else
             print("Skip vote failed or rejected. Retrying in 1 second...")
-            task.wait(1)
+            task.wait(0.1)
         end
     end
 end
@@ -118,7 +118,7 @@ task.spawn(function()
     activeStratThread = task.spawn(StartStrategy)
 
     while true do
-        task.wait(0.5)
+        task.wait(0.1)
 
         local currentStatus = GetMatchStatus()
         
@@ -142,10 +142,10 @@ task.spawn(function()
 
             print("Waiting for match screen to clear...")
             repeat 
-                task.wait(1) 
+                task.wait(0.1) 
             until GetMatchStatus() == nil
 
-            task.wait(1)
+            task.wait(0.1)
 
             print("Starting new strategy match!")
             activeStratThread = task.spawn(StartStrategy)
