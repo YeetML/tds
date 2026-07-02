@@ -1,12 +1,3 @@
--- ====================================================================
---                     AETHER HUB (MERGED SCRIPT)
--- ====================================================================
--- This version combines the robust strategy recording & replay from
--- Script 1 with your custom enhancements (multi-tower DJ, AutoProg lock,
--- RemoveIndex, Rejoin, etc.). All improvements are preserved.
--- ====================================================================
-
--- Prevent duplicate execution if already loaded
 if shared.TDSTable then
     return shared.TDSTable
 end
