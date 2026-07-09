@@ -414,7 +414,7 @@ end
 local function RunAutoProgression()
     if AutoProgressionRunning then return end
     AutoProgressionRunning = true
-    task.wait(3)
+    task.wait(0.5)
 
     -- Check force toggles (mutual exclusivity already enforced in UI)
     local forceEasy = _G.AutoProgSettings.ForceEasy or false
@@ -571,6 +571,67 @@ local function RunAutoProgression()
     end
 
     AutoProgressionRunning = false
+end
+
+    -- ===== CODE REDEEMER (from Beebom) =====
+local function fetchCodesFromBeebom()
+    local httpRequest = syn and syn.request or http and http.request or request
+    if not httpRequest then
+        warn("[CodeRedeemer] No HTTP support – skipping.")
+        return {}
+    end
+
+    local response = httpRequest({
+        Url = "https://beebom.com/tower-defense-simulator-tds-codes/",
+        Method = "GET",
+        Headers = {
+            ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+    })
+
+    if response.StatusCode ~= 200 then
+        warn("[CodeRedeemer] Failed to fetch page. Status: " .. tostring(response.StatusCode))
+        return {}
+    end
+
+    local html = response.Body or ""
+    local codes = {}
+    
+    for code in html:gmatch("<strong>([A-Z0-9]+)</strong>") do
+        local alreadyExists = false
+        for _, existing in ipairs(codes) do
+            if existing == code then
+                alreadyExists = true
+                break
+            end
+        end
+        if not alreadyExists then
+            table.insert(codes, code)
+        end
+    end
+
+    return codes
+end
+
+local function redeemCodesFromBeebom()
+    print("[CodeRedeemer] Fetching codes from Beebom...")
+    local codeList = fetchCodesFromBeebom()
+    if #codeList == 0 then
+        print("[CodeRedeemer] No codes found.")
+        return
+    end
+
+    print("[CodeRedeemer] Found codes: " .. table.concat(codeList, ", "))
+    
+    for _, code in ipairs(codeList) do
+        print("[CodeRedeemer] Redeeming: " .. code)
+        pcall(function()
+            RemoteFunc:InvokeServer("Codes", "Redeem", code)
+        end)
+        task.wait(0.5)
+    end
+    
+    print("[CodeRedeemer] Done!")
 end
 
 -- ===== UI CREATION =====
@@ -964,3 +1025,8 @@ getgenv().AutoProgressionUI = ui
 getgenv().BuyTower = BuyTower
 getgenv().RunYeetEasy = RunYeetEasy
 getgenv().RunAutoProgression = RunAutoProgression
+
+task.spawn(function()
+    task.wait(1) -- wait for game to fully load
+    redeemCodesFromBeebom()
+end)
