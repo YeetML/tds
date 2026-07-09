@@ -1,3 +1,35 @@
-loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+-- ===== FALLBACK FETCH: GITHUB → CODEBERG =====
+local function FetchScript(url)
+    -- Try GitHub first
+    local success, content = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if success then
+        return content
+    end
+
+    -- Fallback: replace GitHub domain with Codeberg
+    local coldbergUrl = url:gsub(
+        "raw%.githubusercontent%.com/YeetML/tds/refs/heads/main",
+        "codeberg.org/YeetML/tds/raw/branch/main"
+    )
+    print("[Loader] GitHub failed, falling back to Codeberg: " .. coldbergUrl)
+    local success2, content2 = pcall(function()
+        return game:HttpGet(coldbergUrl)
+    end)
+    if success2 then
+        return content2
+    else
+        error("Failed to fetch from both GitHub and Codeberg: " .. url)
+    end
+end
+
+-- Load main script with fallback
+local mainScript = FetchScript("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main")
+loadstring(mainScript)()
+
 task.wait(0.1)
-loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/autoprogression"))()
+
+-- Load autoprogression script with fallback
+local autoScript = FetchScript("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/autoprogression")
+loadstring(autoScript)()
