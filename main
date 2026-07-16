@@ -1035,14 +1035,76 @@ end
 
 CurrentEquippedTowers = GetEquippedTowers()
 
-local CrateList = {
-    "All", "Basic", "Premium", "Deluxe", "Golden", "Bunny", "Halloween 2019", 
-    "Party", "Toy", "Valentines", "Xmas 2019", "Spooky", "Pumpkin", "Frost", 
-    "Lovely", "Cold Front", "Ducky", "Vigilante", "Pirate", "Phantom", 
-    "Halloween", "Jolly", "Lunar", "Lovestruck", "UglyCrate", "Coin Crate", 
-    "Banned", "Christmas 2025", "Showtime", "Valentines 2026", "Shamrock",
-    "Low Grade", "Mid Grade", "High Grade"
-}
+-- Dynamic crate list (auto‑updates when the Crates folder appears)
+local CrateList = {"All"}          -- mutable table, starts with "All"
+local CrateDropdown = nil          -- will be set when the UI dropdown is created
+
+local function refreshCrateList()
+    local cratesFolder = ReplicatedStorage:FindFirstChild("Assets")
+        and ReplicatedStorage.Assets:FindFirstChild("Crates")
+    
+    if not cratesFolder then
+        return false   -- folder not ready yet, try again later
+    end
+
+    -- Clear and rebuild the list
+    for i = #CrateList, 1, -1 do
+        table.remove(CrateList, i)
+    end
+    table.insert(CrateList, "All")
+    for _, child in ipairs(cratesFolder:GetChildren()) do
+        if child:IsA("Folder") then
+            table.insert(CrateList, child.Name)
+        end
+    end
+    table.sort(CrateList, function(a, b) return a < b end)
+
+    -- Update the dropdown if it exists
+    if CrateDropdown then
+        local current = CrateDropdown:GetValue()
+        CrateDropdown:Clear()
+        for _, name in ipairs(CrateList) do
+            CrateDropdown:Add(name)
+        end
+        -- Fallback to "All" if old selection is gone
+        if not table.find(CrateList, current) then
+            current = "All"
+            Globals.SelectedCrate = "All"
+            SetSetting("SelectedCrate", "All")
+        end
+        CrateDropdown:SetValue(current)
+    end
+
+    return true
+end
+
+-- Try to load once immediately (non‑blocking)
+refreshCrateList()
+
+-- Watch for the Crates folder to appear (only event listeners, no loops)
+local function watchForCrates()
+    local assets = ReplicatedStorage:FindFirstChild("Assets")
+    if assets then
+        local crates = assets:FindFirstChild("Crates")
+        if crates then
+            refreshCrateList()
+        else
+            assets.ChildAdded:Connect(function(child)
+                if child.Name == "Crates" then
+                    refreshCrateList()
+                end
+            end)
+        end
+    else
+        ReplicatedStorage.ChildAdded:Connect(function(child)
+            if child.Name == "Assets" then
+                watchForCrates()  -- re‑run to attach deeper listener
+            end
+        end)
+    end
+end
+
+task.spawn(watchForCrates)   -- start watching (no blocking)
 
 local AutoOpenRunning = false
 
@@ -1050,30 +1112,26 @@ local function StartAutoOpenCrates()
     if AutoOpenRunning or not Globals.AutoOpenCrates then return end
     AutoOpenRunning = true
 
-    for _, crateName in ipairs(CrateList) do
-        if crateName == "All" then continue end
-
-        task.spawn(function()
-            while Globals.AutoOpenCrates do
+    task.spawn(function()
+        while Globals.AutoOpenCrates do
+            -- Iterate over the current (dynamic) CrateList each cycle
+            for _, crateName in ipairs(CrateList) do
+                if crateName == "All" then continue end
                 if Globals.SelectedCrate == "All" or Globals.SelectedCrate == crateName then
                     local success, res = pcall(function()
                         return RemoteFunc:InvokeServer("Inventory", "Open", "Crate", crateName)
                     end)
 
                     if success and type(res) == "table" then
-                        task.wait(0.1) 
+                        task.wait(0.1)
                     else
                         task.wait(5)
                     end
-                else
-                    task.wait(1)
                 end
             end
-        end)
-    end
-
-    task.spawn(function()
-        repeat task.wait(1) until not Globals.AutoOpenCrates
+            -- Small delay between full sweeps to avoid hammering
+            task.wait(1)
+        end
         AutoOpenRunning = false
     end)
 end
@@ -1427,15 +1485,15 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
     end
     })
 
-    Automation:Dropdown({
+    CrateDropdown = Automation:Dropdown({
     Title = "Target Crate:",
-    List = CrateList,
+    List = CrateList,          -- now uses the dynamic list
     Value = Globals.SelectedCrate or "All",
     Callback = function(choice)
         Globals.SelectedCrate = choice
         SetSetting("SelectedCrate", choice)
     end
-    })
+})
 
     Automation:Section({Title = "Economy & Farming"})
     
