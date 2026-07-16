@@ -4417,7 +4417,7 @@ local function StartAutoDjBooth()
                 )
             end
 
-            task.wait(1)
+            task.wait(0.1)
         end
 
         AutoDjRunning = false
