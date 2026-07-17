@@ -387,8 +387,10 @@ LoadSettings()
 Globals.TimeScaleValue = CoerceTimeScaleValue(Globals.TimeScaleValue, 2)
 Apply3dRendering()
 
-Globals.HideUsername = true
-SetSetting("HideUsername", true)
+if Globals.HideUsername == nil then
+    Globals.HideUsername = true
+    SetSetting("HideUsername", true)
+end
 
 -- ====================================================================
 --                         TAG CHANGER
