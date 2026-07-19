@@ -163,7 +163,7 @@ TDS:Upgrade(8)
 TDS:SetOption(11, "Track", "Red")
 
 -- Hacker Abilities (your corrected positions & distribution)
-TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(47.65176010131836, 28.761362075805664, -162.33932495117188), towerToClone = 7}, true)
+TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(52.29336929321289, 28.33711051940918, -176.62826538085938), towerToClone = 7}, true)
 TDS:Ability(10, "Hologram Tower", {towerPosition = Vector3.new(45.84001159667969, 29.299192428588867, -139.60568237304688), towerToClone = 12}, true)
 TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(52.51472473144531, 29.392780303955078, -146.77999877929688), towerToClone = 12}, true)
 TDS:Ability(10, "Hologram Tower", {towerPosition = Vector3.new(52.471134185791016, 29.37128448486328, -140.83108520507812), towerToClone = 12}, true)
