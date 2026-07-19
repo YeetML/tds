@@ -283,7 +283,7 @@ local FrostStrategies = {
     { name = "frost2", mapName = "Lay By", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost2", autoPremium = false, autoSkip = false, autoRejoin = true },
     { name = "frost3", mapName = "Crossroads", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost3", autoPremium = false, autoSkip = false, autoRejoin = true },
     { name = "frost4", mapName = "Retro Crossroads", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost4", autoPremium = false, autoSkip = false, autoRejoin = true },
-    { name = "frost5", mapName = "Dead Ahead", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost5", autoPremium = false, autoSkip = false, autoRejoin = true },
+    { name = "frost5", mapName = "Dusty Bridges", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost5", autoPremium = false, autoSkip = false, autoRejoin = true },
 }
 
 -- ===== STRATEGY RUNNERS =====
