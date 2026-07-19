@@ -100,12 +100,6 @@ task.spawn(function()
     end)
 end)
 
-task.spawn(function()
-    pcall(function()
-        RemoteFunc:InvokeServer("Settings", "Update", "Show Nametags", false)
-    end)
-end)
-
 local function IdentifyGameState()
     local players = game:GetService("Players")
     local TempPlayer = players.LocalPlayer or players.PlayerAdded:Wait()
