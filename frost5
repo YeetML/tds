@@ -11,7 +11,6 @@ local prol = {
     Quarantine = true,
     Limitation = true,
     ExplodingEnemies = true,
-    Fog = true
 }
 game:GetService("ReplicatedStorage").Network.Modifiers["RF:BulkVoteModifiers"]:InvokeServer(prol)
 
