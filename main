@@ -223,7 +223,7 @@ local DefaultSettings = {
     WebhookURL = "",
     PickupMethod = "Pathfinding",
     StreamerMode = false,
-    HideUsername = true,
+    HideUsername = false,
     StreamerName = "",
     tagName = "None",
     Modifiers = {},
@@ -386,11 +386,6 @@ end
 LoadSettings()
 Globals.TimeScaleValue = CoerceTimeScaleValue(Globals.TimeScaleValue, 2)
 Apply3dRendering()
-
-if Globals.HideUsername == nil then
-    Globals.HideUsername = true
-    SetSetting("HideUsername", true)
-end
 
 -- ====================================================================
 --                         TAG CHANGER
@@ -4613,9 +4608,24 @@ end
 
 local function StartAutoMercenary()
     if not Globals.AutoMercenary and not Globals.AutoMilitary then return end
-
     if AutoMercenaryBaseRunning then return end
     AutoMercenaryBaseRunning = true
+
+    -- ---- AUTO‑SET PATH TO MAXIMUM ----
+    if not MaxPathDistance or MaxPathDistance == 0 then
+        while not MaxPathDistance or MaxPathDistance == 0 do
+            CalcLength()
+            task.wait(1)
+        end
+    end
+    if Globals.MercenaryPath ~= MaxPathDistance then
+        Globals.MercenaryPath = MaxPathDistance
+        SetSetting("MercenaryPath", MaxPathDistance)
+        if MercenarySlider then
+            MercenarySlider:SetValue(MaxPathDistance)
+        end
+    end
+    -- ----------------------------------
 
     task.spawn(function()
         while Globals.AutoMercenary do
