@@ -127,8 +127,6 @@ TDS:Upgrade(12)
 TDS:Upgrade(13)
 TDS:Upgrade(14)
 
-task.wait(10)
-
 -- Batch upgrades (second wave + Hacker dual paths)
 TDS:Upgrade(7)
 TDS:Upgrade(7)
