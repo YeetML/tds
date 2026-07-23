@@ -31,6 +31,7 @@ local function ApplyStrategySettings(strategy)
         AutoSkip          = (strategy.autoSkip ~= nil) and strategy.autoSkip or false,
         AutoPremium       = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
         AutoRejoin        = (strategy.autoRejoin ~= nil) and strategy.autoRejoin or true,
+        AutoRestart        = (strategy.autoRestart ~= nil) and strategy.autoRestart or false,
     }
     print("[AutoProgression] Applying & LOCKING settings...")
     for key, value in pairs(settings) do
