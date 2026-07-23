@@ -457,16 +457,19 @@ local function RunAutoProgression()
         AutoProgressionRunning = false
         return
     elseif forceHcScout then
+        ApplyStrategySettings({ autoSkip = true, autoPremium = false, autoRejoin = true, autoRestart = false })
         AutoBuyTowers({ {"Pyromancer", 1250} })
         loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
         AutoProgressionRunning = false
         return
     elseif forceHcMinigunner then
+        ApplyStrategySettings({ autoSkip = true, autoPremium = false, autoRejoin = true, autoRestart = false })
         AutoBuyTowers({ {"Minigunner", 8000} })
         loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
         AutoProgressionRunning = false
         return
     elseif forceHcOperator then
+        ApplyStrategySettings({ autoSkip = true, autoPremium = false, autoRejoin = true, autoRestart = false })
         local result = AutoBuyTowers({ {"EvolvedOperator", 15000, "Coins", 4500, "Gems"} })
         if result == "Coins" then
             RunYeetEasy()
@@ -478,6 +481,7 @@ local function RunAutoProgression()
         AutoProgressionRunning = false
         return
     elseif forceHcJuggernaut then
+        ApplyStrategySettings({ autoSkip = true, autoPremium = false, autoRejoin = true, autoRestart = false })
         print("[AutoProgression] 🚀 JUGGERNAUT FORCE DETECTED – entering branch")
         print("[AutoProgression] Current Coins:", GetStat("Coins"))
         print("[AutoProgression] Current Gems:", GetStat("Gems"))
