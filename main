@@ -162,6 +162,8 @@ local GatlingExecuted = false
 local AutoPremiumRunning = false
 local StackerErrorShown = false
 local PremiumLoaded = false
+local AutoUpgradeSelectedRunning = false
+local AutoUpgradeAllRunning = false
 
 -- Strategy recording
 local executed_actions = {}          -- stored TDS calls for replay
@@ -205,6 +207,8 @@ local DefaultSettings = {
     SellFarms = false,
     AutoMercenary = false,
     AutoMilitary = false,
+    AutoUpgradeSelected = false,
+    AutoUpgradeAll = false,
     Frost = false,
     Fallen = false,
     Easy = false,
@@ -1641,6 +1645,16 @@ local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-cli
         end
     })
 
+        Interactive:Button({
+        Title = "Open Inventory",
+        Desc = "Place initial towers, then click this to swap loadout before readying up (bypasses 5-tower limit).\nNote: Does not work on low sUNC executors like Solara/Xeno",
+        Callback = function()
+            pcall(function()
+                require(game:GetService("ReplicatedStorage").Client.Interfaces.LegacyInterface.Controllers.ViewController):setView("Inventory")
+            end)
+        end
+    })
+
     Interactive:Button({
         Title = "Upgrade Selected",
         Desc = "",
@@ -1661,23 +1675,53 @@ local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-cli
         end
     })
 
-    Interactive:Button({
+    Interactive:Toggle({
+        Title = "Auto Upgrade Selected",
+        Desc = "Continuously upgrades all towers of the selected tower type",
+        Value = Globals.AutoUpgradeSelected,
+        Callback = function(v)
+            SetSetting("AutoUpgradeSelected", v)
+            if v then StartAutoUpgradeSelected() end
+        end
+    })
+
+        Interactive:Button({
         Title = "Sell Selected",
         Desc = "",
         Callback = function()
-            if SelectedTower then
-                for _, v in pairs(workspace.Towers:GetChildren()) do
-                    if v:FindFirstChild("TowerReplicator") and v.TowerReplicator:GetAttribute("Name") == SelectedTower and v.TowerReplicator:GetAttribute("OwnerId") == LocalPlayer.UserId then
-                        RemoteFunc:InvokeServer("Troops", "Sell", {Troop = v})
-                    end
-                end
+            if not SelectedTower or SelectedTower == "None" then
                 Window:Notify({
                     Title = "ADS",
-                    Desc = "Attempted to sell all the selected towers!",
+                    Desc = "No tower selected!",
                     Time = 3,
-                    Type = "normal"
+                    Type = "error"
                 })
+                return
             end
+            Window:Dialog({
+                Title = "Do you want to sell all " .. SelectedTower .. " towers?",
+                Button1 = {
+                    Title = "Confirm",
+                    Color = Color3.fromRGB(226, 39, 6),
+                    Callback = function()
+                        for _, v in pairs(workspace.Towers:GetChildren()) do
+                            if v:FindFirstChild("TowerReplicator") and v.TowerReplicator:GetAttribute("Name") == SelectedTower and v.TowerReplicator:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                                RemoteFunc:InvokeServer("Troops", "Sell", {Troop = v})
+                            end
+                        end
+                        Window:Notify({
+                            Title = "ADS",
+                            Desc = "Attempted to sell all " .. SelectedTower .. " towers!",
+                            Time = 3,
+                            Type = "normal"
+                        })
+                    end
+                },
+                Button2 = {
+                    Title = "Cancel",
+                    Color = Color3.fromRGB(0, 188, 0)
+                }
+            })
         end
     })
 
@@ -1696,6 +1740,16 @@ local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-cli
                 Time = 3,
                 Type = "normal"
             })
+        end
+    })
+
+    Interactive:Toggle({
+        Title = "Auto Upgrade All",
+        Desc = "Upgrades every tower you own",
+        Value = Globals.AutoUpgradeAll,
+        Callback = function(v)
+            SetSetting("AutoUpgradeAll", v)
+            if v then StartAutoUpgradeAll() end
         end
     })
 
@@ -4782,6 +4836,67 @@ local function StartSellFarm()
     end)
 end
 
+local function StartAutoUpgradeSelected()
+    if AutoUpgradeSelectedRunning or not Globals.AutoUpgradeSelected then return end
+    AutoUpgradeSelectedRunning = true
+
+    task.spawn(function()
+        while Globals.AutoUpgradeSelected do
+            if SelectedTower and SelectedTower ~= "None" then
+                local TowersFolder = workspace:FindFirstChild("Towers")
+                if TowersFolder then
+                    for _, tower in ipairs(TowersFolder:GetDescendants()) do
+                        if tower:IsA("Folder") and tower.Name == "TowerReplicator"
+                        and tower:GetAttribute("Name") == SelectedTower
+                        and tower:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                            local success, res = pcall(function()
+                                return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", {
+                                    Troop = tower.Parent,
+                                    Path = 1
+                                })
+                            end)
+                            if success and CheckResOk(res) then
+                                task.wait(0.2)
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(0.5)
+        end
+        AutoUpgradeSelectedRunning = false
+    end)
+end
+
+local function StartAutoUpgradeAll()
+    if AutoUpgradeAllRunning or not Globals.AutoUpgradeAll then return end
+    AutoUpgradeAllRunning = true
+
+    task.spawn(function()
+        while Globals.AutoUpgradeAll do
+            local TowersFolder = workspace:FindFirstChild("Towers")
+            if TowersFolder then
+                for _, tower in ipairs(TowersFolder:GetDescendants()) do
+                    if tower:IsA("Folder") and tower.Name == "TowerReplicator"
+                    and tower:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                        local success, res = pcall(function()
+                            return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", {
+                                Troop = tower.Parent,
+                                Path = 1
+                            })
+                        end)
+                        if success and CheckResOk(res) then
+                            task.wait(0.2)
+                        end
+                    end
+                end
+            end
+            task.wait(0.5)
+        end
+        AutoUpgradeAllRunning = false
+    end)
+end
+
 -- ====================================================================
 --                         MAIN LOOP (monitors and starts tasks)
 -- ====================================================================
@@ -4861,6 +4976,14 @@ task.spawn(function()
 
         if Globals.Easy and not EasyModeRunning then
             StartEasyMode()
+        end
+
+        if Globals.AutoUpgradeSelected and not AutoUpgradeSelectedRunning then
+            StartAutoUpgradeSelected()
+        end
+
+        if Globals.AutoUpgradeAll and not AutoUpgradeAllRunning then
+            StartAutoUpgradeAll()
         end
 
         task.wait(1)
