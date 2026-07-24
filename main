@@ -1676,14 +1676,14 @@ local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-cli
     })
 
     Interactive:Toggle({
-        Title = "Auto Upgrade Selected",
-        Desc = "Continuously upgrades all towers of the selected tower type",
-        Value = Globals.AutoUpgradeSelected,
-        Callback = function(v)
-            SetSetting("AutoUpgradeSelected", v)
-            if v then StartAutoUpgradeSelected() end
-        end
-    })
+    Title = "Auto Upgrade Selected",
+    Desc = "",
+    Value = Globals.AutoUpgradeSelected,
+    Callback = function(v)
+        SetSetting("AutoUpgradeSelected", v)
+        if v then StartAutoUpgradeSelected() end
+    end
+})
 
         Interactive:Button({
         Title = "Sell Selected",
@@ -1744,14 +1744,14 @@ local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-cli
     })
 
     Interactive:Toggle({
-        Title = "Auto Upgrade All",
-        Desc = "Upgrades every tower you own",
-        Value = Globals.AutoUpgradeAll,
-        Callback = function(v)
-            SetSetting("AutoUpgradeAll", v)
-            if v then StartAutoUpgradeAll() end
-        end
-    })
+    Title = "Auto Upgrade All",
+    Desc = "",
+    Value = Globals.AutoUpgradeAll,
+    Callback = function(v)
+        SetSetting("AutoUpgradeAll", v)
+        if v then StartAutoUpgradeAll() end
+    end
+})
 
     Interactive:Button({
         Title = "Sell All",
