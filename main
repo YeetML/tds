@@ -2840,9 +2840,7 @@ SmartTeleportToLobby = function()
     })
 end
 
--- ====================================================================
---                         REJOIN MATCH (with saved difficulty)
--- ====================================================================
+-- // rejoining
 local function RejoinMatch()
     local remote = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
     local success = false
@@ -2857,16 +2855,15 @@ local function RejoinMatch()
 
     repeat
         local StateFolder = ReplicatedStorage:FindFirstChild("State")
-        -- Use saved difficulty as fallback
-        local CurrentMode = StateFolder and StateFolder.Difficulty.Value or TDS.SavedDifficulty
-        if not CurrentMode then
+        local CurrentMode = StateFolder and StateFolder.Difficulty.Value
+        if not CurrentMode or CurrentMode == "" then
             CurrentMode = TDS.SavedDifficulty
         end
 
-        if CurrentMode then
+        if CurrentMode and CurrentMode ~= "" then
             local ok, result = pcall(function()
                 local payload
-                local EventMode = StateFolder and StateFolder:FindFirstChild("Mode") and StateFolder.Mode.Value
+                local EventMode = StateFolder:FindFirstChild("Mode") and StateFolder.Mode.Value
 
                 if CurrentMode == "PizzaParty" then
                     payload = {
@@ -2943,7 +2940,7 @@ local function HandlePostMatch(skipRejoin)
 
     if not UiRoot then 
         if not skipRejoin then
-            return RejoinMatch()
+            return RejoinMatch() 
         else
             return
         end
@@ -3343,6 +3340,7 @@ StartTimeScale = function()
     end)
 end
 
+-- // ingame control
 local function TriggerRestart()
     local UiRoot = PlayerGui:WaitForChild("ReactGameNewRewards")
     local FoundSection = false
