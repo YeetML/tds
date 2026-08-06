@@ -1756,24 +1756,37 @@ local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-cli
     })
 
     Interactive:Button({
-        Title = "Sell Selected",
-        Desc = "",
-        Callback = function()
-            if SelectedTower then
-                for _, v in pairs(workspace.Towers:GetChildren()) do
-                    if v:FindFirstChild("TowerReplicator") and v.TowerReplicator:GetAttribute("Name") == SelectedTower and v.TowerReplicator:GetAttribute("OwnerId") == LocalPlayer.UserId then
-                        RemoteFunc:InvokeServer("Troops", "Sell", {Troop = v})
+    Title = "Sell Selected",
+    Desc = "",
+    Callback = function()
+        if not SelectedTower then return end
+        Window:Dialog({
+            Title = "Do you want to sell all " .. SelectedTower .. " towers?",
+            Button1 = {
+                Title = "Confirm",
+                Color = Color3.fromRGB(226, 39, 6),
+                Callback = function()
+                    for _, v in pairs(workspace.Towers:GetChildren()) do
+                        local rep = v:FindFirstChild("TowerReplicator")
+                        if rep and rep:GetAttribute("Name") == SelectedTower and rep:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                            RemoteFunc:InvokeServer("Troops", "Sell", { Troop = v })
+                        end
                     end
+                    Window:Notify({
+                        Title = "ADS",
+                        Desc = "Attempted to sell all selected towers!",
+                        Time = 3,
+                        Type = "normal"
+                    })
                 end
-                Window:Notify({
-                    Title = "ADS",
-                    Desc = "Attempted to sell all the selected towers!",
-                    Time = 3,
-                    Type = "normal"
-                })
-            end
-        end
-    })
+            },
+            Button2 = {
+                Title = "Cancel",
+                Color = Color3.fromRGB(0, 188, 0)
+            }
+        })
+    end
+})
 
     Interactive:Button({
         Title = "Upgrade All",
@@ -4813,55 +4826,72 @@ local function StartSellFarm()
     end)
 end
 
--- [FEATURE 5] Auto Upgrade Selected
+-- [FEATURE 5] Auto Upgrade Selected (rewritten)
 local function StartAutoUpgradeSelected()
     if AutoUpgradeSelectedRunning or not Globals.AutoUpgradeSelected then return end
     AutoUpgradeSelectedRunning = true
 
     task.spawn(function()
+        Window:Notify({
+            Title = "ADS",
+            Desc = "Auto Upgrade Selected started.",
+            Time = 3,
+            Type = "normal"
+        })
+
         while Globals.AutoUpgradeSelected do
             if SelectedTower and SelectedTower ~= "None" then
                 local TowersFolder = workspace:FindFirstChild("Towers")
                 if TowersFolder then
-                    for _, tower in ipairs(TowersFolder:GetDescendants()) do
-                        if tower:IsA("Folder") and tower.Name == "TowerReplicator"
-                        and tower:GetAttribute("Name") == SelectedTower
-                        and tower:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                    for _, v in ipairs(TowersFolder:GetChildren()) do
+                        -- Check if this tower belongs to us and is the selected type
+                        local replicator = v:FindFirstChild("TowerReplicator")
+                        if replicator and replicator:GetAttribute("Name") == SelectedTower and replicator:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                            -- Use the same remote call as the manual button
                             local success, res = pcall(function()
-                                return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", {
-                                    Troop = tower.Parent,
-                                    Path = 1
-                                })
+                                return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", { Troop = v })
                             end)
                             if success and CheckResOk(res) then
-                                task.wait(0.2)
+                                task.wait(0.2) -- small delay after successful upgrade
                             end
                         end
                     end
                 end
             end
-            task.wait(0.5)
+            task.wait(0.5) -- check every half second
         end
+
         AutoUpgradeSelectedRunning = false
+        Window:Notify({
+            Title = "ADS",
+            Desc = "Auto Upgrade Selected stopped.",
+            Time = 3,
+            Type = "normal"
+        })
     end)
 end
 
+-- [FEATURE 5] Auto Upgrade All (rewritten)
 local function StartAutoUpgradeAll()
     if AutoUpgradeAllRunning or not Globals.AutoUpgradeAll then return end
     AutoUpgradeAllRunning = true
 
     task.spawn(function()
+        Window:Notify({
+            Title = "ADS",
+            Desc = "Auto Upgrade All started.",
+            Time = 3,
+            Type = "normal"
+        })
+
         while Globals.AutoUpgradeAll do
             local TowersFolder = workspace:FindFirstChild("Towers")
             if TowersFolder then
-                for _, tower in ipairs(TowersFolder:GetDescendants()) do
-                    if tower:IsA("Folder") and tower.Name == "TowerReplicator"
-                    and tower:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                for _, v in ipairs(TowersFolder:GetChildren()) do
+                    -- Check if this tower belongs to us
+                    if v:FindFirstChild("Owner") and v.Owner.Value == LocalPlayer.UserId then
                         local success, res = pcall(function()
-                            return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", {
-                                Troop = tower.Parent,
-                                Path = 1
-                            })
+                            return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", { Troop = v })
                         end)
                         if success and CheckResOk(res) then
                             task.wait(0.2)
@@ -4871,7 +4901,14 @@ local function StartAutoUpgradeAll()
             end
             task.wait(0.5)
         end
+
         AutoUpgradeAllRunning = false
+        Window:Notify({
+            Title = "ADS",
+            Desc = "Auto Upgrade All stopped.",
+            Time = 3,
+            Type = "normal"
+        })
     end)
 end
 
