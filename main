@@ -4832,35 +4832,29 @@ local function StartAutoUpgradeSelected()
     AutoUpgradeSelectedRunning = true
 
     task.spawn(function()
-        Window:Notify({
-            Title = "ADS",
-            Desc = "Auto Upgrade Selected started.",
-            Time = 3,
-            Type = "normal"
-        })
-
         while Globals.AutoUpgradeSelected do
             if SelectedTower and SelectedTower ~= "None" then
                 local TowersFolder = workspace:FindFirstChild("Towers")
                 if TowersFolder then
-                    for _, v in ipairs(TowersFolder:GetChildren()) do
-                        -- Check if this tower belongs to us and is the selected type
-                        local replicator = v:FindFirstChild("TowerReplicator")
-                        if replicator and replicator:GetAttribute("Name") == SelectedTower and replicator:GetAttribute("OwnerId") == LocalPlayer.UserId then
-                            -- Use the same remote call as the manual button
+                    for _, tower in ipairs(TowersFolder:GetDescendants()) do
+                        if tower:IsA("Folder") and tower.Name == "TowerReplicator"
+                        and tower:GetAttribute("Name") == SelectedTower
+                        and tower:GetAttribute("OwnerId") == LocalPlayer.UserId then
                             local success, res = pcall(function()
-                                return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", { Troop = v })
+                                return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", {
+                                    Troop = tower.Parent,
+                                    Path = 1
+                                })
                             end)
                             if success and CheckResOk(res) then
-                                task.wait(0.2) -- small delay after successful upgrade
+                                task.wait(0.2)
                             end
                         end
                     end
                 end
             end
-            task.wait(0.5) -- check every half second
+            task.wait(0.5)
         end
-
         AutoUpgradeSelectedRunning = false
         Window:Notify({
             Title = "ADS",
@@ -4877,21 +4871,17 @@ local function StartAutoUpgradeAll()
     AutoUpgradeAllRunning = true
 
     task.spawn(function()
-        Window:Notify({
-            Title = "ADS",
-            Desc = "Auto Upgrade All started.",
-            Time = 3,
-            Type = "normal"
-        })
-
         while Globals.AutoUpgradeAll do
             local TowersFolder = workspace:FindFirstChild("Towers")
             if TowersFolder then
-                for _, v in ipairs(TowersFolder:GetChildren()) do
-                    -- Check if this tower belongs to us
-                    if v:FindFirstChild("Owner") and v.Owner.Value == LocalPlayer.UserId then
+                for _, tower in ipairs(TowersFolder:GetDescendants()) do
+                    if tower:IsA("Folder") and tower.Name == "TowerReplicator"
+                    and tower:GetAttribute("OwnerId") == LocalPlayer.UserId then
                         local success, res = pcall(function()
-                            return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", { Troop = v })
+                            return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", {
+                                Troop = tower.Parent,
+                                Path = 1
+                            })
                         end)
                         if success and CheckResOk(res) then
                             task.wait(0.2)
@@ -4901,7 +4891,6 @@ local function StartAutoUpgradeAll()
             end
             task.wait(0.5)
         end
-
         AutoUpgradeAllRunning = false
         Window:Notify({
             Title = "ADS",
