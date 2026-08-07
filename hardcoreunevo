@@ -1,0 +1,227 @@
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService") 
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local activeStratThread = nil
+
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+
+getgenv().AutoSkip = true
+getgenv().AutoGatling = false
+getgenv().AutoRejoin = false
+
+TDS:Loadout("Crook Boss", "Boomerang", "Scout", "Minigunner", "Farm")
+TDS:Mode("Hardcore")
+TDS:GameInfo("Wretched Front", {})
+
+-- ===== NEW: Consecutive loss counter & threshold =====
+local LOSS_THRESHOLD = 30
+local lossCount = 0
+local LOBBY_ID = 3260590327
+
+-- ===== NEW: Smart teleport to lobby =====
+local function SmartTeleportToLobby()
+    local IsMobile = (game:GetService("UserInputService"):GetPlatform() == Enum.Platform.IOS or 
+                      game:GetService("UserInputService"):GetPlatform() == Enum.Platform.Android)
+    pcall(function()
+        if not IsMobile and getgenv().PrivateCode and getgenv().PrivateCode ~= "" then
+            game:GetService("ExperienceService"):LaunchExperience({
+                placeId = LOBBY_ID,
+                linkCode = getgenv().PrivateCode
+            })
+        else
+            TeleportService:Teleport(LOBBY_ID)
+        end
+    end)
+end
+
+local function StartStrategy()
+    wait(0.1)
+    TDS:RemoveIndex()
+    TDS:Place("Farm", -11.27304458618164, 1.551623821258545, 25.420604705810547)
+TDS:Upgrade(1)
+TDS:Place("Farm", -11.152416229248047, 1.502427577972412, 29.595548629760742)
+TDS:Upgrade(2)
+TDS:Ready()
+TDS:Place("Farm", -11.267030715942383, 1.4354009628295898, 33.17436981201172)
+TDS:Upgrade(3)
+TDS:Place("Farm", -11.44372844696045, 1.3367042541503906, 37.02656936645508)
+TDS:Upgrade(4)
+TDS:Place("Farm", -11.302000999450684, 1.2116910219192505, 41.32502746582031)
+TDS:Upgrade(5)
+TDS:Place("Boomerang", 10.562811851501465, 1.1976557970046997, 21.916353225708008)
+TDS:Upgrade(6)
+TDS:Upgrade(6)
+TDS:Place("Farm", -14.836828231811523, 1.5619131326675415, 25.472515106201172)
+TDS:Upgrade(7)
+TDS:Place("Farm", -15.313217163085938, 1.552435040473938, 29.379695892333984)
+TDS:Upgrade(8)
+TDS:Place("Farm", -15.390530586242676, 1.530853033065796, 33.362613677978516)
+TDS:Upgrade(9)
+TDS:Place("Farm", -15.378622055053711, 1.3503412008285522, 37.50684356689453)
+TDS:Upgrade(10)
+TDS:Place("Farm", -15.07895565032959, 1.1494542360305786, 41.32295227050781)
+TDS:Upgrade(11)
+TDS:Upgrade(1)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+TDS:Upgrade(4)
+TDS:Upgrade(5)
+TDS:Upgrade(7)
+TDS:Upgrade(8)
+TDS:Upgrade(9)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+TDS:Upgrade(6)
+TDS:Upgrade(5)
+TDS:Upgrade(4)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+TDS:Upgrade(1)
+TDS:Place("Crook Boss", 6.473793029785156, 1.389139175415039, 27.999502182006836)
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:Upgrade(11)
+TDS:Upgrade(10)
+TDS:Upgrade(9)
+TDS:Upgrade(8)
+TDS:Upgrade(7)
+TDS:Place("Crook Boss", 3.3179702758789062, 1.4199681282043457, 28.34320640563965)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:Upgrade(6)
+TDS:Place("Crook Boss", 12.78934383392334, 1.2102768421173096, 24.0313720703125)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:Place("Boomerang", 7.517147064208984, 1.285949945449829, 22.09209632873535)
+TDS:Upgrade(15)
+TDS:Upgrade(15)
+TDS:Upgrade(15)
+TDS:Upgrade(15)
+TDS:Place("Crook Boss", 12.240935325622559, 1.2496798038482666, 26.984615325927734)
+TDS:Upgrade(16)
+TDS:Upgrade(16)
+TDS:Place("Crook Boss", 5.948300361633301, 1.3865258693695068, 31.097137451171875)
+TDS:Upgrade(17)
+TDS:Upgrade(17)
+TDS:Place("Boomerang", 4.484184265136719, 1.347327470779419, 22.22901153564453)
+TDS:Upgrade(18)
+TDS:Upgrade(18)
+TDS:Upgrade(18)
+TDS:Upgrade(18)
+TDS:Place("Boomerang", 5.762641906738281, 1.101251482963562, 19.423030853271484)
+TDS:Upgrade(19)
+TDS:Upgrade(19)
+TDS:Upgrade(19)
+TDS:Upgrade(19)
+TDS:Place("Boomerang", 8.795092582702637, 0.915244460105896, 19.296361923217773)
+TDS:Upgrade(20)
+TDS:Upgrade(20)
+TDS:Upgrade(20)
+TDS:Upgrade(20)
+TDS:Place("Minigunner", 20.1837215423584, 0.4379318952560425, 9.492600440979004)
+TDS:Place("Scout", 22.134565353393555, 0.42553359270095825, 12.466473579406738)
+end
+
+local function GetMatchStatus()
+    local success, status = pcall(function()
+        local uiRoot = PlayerGui:FindFirstChild("ReactGameNewRewards")
+        if not uiRoot then return nil end
+
+        local mainFrame = uiRoot:FindFirstChild("Frame")
+        if not mainFrame or not mainFrame.Visible then return nil end
+
+        local gameOver = mainFrame:FindFirstChild("gameOver")
+        if not gameOver or not gameOver.Visible then return nil end
+
+        local rewardsScreen = gameOver:FindFirstChild("RewardsScreen")
+        if not rewardsScreen or not rewardsScreen.Visible then return nil end
+
+        local topBanner = rewardsScreen:FindFirstChild("RewardBanner")
+        if not topBanner then return nil end
+
+        local label = topBanner:FindFirstChild("textLabel") or topBanner:FindFirstChildOfClass("TextLabel")
+        if not label then return nil end
+
+        local txt = label.Text:upper()
+        if txt == "" then return nil end
+
+        if txt:find("TRIUMPH") or txt:find("VICTORY") or txt:find("WIN") then
+            return "WIN"
+        elseif txt:find("LOST") or txt:find("DEFEAT") or txt:find("FAIL") then
+            return "LOSS"
+        end
+        return nil
+    end)
+    
+    if success then return status end
+    return nil
+end
+
+local function fireSkipVote()
+    local Event = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
+    
+    while true do
+        local success, result = pcall(function()
+            return Event:InvokeServer("Voting", "Skip")
+        end)
+
+        if success and result == true then
+            print("Skip vote successful!")
+            break
+        else
+            print("Skip vote failed or rejected. Retrying in 1 second...")
+            task.wait(0.1)
+        end
+    end
+end
+
+task.spawn(function()
+    activeStratThread = task.spawn(StartStrategy)
+
+    while true do
+        task.wait(0.1)
+
+        local currentStatus = GetMatchStatus()
+        
+        if currentStatus == "LOSS" then
+            lossCount = lossCount + 1
+            print(string.format("Loss #%d / %d detected.", lossCount, LOSS_THRESHOLD))
+
+            if lossCount >= LOSS_THRESHOLD then
+                print("Reached loss threshold! Teleporting to lobby to reset matchmaking.")
+                SmartTeleportToLobby()
+                break  -- exit the while loop; script will reload on rejoin
+            end
+
+            if activeStratThread and coroutine.status(activeStratThread) ~= "dead" then
+                task.cancel(activeStratThread)
+                activeStratThread = nil
+            end
+
+            print("Firing restart remote until completed...")
+            fireSkipVote()
+
+            print("Waiting for match screen to clear...")
+            repeat 
+                task.wait(0.1) 
+            until GetMatchStatus() == nil
+
+            task.wait(0.1)
+
+            print("Starting new strategy match!")
+            activeStratThread = task.spawn(StartStrategy)
+
+        elseif currentStatus == "WIN" then
+            if lossCount > 0 then
+                print("Win detected! Resetting loss counter.")
+                lossCount = 0
+            end
+        end
+    end
+end)
