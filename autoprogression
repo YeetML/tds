@@ -12,15 +12,13 @@ local platform = UserInputService:GetPlatform()
 local IsMobile = (platform == Enum.Platform.IOS or platform == Enum.Platform.Android)
 local SETTINGS_FILE = "AutoProgression.json"
 
--- Default settings (will be loaded/saved)
+-- Default settings (only Easy, Frost, HC Unevo, HC Evo)
 _G.AutoProgSettings = _G.AutoProgSettings or {
     AutoProgressionEnabled = false,
     ForceEasy = false,
     ForceFrost = false,
-    ForceHardcoreScout = false,
-    ForceHardcoreMinigunner = false,
-    ForceHardcoreOperator = false,
-    ForceHardcoreJuggernaut = false,
+    ForceHardcoreUnevo = false,
+    ForceHardcoreEvo = false,
     __locked = false,
 }
 
@@ -52,6 +50,7 @@ local function BuyTower(towerName)
     local aliases = {
         ["EvolvedOperator"] = "Operator",
         ["EvolvedJuggernaut"] = "Juggernaut",
+        ["EvolvedKingpin"] = "Kingpin",
     }
     local function attemptPurchase(name)
         local success, result = pcall(function()
@@ -287,6 +286,36 @@ local FrostStrategies = {
     { name = "frost5", mapName = "Dusty Bridges", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost5", autoPremium = false, autoSkip = false, autoRejoin = true },
 }
 
+-- ===== NEW: HARDCODE UNEVO / EVO HELPERS =====
+local function RunHardcoreUnevo()
+    print("[AutoProgression] Running Hardcore UNEVO strategy")
+    local result = AutoBuyTowers({
+        {"Minigunner", 8000},
+        {"Boomerang", 300},
+    })
+    if result == "OK" then
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreunevo"))()
+    else
+        print("[AutoProgression] Not enough coins for UNEVO towers, farming Easy.")
+        RunYeetEasy()
+    end
+end
+
+local function RunHardcoreEvo()
+    print("[AutoProgression] Running Hardcore EVO strategy")
+    local result = AutoBuyTowers({
+        {"EvolvedOperator", 15000, "Coins", 4500, "Gems"},
+        {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"},
+        {"EvolvedKingpin", 15000, "Coins", 5500, "Gems"},
+    })
+    if result == "OK" then
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreevo"))()
+    else
+        print("[AutoProgression] Not enough resources for EVO towers, falling back to UNEVO.")
+        RunHardcoreUnevo()
+    end
+end
+
 -- ===== STRATEGY RUNNERS =====
 local runningEasy = false
 local runningFrost = false
@@ -300,7 +329,6 @@ local function RunYeetEasy()
 
     if not IsInLobby() then
         while true do
-            -- 1. Check available maps
             local availableMaps = GetAvailableMaps()
             local availableStrategies = {}
             for _, strategy in ipairs(EasyStrategies) do
@@ -309,7 +337,6 @@ local function RunYeetEasy()
                 end
             end
 
-            -- 2. If a map is found, load it
             if #availableStrategies > 0 then
                 local chosen = availableStrategies[math.random(1, #availableStrategies)]
                 ApplyStrategySettings(chosen)
@@ -320,18 +347,15 @@ local function RunYeetEasy()
                 return
             end
 
-            -- 3. No map – read the veto text
             local vetoInfo = GetVetoInfo()
             if not vetoInfo then
                 print("[AutoProgression] Could not read veto text – assuming no vetoes.")
                 break
             end
 
-            -- 4. If used < total, we can veto again
             if vetoInfo.used < vetoInfo.total then
                 print("[AutoProgression] Text: Veto (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ") – vetoing.")
                 VetoMap()
-                -- Wait a moment, then loop again (in VIP, used stays 0, so we'll keep going)
             else
                 print("[AutoProgression] Text: Veto (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ") – no vetoes left.")
                 break
@@ -341,7 +365,6 @@ local function RunYeetEasy()
         print("[AutoProgression] No Easy maps available. Teleporting to lobby...")
         SmartTeleportToLobby()
     else
-        -- In lobby, just pick a random Easy strategy
         local chosen = EasyStrategies[math.random(1, #EasyStrategies)]
         ApplyStrategySettings(chosen)
         task.wait(0.3)
@@ -359,7 +382,6 @@ local function RunFrostStrategy()
 
     if not IsInLobby() then
         while true do
-            -- 1. Check available maps
             local availableMaps = GetAvailableMaps()
             local availableStrategies = {}
             for _, strategy in ipairs(FrostStrategies) do
@@ -368,7 +390,6 @@ local function RunFrostStrategy()
                 end
             end
 
-            -- 2. If a map is found, load it
             if #availableStrategies > 0 then
                 local chosen = availableStrategies[math.random(1, #availableStrategies)]
                 ApplyStrategySettings(chosen)
@@ -379,18 +400,15 @@ local function RunFrostStrategy()
                 return
             end
 
-            -- 3. No map – read the veto text
             local vetoInfo = GetVetoInfo()
             if not vetoInfo then
                 print("[AutoProgression] Could not read veto text – assuming no vetoes.")
                 break
             end
 
-            -- 4. If used < total, we can veto again
             if vetoInfo.used < vetoInfo.total then
                 print("[AutoProgression] Text: Veto (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ") – vetoing.")
                 VetoMap()
-                -- loop again; in VIP, used stays 0, so it keeps trying
             else
                 print("[AutoProgression] Text: Veto (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ") – no vetoes left.")
                 break
@@ -400,7 +418,6 @@ local function RunFrostStrategy()
         print("[AutoProgression] No Frost maps available. Teleporting to lobby...")
         SmartTeleportToLobby()
     else
-        -- In lobby, pick a random Frost strategy
         local chosen = FrostStrategies[math.random(1, #FrostStrategies)]
         ApplyStrategySettings(chosen)
         task.wait(0.3)
@@ -417,15 +434,12 @@ local function RunAutoProgression()
     AutoProgressionRunning = true
     task.wait(0.5)
 
-    -- Check force toggles (mutual exclusivity already enforced in UI)
+    -- Check force toggles
     local forceEasy = _G.AutoProgSettings.ForceEasy or false
     local forceFrost = _G.AutoProgSettings.ForceFrost or false
-    local forceHcScout = _G.AutoProgSettings.ForceHardcoreScout or false
-    local forceHcMinigunner = _G.AutoProgSettings.ForceHardcoreMinigunner or false
-    local forceHcOperator = _G.AutoProgSettings.ForceHardcoreOperator or false
-    local forceHcJuggernaut = _G.AutoProgSettings.ForceHardcoreJuggernaut or false
+    local forceHcUnevo = _G.AutoProgSettings.ForceHardcoreUnevo or false
+    local forceHcEvo = _G.AutoProgSettings.ForceHardcoreEvo or false
 
-    -- If any force is ON, run that directly (skip level checks)
     if forceEasy then
         RunYeetEasy()
         AutoProgressionRunning = false
@@ -450,64 +464,29 @@ local function RunAutoProgression()
                 print("[AutoProgression] Not enough Coins for Frost – farming Easy.")
                 RunYeetEasy()
             elseif result == "Gems" then
-                print("[AutoProgression] Not enough Gems for Frost – farming Hardcore Scout.")
-                loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
+                print("[AutoProgression] Not enough Gems for Frost – farming UNEVO.")
+                RunHardcoreUnevo()   -- fallback to unevo
             end
         end
         AutoProgressionRunning = false
         return
-    elseif forceHcScout then
+    elseif forceHcUnevo then
         ApplyStrategySettings({ autoSkip = true, autoPremium = false, autoRejoin = true, autoRestart = false })
-        AutoBuyTowers({ {"Pyromancer", 1250} })
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
+        RunHardcoreUnevo()
         AutoProgressionRunning = false
         return
-    elseif forceHcMinigunner then
+    elseif forceHcEvo then
         ApplyStrategySettings({ autoSkip = true, autoPremium = false, autoRejoin = true, autoRestart = false })
-        AutoBuyTowers({ {"Minigunner", 8000} })
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
-        AutoProgressionRunning = false
-        return
-    elseif forceHcOperator then
-        ApplyStrategySettings({ autoSkip = true, autoPremium = false, autoRejoin = true, autoRestart = false })
-        local result = AutoBuyTowers({ {"EvolvedOperator", 15000, "Coins", 4500, "Gems"} })
-        if result == "Coins" then
-            RunYeetEasy()
-        elseif result == "Gems" then
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
-        else
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreoperator"))()
-        end
-        AutoProgressionRunning = false
-        return
-    elseif forceHcJuggernaut then
-        ApplyStrategySettings({ autoSkip = true, autoPremium = false, autoRejoin = true, autoRestart = false })
-        print("[AutoProgression] 🚀 JUGGERNAUT FORCE DETECTED – entering branch")
-        print("[AutoProgression] Current Coins:", GetStat("Coins"))
-        print("[AutoProgression] Current Gems:", GetStat("Gems"))
-        local result = AutoBuyTowers({ {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"} })
-        print("[AutoProgression] AutoBuyTowers result:", result)
-        if result == "Coins" then
-            print("[AutoProgression] Not enough Coins – farming Easy")
-            RunYeetEasy()
-        elseif result == "Gems" then
-            print("[AutoProgression] Not enough Gems – farming Hardcore Minigunner")
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
-        else
-            print("[AutoProgression] ✅ Loading Juggernaut strategy from:")
-            print("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorejuggernaut")
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorejuggernaut"))()
-            print("[AutoProgression] Juggernaut strategy loaded successfully")
-        end
+        RunHardcoreEvo()
         AutoProgressionRunning = false
         return
     end
 
-    -- No force – use level-based logic
+    -- No force – use level‑based logic
     local level = GetStat("Level")
-    local currentDifficulty = (ReplicatedStorage:FindFirstChild("State") and ReplicatedStorage.State:FindFirstChild("Difficulty")) and ReplicatedStorage.State.Difficulty.Value or nil
 
     if level >= 176 then
+        -- Frost path
         local haveRocketeer = OwnsTower("Rocketeer")
         local haveGatling = OwnsTower("Gatling Gun")
         local haveTrapper = OwnsTower("Trapper")
@@ -524,61 +503,28 @@ local function RunAutoProgression()
             if result == "OK" then
                 RunFrostStrategy()
             elseif result == "Coins" then
-                if currentDifficulty == "Frost" then
-                    print("[AutoProgression] In Frost match but need Coins – teleporting to lobby.")
-                    SmartTeleportToLobby()
-                else
-                    RunYeetEasy()
-                end
+                print("[AutoProgression] Not enough Coins for Frost – farming Easy.")
+                RunYeetEasy()
             elseif result == "Gems" then
-                if currentDifficulty == "Frost" then
-                    print("[AutoProgression] In Frost match but need Gems – teleporting to lobby.")
-                    SmartTeleportToLobby()
-                else
-                    loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
-                end
+                print("[AutoProgression] Not enough Gems for Frost – farming UNEVO.")
+                RunHardcoreUnevo()
             end
         end
     elseif level >= 120 then
-        local result = AutoBuyTowers({ {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"} })
-        if result == "Coins" then
-            RunYeetEasy()
-        elseif result == "Gems" then
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
-        else
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorejuggernaut"))()
-        end
-    elseif level >= 90 then
-        local result = AutoBuyTowers({ {"EvolvedOperator", 15000, "Coins", 4500, "Gems"} })
-        if result == "Coins" then
-            RunYeetEasy()
-        elseif result == "Gems" then
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
-        else
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreoperator"))()
-        end
-    elseif level >= 70 then
-        AutoBuyTowers({ {"Pyromancer", 1250} })
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcorescout"))()
+        -- EVO path (with fallback to UNEVO if missing resources)
+        RunHardcoreEvo()
     elseif level >= 51 then
-        AutoBuyTowers({ {"Minigunner", 8000} })
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreminigunner"))()
+        -- UNEVO path (ensures Minigunner & Boomerang)
+        RunHardcoreUnevo()
     else
-        AutoBuyTowers({
-            {"Soldier", 350},
-            {"Shotgunner", 850},
-            {"Assassin", 800},
-            {"Commander", 4000},
-            {"DJ Booth", 5000},
-            {"Militant", 800},
-        })
+        -- Below level 51: farm Easy for coins
         RunYeetEasy()
     end
 
     AutoProgressionRunning = false
 end
 
-    -- ===== CODE REDEEMER (from Beebom) =====
+-- ===== CODE REDEEMER (from Beebom) =====
 local function fetchCodesFromBeebom()
     local httpRequest = syn and syn.request or http and http.request or request
     if not httpRequest then
@@ -639,7 +585,7 @@ local function redeemCodesFromBeebom()
     print("[CodeRedeemer] Done!")
 end
 
--- ===== UI CREATION =====
+-- ===== UI CREATION (only Easy, Frost, HC Unevo, HC Evo) =====
 local function CreateUI()
     local oldGui = CoreGui:FindFirstChild("AutoProgressionUI")
     if oldGui then oldGui:Destroy() end
@@ -650,8 +596,8 @@ local function CreateUI()
     gui.Parent = CoreGui
 
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 300, 0, 470)
-    frame.Position = UDim2.new(0.5, -150, 0.7, -235)
+    frame.Size = UDim2.new(0, 300, 0, 380)  -- reduced height
+    frame.Position = UDim2.new(0.5, -150, 0.7, -190)
     frame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
     frame.BorderSizePixel = 0
     frame.Parent = gui
@@ -775,10 +721,8 @@ local function CreateUI()
 
     local easyBtn = CreateModeToggle(208, "Easy", "ForceEasy")
     local frostBtn = CreateModeToggle(234, "Frost", "ForceFrost")
-    local hcScoutBtn = CreateModeToggle(260, "HC Scout", "ForceHardcoreScout")
-    local hcMinigunnerBtn = CreateModeToggle(286, "HC Minigunner", "ForceHardcoreMinigunner")
-    local hcOperatorBtn = CreateModeToggle(312, "HC Operator", "ForceHardcoreOperator")
-    local hcJuggernautBtn = CreateModeToggle(338, "HC Juggernaut", "ForceHardcoreJuggernaut")
+    local hcUnevoBtn = CreateModeToggle(260, "HC Unevo", "ForceHardcoreUnevo")
+    local hcEvoBtn = CreateModeToggle(286, "HC Evo", "ForceHardcoreEvo")
 
     -- Helper to update a mode button
     local function updateModeButton(btn, settingKey)
@@ -798,23 +742,19 @@ local function CreateUI()
                 AutoProgressionEnabled = _G.AutoProgSettings.AutoProgressionEnabled,
                 ForceEasy = _G.AutoProgSettings.ForceEasy,
                 ForceFrost = _G.AutoProgSettings.ForceFrost,
-                ForceHardcoreScout = _G.AutoProgSettings.ForceHardcoreScout,
-                ForceHardcoreMinigunner = _G.AutoProgSettings.ForceHardcoreMinigunner,
-                ForceHardcoreOperator = _G.AutoProgSettings.ForceHardcoreOperator,
-                ForceHardcoreJuggernaut = _G.AutoProgSettings.ForceHardcoreJuggernaut,
+                ForceHardcoreUnevo = _G.AutoProgSettings.ForceHardcoreUnevo,
+                ForceHardcoreEvo = _G.AutoProgSettings.ForceHardcoreEvo,
             }
             writefile(SETTINGS_FILE, HttpService:JSONEncode(saveData))
         end
     end
 
-    -- Update main UI (considers both main toggle and force toggles)
+    -- Update main UI
     local function updateMainUI()
         local anyForceOn = _G.AutoProgSettings.ForceEasy or
                            _G.AutoProgSettings.ForceFrost or
-                           _G.AutoProgSettings.ForceHardcoreScout or
-                           _G.AutoProgSettings.ForceHardcoreMinigunner or
-                           _G.AutoProgSettings.ForceHardcoreOperator or
-                           _G.AutoProgSettings.ForceHardcoreJuggernaut
+                           _G.AutoProgSettings.ForceHardcoreUnevo or
+                           _G.AutoProgSettings.ForceHardcoreEvo
 
         local isRunning = AutoProgressionEnabled or anyForceOn
 
@@ -836,31 +776,22 @@ local function CreateUI()
         end
     end
 
-    -- Force toggle handler (mutual exclusivity + auto‑start)
+    -- Force toggle handler (mutual exclusivity)
     local function toggleMode(settingKey, btn)
-        -- Turn off all other force toggles
-        local forceKeys = {
-            "ForceEasy", "ForceFrost", "ForceHardcoreScout",
-            "ForceHardcoreMinigunner", "ForceHardcoreOperator", "ForceHardcoreJuggernaut"
-        }
+        local forceKeys = {"ForceEasy", "ForceFrost", "ForceHardcoreUnevo", "ForceHardcoreEvo"}
         for _, key in ipairs(forceKeys) do
             if key ~= settingKey then
                 _G.AutoProgSettings[key] = false
             end
         end
 
-        -- Toggle the clicked one
         _G.AutoProgSettings[settingKey] = not _G.AutoProgSettings[settingKey]
 
-        -- Update all mode buttons
         updateModeButton(easyBtn, "ForceEasy")
         updateModeButton(frostBtn, "ForceFrost")
-        updateModeButton(hcScoutBtn, "ForceHardcoreScout")
-        updateModeButton(hcMinigunnerBtn, "ForceHardcoreMinigunner")
-        updateModeButton(hcOperatorBtn, "ForceHardcoreOperator")
-        updateModeButton(hcJuggernautBtn, "ForceHardcoreJuggernaut")
+        updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
+        updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
 
-        -- If a force toggle is turned ON, start the script
         if _G.AutoProgSettings[settingKey] then
             AutoProgressionEnabled = true
             _G.AutoProgSettings.AutoProgressionEnabled = true
@@ -868,8 +799,6 @@ local function CreateUI()
             saveSettings()
             task.spawn(RunAutoProgression)
         else
-            -- If all force toggles are off, we might still have main toggle on
-            -- Update UI accordingly
             updateMainUI()
             saveSettings()
         end
@@ -881,21 +810,14 @@ local function CreateUI()
         _G.AutoProgSettings.AutoProgressionEnabled = AutoProgressionEnabled
 
         if not AutoProgressionEnabled then
-            -- Turn off all force toggles
-            local forceKeys = {
-                "ForceEasy", "ForceFrost", "ForceHardcoreScout",
-                "ForceHardcoreMinigunner", "ForceHardcoreOperator", "ForceHardcoreJuggernaut"
-            }
-            for _, key in ipairs(forceKeys) do
-                _G.AutoProgSettings[key] = false
-            end
-            -- Update mode buttons
+            _G.AutoProgSettings.ForceEasy = false
+            _G.AutoProgSettings.ForceFrost = false
+            _G.AutoProgSettings.ForceHardcoreUnevo = false
+            _G.AutoProgSettings.ForceHardcoreEvo = false
             updateModeButton(easyBtn, "ForceEasy")
             updateModeButton(frostBtn, "ForceFrost")
-            updateModeButton(hcScoutBtn, "ForceHardcoreScout")
-            updateModeButton(hcMinigunnerBtn, "ForceHardcoreMinigunner")
-            updateModeButton(hcOperatorBtn, "ForceHardcoreOperator")
-            updateModeButton(hcJuggernautBtn, "ForceHardcoreJuggernaut")
+            updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
+            updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
         end
 
         updateMainUI()
@@ -911,10 +833,8 @@ local function CreateUI()
     -- Mode button clicks
     easyBtn.MouseButton1Click:Connect(function() toggleMode("ForceEasy", easyBtn) end)
     frostBtn.MouseButton1Click:Connect(function() toggleMode("ForceFrost", frostBtn) end)
-    hcScoutBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreScout", hcScoutBtn) end)
-    hcMinigunnerBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreMinigunner", hcMinigunnerBtn) end)
-    hcOperatorBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreOperator", hcOperatorBtn) end)
-    hcJuggernautBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreJuggernaut", hcJuggernautBtn) end)
+    hcUnevoBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreUnevo", hcUnevoBtn) end)
+    hcEvoBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreEvo", hcEvoBtn) end)
 
     -- Load saved state
     if isfile and isfile(SETTINGS_FILE) then
@@ -928,14 +848,11 @@ local function CreateUI()
         end
     end
 
-    -- Apply loaded state: if any force toggle is on, start the script
     AutoProgressionEnabled = _G.AutoProgSettings.AutoProgressionEnabled or false
     local anyForceOn = _G.AutoProgSettings.ForceEasy or
                        _G.AutoProgSettings.ForceFrost or
-                       _G.AutoProgSettings.ForceHardcoreScout or
-                       _G.AutoProgSettings.ForceHardcoreMinigunner or
-                       _G.AutoProgSettings.ForceHardcoreOperator or
-                       _G.AutoProgSettings.ForceHardcoreJuggernaut
+                       _G.AutoProgSettings.ForceHardcoreUnevo or
+                       _G.AutoProgSettings.ForceHardcoreEvo
     if anyForceOn then
         AutoProgressionEnabled = true
         _G.AutoProgSettings.AutoProgressionEnabled = true
@@ -944,10 +861,8 @@ local function CreateUI()
     updateMainUI()
     updateModeButton(easyBtn, "ForceEasy")
     updateModeButton(frostBtn, "ForceFrost")
-    updateModeButton(hcScoutBtn, "ForceHardcoreScout")
-    updateModeButton(hcMinigunnerBtn, "ForceHardcoreMinigunner")
-    updateModeButton(hcOperatorBtn, "ForceHardcoreOperator")
-    updateModeButton(hcJuggernautBtn, "ForceHardcoreJuggernaut")
+    updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
+    updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
 
     if AutoProgressionEnabled then
         task.spawn(RunAutoProgression)
@@ -1000,10 +915,8 @@ local function CreateUI()
         gemsDisplay = gemsDisplay,
         easyBtn = easyBtn,
         frostBtn = frostBtn,
-        hcScoutBtn = hcScoutBtn,
-        hcMinigunnerBtn = hcMinigunnerBtn,
-        hcOperatorBtn = hcOperatorBtn,
-        hcJuggernautBtn = hcJuggernautBtn,
+        hcUnevoBtn = hcUnevoBtn,
+        hcEvoBtn = hcEvoBtn,
     }
 end
 
@@ -1012,10 +925,8 @@ task.spawn(function()
     while task.wait(5) do
         local anyForceOn = _G.AutoProgSettings.ForceEasy or
                            _G.AutoProgSettings.ForceFrost or
-                           _G.AutoProgSettings.ForceHardcoreScout or
-                           _G.AutoProgSettings.ForceHardcoreMinigunner or
-                           _G.AutoProgSettings.ForceHardcoreOperator or
-                           _G.AutoProgSettings.ForceHardcoreJuggernaut
+                           _G.AutoProgSettings.ForceHardcoreUnevo or
+                           _G.AutoProgSettings.ForceHardcoreEvo
         if (AutoProgressionEnabled or anyForceOn) and not CoreGui:FindFirstChild("AutoProgressionUI") then
             print("[AutoProgression] UI was destroyed, recreating...")
             local newUI = CreateUI()
@@ -1030,6 +941,8 @@ getgenv().AutoProgressionUI = ui
 getgenv().BuyTower = BuyTower
 getgenv().RunYeetEasy = RunYeetEasy
 getgenv().RunAutoProgression = RunAutoProgression
+getgenv().RunHardcoreUnevo = RunHardcoreUnevo
+getgenv().RunHardcoreEvo = RunHardcoreEvo
 
 task.spawn(function()
     task.wait(1) -- wait for game to fully load
