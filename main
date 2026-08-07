@@ -137,7 +137,7 @@ end)
 
 task.spawn(function()
     pcall(function()
-        RemoteFunc:InvokeServer("Settings", "Update", "Show Nametags", false)
+        RemoteFunc:InvokeServer("Settings", "Update", "Show Nametags", true)
     end)
 end)
 
