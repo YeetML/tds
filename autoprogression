@@ -484,32 +484,42 @@ local function RunAutoProgression()
 
     -- No force – use level‑based logic
     local level = GetStat("Level")
-
+    local currentDifficulty = (ReplicatedStorage:FindFirstChild("State") and ReplicatedStorage.State:FindFirstChild("Difficulty")) and ReplicatedStorage.State.Difficulty.Value or nil
     if level >= 176 then
-        -- Frost path
-        local haveRocketeer = OwnsTower("Rocketeer")
-        local haveGatling = OwnsTower("Gatling Gun")
-        local haveTrapper = OwnsTower("Trapper")
-        local haveHacker = OwnsTower("Hacker")
-        if haveGatling and haveTrapper and haveHacker and haveRocketeer then
+    -- Frost path
+    local haveRocketeer = OwnsTower("Rocketeer")
+    local haveGatling = OwnsTower("Gatling Gun")
+    local haveTrapper = OwnsTower("Trapper")
+    local haveHacker = OwnsTower("Hacker")
+    if haveGatling and haveTrapper and haveHacker and haveRocketeer then
+        RunFrostStrategy()
+    else
+        local result = AutoBuyTowers({
+            {"Gatling Gun", 35000, "Coins"},
+            {"Trapper", 3000, "Coins"},
+            {"Hacker", 5500, "Gems"},
+            {"Rocketeer", 2500, "Coins"},
+        })
+        if result == "OK" then
             RunFrostStrategy()
-        else
-            local result = AutoBuyTowers({
-                {"Gatling Gun", 35000, "Coins"},
-                {"Trapper", 3000, "Coins"},
-                {"Hacker", 5500, "Gems"},
-                {"Rocketeer", 2500, "Coins"},
-            })
-            if result == "OK" then
-                RunFrostStrategy()
-            elseif result == "Coins" then
+        elseif result == "Coins" then
+            if currentDifficulty == "Frost" then
+                print("[AutoProgression] In Frost match but need Coins – teleporting to lobby.")
+                SmartTeleportToLobby()
+            else
                 print("[AutoProgression] Not enough Coins for Frost – farming Easy.")
                 RunYeetEasy()
-            elseif result == "Gems" then
+            end
+        elseif result == "Gems" then
+            if currentDifficulty == "Frost" then
+                print("[AutoProgression] In Frost match but need Gems – teleporting to lobby.")
+                SmartTeleportToLobby()
+            else
                 print("[AutoProgression] Not enough Gems for Frost – farming UNEVO.")
                 RunHardcoreUnevo()
             end
         end
+    end
     elseif level >= 120 then
         -- EVO path (with fallback to UNEVO if missing resources)
         RunHardcoreEvo()
