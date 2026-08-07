@@ -227,6 +227,8 @@ local AllModifiers = {
 
 local DefaultSettings = {
     PathVisuals = false,
+	AutoUpgradeSelected = false,
+	AutoUpgradeAll = false,
     MilitaryPath = false,
     MercenaryPath = false,
     AutoSkip = false,
