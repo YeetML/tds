@@ -22,6 +22,18 @@ _G.AutoProgSettings = _G.AutoProgSettings or {
     __locked = false,
 }
 
+-- ===== UI STATUS UPDATE =====
+local function SetStatus(text)
+    local ui = getgenv().AutoProgressionUI
+    if ui and ui.status then
+        ui.status.Text = "Status: " .. text
+    else
+        -- store pending status for when UI is created
+        _G._pendingStatus = text
+    end
+end
+getgenv().SetStatus = SetStatus
+
 -- ===== APPLY STRATEGY SETTINGS (AutoSkip, AutoPremium, etc.) =====
 local function ApplyStrategySettings(strategy)
     local MainGlobals = getgenv().Globals or _G.Globals
@@ -46,6 +58,7 @@ end
 
 -- ===== BUY TOWER =====
 local function BuyTower(towerName)
+    SetStatus("Buying " .. towerName .. "...")
     print("Buying " .. towerName)
     local aliases = {
         ["EvolvedOperator"] = "Operator",
@@ -58,9 +71,11 @@ local function BuyTower(towerName)
         end)
         if success then
             print("Successfully bought " .. name)
+            SetStatus("Bought " .. name)
             return true
         else
             print("Failed to buy " .. name .. ": " .. tostring(result))
+            SetStatus("Failed to buy " .. name)
             return false
         end
     end
@@ -68,6 +83,7 @@ local function BuyTower(towerName)
     local alternate = aliases[towerName]
     if alternate then
         print("Primary failed, trying alternate: " .. alternate)
+        SetStatus("Trying alternate: " .. alternate)
         if attemptPurchase(alternate) then return true end
     end
     return false
@@ -87,6 +103,7 @@ end
 
 -- ===== SMART TELEPORT TO LOBBY =====
 local function SmartTeleportToLobby()
+    SetStatus("Teleporting to lobby...")
     local lobbyId = 3260590327
     pcall(function()
         if not IsMobile and getgenv().PrivateCode and getgenv().PrivateCode ~= "" then
@@ -102,6 +119,7 @@ end
 
 -- ===== OWN TOWER CHECK =====
 local function OwnsTower(towerName)
+    SetStatus("Checking ownership: " .. towerName)
     local maxAttempts = 15
     for attempt = 1, maxAttempts do
         local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
@@ -147,6 +165,7 @@ end
 -- ===== AUTO BUY TOWERS =====
 local function AutoBuyTowers(towerList)
     print("[AutoProgression] Checking towers to buy...")
+    SetStatus("Checking towers to buy...")
     local function parseTowerData(data)
         local name = data[1]
         local requiredCoins = 0
@@ -178,10 +197,12 @@ local function AutoBuyTowers(towerList)
         if not OwnsTower(towerName) then
             if not hasCoins then
                 print("[AutoProgression] Not enough Coins for " .. towerName)
+                SetStatus("Not enough Coins for " .. towerName)
                 return "Coins"
             end
             if not hasGems then
                 print("[AutoProgression] Not enough Gems for " .. towerName)
+                SetStatus("Not enough Gems for " .. towerName)
                 return "Gems"
             end
             local msg = ("[AutoProgression] Buying %s"):format(towerName)
@@ -193,10 +214,12 @@ local function AutoBuyTowers(towerList)
                 msg = msg .. (" (need %d Gems)"):format(needGems)
             end
             print(msg)
+            SetStatus(msg)
             BuyTower(towerName)
             task.wait(1)
         else
             print("[AutoProgression] Already own " .. towerName)
+            SetStatus("Already own " .. towerName)
         end
     end
     return "OK"
@@ -210,6 +233,7 @@ local function IsInLobby()
 end
 
 local function GetAvailableMaps()
+    SetStatus("Scanning for available maps...")
     local maps = {}
     task.wait(2)
     for _, g in ipairs(workspace:GetDescendants()) do
@@ -261,6 +285,7 @@ end
 
 local function VetoMap()
     print("[AutoProgression] Attempting to veto...")
+    SetStatus("Vetoing map...")
     pcall(function()
         RemoteEvent:FireServer("LobbyVoting", "Veto")
         print("[AutoProgression] Veto fired.")
@@ -289,29 +314,35 @@ local FrostStrategies = {
 -- ===== NEW: HARDCODE UNEVO / EVO HELPERS =====
 local function RunHardcoreUnevo()
     print("[AutoProgression] Running Hardcore UNEVO strategy")
+    SetStatus("Running Hardcore UNEVO strategy...")
     local result = AutoBuyTowers({
         {"Minigunner", 8000},
         {"Boomerang", 300},
     })
     if result == "OK" then
+        SetStatus("Loading Hardcore UNEVO strategy...")
         loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreunevo"))()
     else
         print("[AutoProgression] Not enough coins for UNEVO towers, farming Easy.")
+        SetStatus("Not enough coins for UNEVO – farming Easy")
         RunYeetEasy()
     end
 end
 
 local function RunHardcoreEvo()
     print("[AutoProgression] Running Hardcore EVO strategy")
+    SetStatus("Running Hardcore EVO strategy...")
     local result = AutoBuyTowers({
         {"EvolvedOperator", 15000, "Coins", 4500, "Gems"},
         {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"},
         {"EvolvedKingpin", 15000, "Coins", 5500, "Gems"},
     })
     if result == "OK" then
+        SetStatus("Loading Hardcore EVO strategy...")
         loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreevo"))()
     else
         print("[AutoProgression] Not enough resources for EVO towers, falling back to UNEVO.")
+        SetStatus("Not enough resources for EVO – falling back to UNEVO")
         RunHardcoreUnevo()
     end
 end
@@ -326,6 +357,7 @@ local function RunYeetEasy()
     if runningEasy then return end
     runningEasy = true
     getgenv().TimeScaleEnabled = false
+    SetStatus("Starting Easy strategy...")
 
     if not IsInLobby() then
         while true do
@@ -342,6 +374,7 @@ local function RunYeetEasy()
                 ApplyStrategySettings(chosen)
                 task.wait(0.3)
                 print("[AutoProgression] Selected Easy: " .. chosen.name .. " on " .. chosen.mapName)
+                SetStatus("Loading Easy: " .. chosen.name .. " on " .. chosen.mapName)
                 loadstring(game:HttpGet(chosen.url))()
                 runningEasy = false
                 return
@@ -363,12 +396,14 @@ local function RunYeetEasy()
         end
 
         print("[AutoProgression] No Easy maps available. Teleporting to lobby...")
+        SetStatus("No Easy maps – teleporting to lobby")
         SmartTeleportToLobby()
     else
         local chosen = EasyStrategies[math.random(1, #EasyStrategies)]
         ApplyStrategySettings(chosen)
         task.wait(0.3)
         print("[AutoProgression] In lobby, selected Easy: " .. chosen.name)
+        SetStatus("In lobby – loading Easy: " .. chosen.name)
         loadstring(game:HttpGet(chosen.url))()
     end
 
@@ -379,6 +414,7 @@ local function RunFrostStrategy()
     if runningFrost then return end
     runningFrost = true
     getgenv().TimeScaleEnabled = false
+    SetStatus("Starting Frost strategy...")
 
     if not IsInLobby() then
         while true do
@@ -395,6 +431,7 @@ local function RunFrostStrategy()
                 ApplyStrategySettings(chosen)
                 task.wait(0.3)
                 print("[AutoProgression] Selected Frost: " .. chosen.name .. " on " .. chosen.mapName)
+                SetStatus("Loading Frost: " .. chosen.name .. " on " .. chosen.mapName)
                 loadstring(game:HttpGet(chosen.url))()
                 runningFrost = false
                 return
@@ -416,12 +453,14 @@ local function RunFrostStrategy()
         end
 
         print("[AutoProgression] No Frost maps available. Teleporting to lobby...")
+        SetStatus("No Frost maps – teleporting to lobby")
         SmartTeleportToLobby()
     else
         local chosen = FrostStrategies[math.random(1, #FrostStrategies)]
         ApplyStrategySettings(chosen)
         task.wait(0.3)
         print("[AutoProgression] In lobby, selected Frost: " .. chosen.name)
+        SetStatus("In lobby – loading Frost: " .. chosen.name)
         loadstring(game:HttpGet(chosen.url))()
     end
 
@@ -441,10 +480,12 @@ local function RunAutoProgression()
     local forceHcEvo = _G.AutoProgSettings.ForceHardcoreEvo or false
 
     if forceEasy then
+        SetStatus("Force mode: Easy")
         RunYeetEasy()
         AutoProgressionRunning = false
         return
     elseif forceFrost then
+        SetStatus("Force mode: Frost")
         local haveRocketeer = OwnsTower("Rocketeer")
         local haveGatling = OwnsTower("Gatling Gun")
         local haveTrapper = OwnsTower("Trapper")
@@ -462,20 +503,24 @@ local function RunAutoProgression()
                 RunFrostStrategy()
             elseif result == "Coins" then
                 print("[AutoProgression] Not enough Coins for Frost – farming Easy.")
+                SetStatus("Not enough Coins for Frost – farming Easy")
                 RunYeetEasy()
             elseif result == "Gems" then
                 print("[AutoProgression] Not enough Gems for Frost – farming UNEVO.")
-                RunHardcoreUnevo()   -- fallback to unevo
+                SetStatus("Not enough Gems for Frost – farming UNEVO")
+                RunHardcoreUnevo()
             end
         end
         AutoProgressionRunning = false
         return
     elseif forceHcUnevo then
+        SetStatus("Force mode: Hardcore UNEVO")
         ApplyStrategySettings({ autoSkip = true, autoPremium = false, autoRejoin = true, autoRestart = false })
         RunHardcoreUnevo()
         AutoProgressionRunning = false
         return
     elseif forceHcEvo then
+        SetStatus("Force mode: Hardcore EVO")
         ApplyStrategySettings({ autoSkip = true, autoPremium = false, autoRejoin = true, autoRestart = false })
         RunHardcoreEvo()
         AutoProgressionRunning = false
@@ -486,48 +531,53 @@ local function RunAutoProgression()
     local level = GetStat("Level")
     local currentDifficulty = (ReplicatedStorage:FindFirstChild("State") and ReplicatedStorage.State:FindFirstChild("Difficulty")) and ReplicatedStorage.State.Difficulty.Value or nil
     if level >= 176 then
-    -- Frost path
-    local haveRocketeer = OwnsTower("Rocketeer")
-    local haveGatling = OwnsTower("Gatling Gun")
-    local haveTrapper = OwnsTower("Trapper")
-    local haveHacker = OwnsTower("Hacker")
-    if haveGatling and haveTrapper and haveHacker and haveRocketeer then
-        RunFrostStrategy()
-    else
-        local result = AutoBuyTowers({
-            {"Gatling Gun", 35000, "Coins"},
-            {"Trapper", 3000, "Coins"},
-            {"Hacker", 5500, "Gems"},
-            {"Rocketeer", 2500, "Coins"},
-        })
-        if result == "OK" then
+        SetStatus("Level " .. level .. " → Frost path")
+        -- Frost path
+        local haveRocketeer = OwnsTower("Rocketeer")
+        local haveGatling = OwnsTower("Gatling Gun")
+        local haveTrapper = OwnsTower("Trapper")
+        local haveHacker = OwnsTower("Hacker")
+        if haveGatling and haveTrapper and haveHacker and haveRocketeer then
             RunFrostStrategy()
-        elseif result == "Coins" then
-            if currentDifficulty == "Frost" then
-                print("[AutoProgression] In Frost match but need Coins – teleporting to lobby.")
-                SmartTeleportToLobby()
-            else
-                print("[AutoProgression] Not enough Coins for Frost – farming Easy.")
-                RunYeetEasy()
-            end
-        elseif result == "Gems" then
-            if currentDifficulty == "Frost" then
-                print("[AutoProgression] In Frost match but need Gems – teleporting to lobby.")
-                SmartTeleportToLobby()
-            else
-                print("[AutoProgression] Not enough Gems for Frost – farming UNEVO.")
-                RunHardcoreUnevo()
+        else
+            local result = AutoBuyTowers({
+                {"Gatling Gun", 35000, "Coins"},
+                {"Trapper", 3000, "Coins"},
+                {"Hacker", 5500, "Gems"},
+                {"Rocketeer", 2500, "Coins"},
+            })
+            if result == "OK" then
+                RunFrostStrategy()
+            elseif result == "Coins" then
+                if currentDifficulty == "Frost" then
+                    print("[AutoProgression] In Frost match but need Coins – teleporting to lobby.")
+                    SetStatus("In Frost match, need Coins – teleporting to lobby")
+                    SmartTeleportToLobby()
+                else
+                    print("[AutoProgression] Not enough Coins for Frost – farming Easy.")
+                    SetStatus("Not enough Coins for Frost – farming Easy")
+                    RunYeetEasy()
+                end
+            elseif result == "Gems" then
+                if currentDifficulty == "Frost" then
+                    print("[AutoProgression] In Frost match but need Gems – teleporting to lobby.")
+                    SetStatus("In Frost match, need Gems – teleporting to lobby")
+                    SmartTeleportToLobby()
+                else
+                    print("[AutoProgression] Not enough Gems for Frost – farming UNEVO.")
+                    SetStatus("Not enough Gems for Frost – farming UNEVO")
+                    RunHardcoreUnevo()
+                end
             end
         end
-    end
     elseif level >= 120 then
-        -- EVO path (with fallback to UNEVO if missing resources)
+        SetStatus("Level " .. level .. " → Hardcore EVO path")
         RunHardcoreEvo()
     elseif level >= 51 then
-        -- UNEVO path (ensures Minigunner & Boomerang)
+        SetStatus("Level " .. level .. " → Hardcore UNEVO path")
         RunHardcoreUnevo()
     else
-        -- Below level 51: farm Easy for coins
+        SetStatus("Level " .. level .. " → Farming Easy")
         RunYeetEasy()
     end
 
@@ -576,16 +626,20 @@ end
 
 local function redeemCodesFromBeebom()
     print("[CodeRedeemer] Fetching codes from Beebom...")
+    SetStatus("Fetching codes from Beebom...")
     local codeList = fetchCodesFromBeebom()
     if #codeList == 0 then
         print("[CodeRedeemer] No codes found.")
+        SetStatus("No codes found")
         return
     end
 
     print("[CodeRedeemer] Found codes: " .. table.concat(codeList, ", "))
+    SetStatus("Redeeming " .. #codeList .. " codes...")
     
     for _, code in ipairs(codeList) do
         print("[CodeRedeemer] Redeeming: " .. code)
+        SetStatus("Redeeming code: " .. code)
         pcall(function()
             RemoteFunc:InvokeServer("Codes", "Redeem", code)
         end)
@@ -593,6 +647,7 @@ local function redeemCodesFromBeebom()
     end
     
     print("[CodeRedeemer] Done!")
+    SetStatus("Code redemption complete")
 end
 
 -- ===== UI CREATION (only Easy, Frost, HC Unevo, HC Evo) =====
@@ -691,6 +746,12 @@ local function CreateUI()
     statusDisplay.TextXAlignment = Enum.TextXAlignment.Center
     statusDisplay.Parent = frame
 
+    -- Apply any pending status
+    if _G._pendingStatus then
+        statusDisplay.Text = "Status: " .. _G._pendingStatus
+        _G._pendingStatus = nil
+    end
+
     -- Main toggle
     local toggle = Instance.new("TextButton")
     toggle.Size = UDim2.new(0, 90, 0, 30)
@@ -773,10 +834,14 @@ local function CreateUI()
             toggle.BackgroundColor3 = Color3.fromRGB(0, 170, 80)
             if anyForceOn then
                 title.Text = "Auto Progression (Forced)"
-                statusDisplay.Text = "Status: Forcing Mode"
+                if statusDisplay.Text:find("Status: Idle") or statusDisplay.Text:find("Status: Stopped") then
+                    statusDisplay.Text = "Status: Forcing Mode"
+                end
             else
                 title.Text = "Auto Progression Running"
-                statusDisplay.Text = "Status: Running..."
+                if statusDisplay.Text:find("Status: Idle") or statusDisplay.Text:find("Status: Stopped") then
+                    statusDisplay.Text = "Status: Running..."
+                end
             end
         else
             toggle.Text = "OFF"
@@ -828,6 +893,9 @@ local function CreateUI()
             updateModeButton(frostBtn, "ForceFrost")
             updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
             updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
+            SetStatus("Stopped")
+        else
+            SetStatus("Starting...")
         end
 
         updateMainUI()
