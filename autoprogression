@@ -12,6 +12,12 @@ local platform = UserInputService:GetPlatform()
 local IsMobile = (platform == Enum.Platform.IOS or platform == Enum.Platform.Android)
 local SETTINGS_FILE = "AutoProgression.json"
 
+-- ===== NEW: cross-script guards so hardcoreevo/hardcoreunevo can't be double-loaded =====
+-- These are read/written from within the loaded hardcoreevo/hardcoreunevo scripts too,
+-- so a running match loop is visible here even though RunHardcoreEvo() itself returns fast.
+getgenv().HcEvoActive = getgenv().HcEvoActive or false
+getgenv().HcUnevoActive = getgenv().HcUnevoActive or false
+
 -- Default settings (only Easy, Frost, HC Unevo, HC Evo)
 _G.AutoProgSettings = _G.AutoProgSettings or {
     AutoProgressionEnabled = false,
@@ -311,8 +317,23 @@ local FrostStrategies = {
     { name = "frost5", mapName = "Dusty Bridges", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost5", autoPremium = false, autoSkip = false, autoRejoin = true },
 }
 
--- ===== NEW: HARDCODE UNEVO / EVO HELPERS =====
+-- ===== HARDCORE UNEVO / EVO HELPERS =====
 local function RunHardcoreUnevo()
+    -- NEW: guard against a second concurrent load (e.g. UI-recovery re-triggering RunAutoProgression
+    -- while a hardcoreunevo match loop is already active in the background)
+    if getgenv().HcUnevoActive then
+        print("[AutoProgression] Hardcore UNEVO already running, skipping duplicate load.")
+        SetStatus("Hardcore UNEVO already running")
+        return
+    end
+
+    -- NEW: force AutoRejoin off BEFORE the strategy script loads TDS's "main" module. main.lua
+    -- reads AutoRejoin once at load time and, if it's true, sets up its own auto-teleport-to-
+    -- lobby-on-loss behavior — which fires on the very first loss and overrides hardcoreunevo's
+    -- own restart/loss-count logic. Leftover true from a prior Easy/Frost run (they set
+    -- autoRejoin = true) or from ApplyStrategySettings will otherwise leak in here.
+    getgenv().AutoRejoin = false
+
     print("[AutoProgression] Running Hardcore UNEVO strategy")
     SetStatus("Running Hardcore UNEVO strategy...")
     local result = AutoBuyTowers({
@@ -330,6 +351,22 @@ local function RunHardcoreUnevo()
 end
 
 local function RunHardcoreEvo()
+    -- NEW: guard against a second concurrent load. Without this, if RunAutoProgression() fires
+    -- twice while a hardcoreevo match loop is already running in the background (which can happen
+    -- via the UI-recovery loop, or clicking the force toggle twice), you get two independent
+    -- 30-loss counters both watching the same match result — each real loss gets counted twice,
+    -- so it teleports to lobby after ~15 real losses instead of 30, and looks "broken".
+    if getgenv().HcEvoActive then
+        print("[AutoProgression] Hardcore EVO already running, skipping duplicate load.")
+        SetStatus("Hardcore EVO already running")
+        return
+    end
+
+    -- NEW: same reasoning as RunHardcoreUnevo above — force AutoRejoin off before "main" loads,
+    -- so hardcoreevo's own 30-loss counter/restart logic actually gets to run instead of main.lua
+    -- teleporting to lobby on the first loss.
+    getgenv().AutoRejoin = false
+
     print("[AutoProgression] Running Hardcore EVO strategy")
     SetStatus("Running Hardcore EVO strategy...")
     local result = AutoBuyTowers({
@@ -515,13 +552,17 @@ local function RunAutoProgression()
         return
     elseif forceHcUnevo then
         SetStatus("Force mode: Hardcore UNEVO")
-        ApplyStrategySettings({ autoSkip = true, autoPremium = false, autoRejoin = true, autoRestart = false })
+        -- NOTE: deliberately NOT calling ApplyStrategySettings(autoRejoin = true) here anymore.
+        -- hardcoreunevo manages its own restart/loss logic manually; setting AutoRejoin = true
+        -- right before it loads TDS's "main" module made main.lua auto-teleport to lobby on the
+        -- very first loss instead of letting the 30-loss counter run. RunHardcoreUnevo() now
+        -- forces AutoRejoin = false itself right before main.lua loads, which is what we want.
         RunHardcoreUnevo()
         AutoProgressionRunning = false
         return
     elseif forceHcEvo then
         SetStatus("Force mode: Hardcore EVO")
-        ApplyStrategySettings({ autoSkip = true, autoPremium = false, autoRejoin = true, autoRestart = false })
+        -- NOTE: same as above — no more ApplyStrategySettings(autoRejoin = true) here.
         RunHardcoreEvo()
         AutoProgressionRunning = false
         return
@@ -853,6 +894,13 @@ local function CreateUI()
 
     -- Force toggle handler (mutual exclusivity)
     local function toggleMode(settingKey, btn)
+        -- NEW: clear the cross-script "active" flags whenever a force mode is switched. This
+        -- signals any currently-running hardcoreevo/hardcoreunevo loop to stop cleanly (see the
+        -- stop-check added to hardcoreevo's loop), and guarantees RunHardcoreEvo/Unevo's guard
+        -- won't block the fresh run we're about to trigger below.
+        getgenv().HcEvoActive = false
+        getgenv().HcUnevoActive = false
+
         local forceKeys = {"ForceEasy", "ForceFrost", "ForceHardcoreUnevo", "ForceHardcoreEvo"}
         for _, key in ipairs(forceKeys) do
             if key ~= settingKey then
@@ -889,6 +937,9 @@ local function CreateUI()
             _G.AutoProgSettings.ForceFrost = false
             _G.AutoProgSettings.ForceHardcoreUnevo = false
             _G.AutoProgSettings.ForceHardcoreEvo = false
+            -- NEW: stop signal for any active hardcore loop
+            getgenv().HcEvoActive = false
+            getgenv().HcUnevoActive = false
             updateModeButton(easyBtn, "ForceEasy")
             updateModeButton(frostBtn, "ForceFrost")
             updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
@@ -943,6 +994,10 @@ local function CreateUI()
     updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
 
     if AutoProgressionEnabled then
+        -- NOTE: this fires on every UI recreation (e.g. from the recovery loop below). It's now
+        -- safe even if a hardcoreevo/hardcoreunevo match loop is still active, because
+        -- RunHardcoreEvo()/RunHardcoreUnevo() will see HcEvoActive/HcUnevoActive == true and
+        -- bail out instead of loading a duplicate copy.
         task.spawn(RunAutoProgression)
     end
 
