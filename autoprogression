@@ -393,6 +393,7 @@ local function RunHardcoreEvo()
         {"EvolvedOperator", 15000, "Coins", 4500, "Gems"},
         {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"},
         {"EvolvedKingpin", 15000, "Coins", 5500, "Gems"},
+        {"Ace Pilot", 1500, "Coins"}
     })
     if result == "OK" then
         SetStatus("Loading Hardcore EVO strategy...")
