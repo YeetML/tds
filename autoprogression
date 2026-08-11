@@ -18,6 +18,16 @@ local SETTINGS_FILE = "AutoProgression.json"
 getgenv().HcEvoActive = getgenv().HcEvoActive or false
 getgenv().HcUnevoActive = getgenv().HcUnevoActive or false
 
+-- NEW: AutoUpgradeSelected / AutoUpgradeAll are never persisted and always default to false on
+-- every load, regardless of whatever they were last set to (manually, or by a previous session).
+-- Force them off right here at boot, before anything else can read them.
+getgenv().AutoUpgradeSelected = false
+getgenv().AutoUpgradeAll = false
+if Globals then
+    Globals.AutoUpgradeSelected = false
+    Globals.AutoUpgradeAll = false
+end
+
 -- Default settings (only Easy, Frost, HC Unevo, HC Evo)
 _G.AutoProgSettings = _G.AutoProgSettings or {
     AutoProgressionEnabled = false,
@@ -48,6 +58,10 @@ local function ApplyStrategySettings(strategy)
         AutoPremium       = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
         AutoRejoin        = (strategy.autoRejoin ~= nil) and strategy.autoRejoin or true,
         AutoRestart        = (strategy.autoRestart ~= nil) and strategy.autoRestart or false,
+        -- NEW: hardcoded false every time, never taken from the strategy table and never
+        -- carried over from a previous run — every loadout starts with both of these off.
+        AutoUpgradeSelected = false,
+        AutoUpgradeAll      = false,
     }
     print("[AutoProgression] Applying & LOCKING settings...")
     for key, value in pairs(settings) do
@@ -333,6 +347,9 @@ local function RunHardcoreUnevo()
     -- own restart/loss-count logic. Leftover true from a prior Easy/Frost run (they set
     -- autoRejoin = true) or from ApplyStrategySettings will otherwise leak in here.
     getgenv().AutoRejoin = false
+    -- NEW: this loadout bypasses ApplyStrategySettings, so force these off here too.
+    getgenv().AutoUpgradeSelected = false
+    getgenv().AutoUpgradeAll = false
 
     print("[AutoProgression] Running Hardcore UNEVO strategy")
     SetStatus("Running Hardcore UNEVO strategy...")
@@ -366,6 +383,9 @@ local function RunHardcoreEvo()
     -- so hardcoreevo's own 30-loss counter/restart logic actually gets to run instead of main.lua
     -- teleporting to lobby on the first loss.
     getgenv().AutoRejoin = false
+    -- NEW: this loadout bypasses ApplyStrategySettings, so force these off here too.
+    getgenv().AutoUpgradeSelected = false
+    getgenv().AutoUpgradeAll = false
 
     print("[AutoProgression] Running Hardcore EVO strategy")
     SetStatus("Running Hardcore EVO strategy...")
@@ -976,6 +996,14 @@ local function CreateUI()
             end
         end
     end
+
+    -- NEW: belt-and-suspenders — even if a saved file (old or from elsewhere) had these keys
+    -- set true, force them back off right after loading. saveSettings() below never writes
+    -- these two keys either, so they can't get re-persisted from this script.
+    _G.AutoProgSettings.AutoUpgradeSelected = false
+    _G.AutoProgSettings.AutoUpgradeAll = false
+    getgenv().AutoUpgradeSelected = false
+    getgenv().AutoUpgradeAll = false
 
     AutoProgressionEnabled = _G.AutoProgSettings.AutoProgressionEnabled or false
     local anyForceOn = _G.AutoProgSettings.ForceEasy or
