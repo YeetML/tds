@@ -112,7 +112,6 @@ TDS:Place("Ace Pilot", 3.857794761657715, 1.3457971811294556, 22.099288940429688
 TDS:Upgrade(18)
 TDS:Upgrade(18)
 TDS:Upgrade(18)
-TDS:Upgrade(18)
 TDS:Place("Ace Pilot", 5.395421028137207, 1.1126140356063843, 19.389636993408203)
 TDS:Upgrade(19)
 TDS:Upgrade(19)
@@ -123,6 +122,10 @@ TDS:Upgrade(20)
 TDS:Upgrade(20)
 TDS:Upgrade(20)
 TDS:Upgrade(20)
+TDS:Upgrade(21)
+TDS:Upgrade(21)
+TDS:Upgrade(21)
+TDS:Upgrade(21)
 end
 
 local function GetMatchStatus()
