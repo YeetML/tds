@@ -453,9 +453,6 @@ LoadSettings()
 Globals.TimeScaleValue = CoerceTimeScaleValue(Globals.TimeScaleValue, 2)
 Apply3dRendering()
 
-_G.AutoProgSettings.__locked = true
-_G.AutoProgSettings.AutoGatling = true
-
 Globals.HideUsername = false -- [FEATURE 10] default false
 SetSetting("HideUsername", false)
 
