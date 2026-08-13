@@ -573,17 +573,11 @@ local function RunAutoProgression()
         return
     elseif forceHcUnevo then
         SetStatus("Force mode: Hardcore UNEVO")
-        -- NOTE: deliberately NOT calling ApplyStrategySettings(autoRejoin = true) here anymore.
-        -- hardcoreunevo manages its own restart/loss logic manually; setting AutoRejoin = true
-        -- right before it loads TDS's "main" module made main.lua auto-teleport to lobby on the
-        -- very first loss instead of letting the 30-loss counter run. RunHardcoreUnevo() now
-        -- forces AutoRejoin = false itself right before main.lua loads, which is what we want.
         RunHardcoreUnevo()
         AutoProgressionRunning = false
         return
     elseif forceHcEvo then
         SetStatus("Force mode: Hardcore EVO")
-        -- NOTE: same as above — no more ApplyStrategySettings(autoRejoin = true) here.
         RunHardcoreEvo()
         AutoProgressionRunning = false
         return
@@ -592,6 +586,7 @@ local function RunAutoProgression()
     -- No force – use level‑based logic
     local level = GetStat("Level")
     local currentDifficulty = (ReplicatedStorage:FindFirstChild("State") and ReplicatedStorage.State:FindFirstChild("Difficulty")) and ReplicatedStorage.State.Difficulty.Value or nil
+
     if level >= 176 then
         SetStatus("Level " .. level .. " → Frost path")
         -- Frost path
@@ -599,9 +594,22 @@ local function RunAutoProgression()
         local haveGatling = OwnsTower("Gatling Gun")
         local haveTrapper = OwnsTower("Trapper")
         local haveHacker = OwnsTower("Hacker")
+
         if haveGatling and haveTrapper and haveHacker and haveRocketeer then
-            RunFrostStrategy()
+            -- All towers owned – decide whether to run Frost now or teleport to lobby
+            if IsInLobby() or currentDifficulty == "Frost" then
+                -- Already in lobby or in a Frost match – proceed
+                RunFrostStrategy()
+            else
+                -- In an Easy match (or other non‑Frost) – teleport to lobby
+                print("[AutoProgression] In non-Frost match, teleporting to lobby to run Frost.")
+                SetStatus("Not Frost match – teleporting to lobby")
+                SmartTeleportToLobby()
+                -- After teleport, the script will restart and re‑enter this function,
+                -- then IsInLobby() will be true and RunFrostStrategy() will be called.
+            end
         else
+            -- Missing some towers – try to buy them
             local result = AutoBuyTowers({
                 {"Gatling Gun", 35000, "Coins"},
                 {"Trapper", 3000, "Coins"},
@@ -632,6 +640,7 @@ local function RunAutoProgression()
                 end
             end
         end
+
     elseif level >= 120 then
         SetStatus("Level " .. level .. " → Hardcore EVO path")
         RunHardcoreEvo()
