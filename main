@@ -343,7 +343,7 @@ local function countReadyMedics(medics)
     for _, t in ipairs(medics) do
         if t and t.Parent then
             local up = t:FindFirstChild("TowerReplicator") and t.TowerReplicator:GetAttribute("Upgrade") or 0
-            if up >= 3 then c += 1 end
+            if up >= 3 then c = c + 1 end
         end
     end
     return c
