@@ -1534,6 +1534,7 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
         List = AllTowers,
         Value = Globals.Towerslot,
         Multi = true,
+        ShowPriority = true,
         Callback = function(choice)
             SetSetting("Towerslot", choice)
         end
@@ -2592,7 +2593,7 @@ end
 
 Window:Line()
 
-local RecorderInit = loadstring(game:HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Sources/Recorder.lua"))()
+local RecorderInit = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources"))()
 RecorderInit({
     Window = Window,
     ReplicatedStorage = ReplicatedStorage,
