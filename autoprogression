@@ -131,6 +131,7 @@ end
 
 -- ===== OPEN INVENTORY VIA REMOTE =====
 local function OpenInventory()
+    task.wait(2)
     local network = ReplicatedStorage:FindFirstChild("Network")
     if not network then return false end
     local inventory = network:FindFirstChild("Inventory")
