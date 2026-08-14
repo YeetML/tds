@@ -232,7 +232,7 @@ local AllTowers = {
     "Brawler", "Necromancer", "Accelerator", "Engineer", "Hacker", "EvolvedOperator", 
     "EvolvedKingpin", "EvolvedJuggernaut", "Gladiator","Commando","Slasher",
     "Frost Blaster", "Archer", "Swarmer", "Toxic Gunner", "Sledger", "Executioner",
-    "Elf Camp", "Jester", "Cryomancer", "Hallow Punk", "Harvester", " Snowballer",
+    "Elf Camp", "Jester", "Cryomancer", "Hallow Punk", "Harvester", " =Snowballer",
     "Elementalist", "Firework Technician", "Biologist", "Warlock", "Spotlight Tech",
     "Mecha Base"
 }
@@ -5379,16 +5379,16 @@ task.spawn(function()
         end
 
         if Globals.AutoMedic and not AutoMedicRunning then
-    StartMedicChain()
-elseif not Globals.AutoMedic and AutoMedicRunning then
-    StopMedicChain()
-end
+            StartMedicChain()
+        elseif not Globals.AutoMedic and AutoMedicRunning then
+            StopMedicChain()
+        end
 
-if Globals.AutoBounty and not AutoBountyRunning then
-    StartBountyChain()
-elseif not Globals.AutoBounty and AutoBountyRunning then
-    StopBountyChain()
-end
+        if Globals.AutoBounty and not AutoBountyRunning then
+            StartBountyChain()
+        elseif not Globals.AutoBounty and AutoBountyRunning then
+            StopBountyChain()
+        end
 
         task.wait(1)
     end
