@@ -16,6 +16,27 @@ local activeAbilityThread = nil
 local enemyCache = {}
 local lastEnemySpawnTime = 0
 
+local function getTimescaleMultiplier()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return 1 end
+
+    local hotbar = playerGui:FindFirstChild("ReactUniversalHotbar")
+    local frame = hotbar and hotbar:FindFirstChild("Frame")
+    local timescale = frame and frame:FindFirstChild("timescale")
+
+    if not timescale or not timescale.Visible then
+        return 1
+    end
+
+    -- Lock visible = still locked (1x). No Lock = unlocked (normally 2x)
+    if timescale:FindFirstChild("Lock") then
+        return 1
+    end
+
+    -- Unlocked → treat as 2x (same assumption the Commander chain uses)
+    return 2
+end
+
 local function getDifficulty()
     local state = ReplicatedStorage:FindFirstChild("State")
     if not state then return nil end
@@ -187,10 +208,12 @@ local function getTargetEnemy(mode)
         return highestEnemy
     end
 
-    local timeSinceLastSpawn = os.clock() - lastEnemySpawnTime
-    if timeSinceLastSpawn < 5 then
-        return nil
-    end
+    local multiplier = getTimescaleMultiplier()
+local realWait = 5 / multiplier   
+local timeSinceLastSpawn = os.clock() - lastEnemySpawnTime
+if timeSinceLastSpawn < realWait then
+    return nil
+end
 
     return highestEnemy
 end
