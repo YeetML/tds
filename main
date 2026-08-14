@@ -1179,10 +1179,10 @@ local function StartPrivacyMode()
     if pg then
         HookPrivacyRoot(pg)
     end
-    local CoreGui = game:GetService("CoreGui")
+    --[[local CoreGui = game:GetService("CoreGui")
     if CoreGui then
         HookPrivacyRoot(CoreGui)
-    end
+    end]]
     local TagsRoot = workspace:FindFirstChild("Nametags")
     if TagsRoot then
         HookPrivacyRoot(TagsRoot)
