@@ -232,7 +232,7 @@ local AllTowers = {
     "Brawler", "Necromancer", "Accelerator", "Engineer", "Hacker", "EvolvedOperator", 
     "EvolvedKingpin", "EvolvedJuggernaut", "Gladiator","Commando","Slasher",
     "Frost Blaster", "Archer", "Swarmer", "Toxic Gunner", "Sledger", "Executioner",
-    "Elf Camp", "Jester", "Cryomancer", "Hallow Punk", "Harvester", " =Snowballer",
+    "Elf Camp", "Jester", "Cryomancer", "Hallow Punk", "Harvester", " Snowballer",
     "Elementalist", "Firework Technician", "Biologist", "Warlock", "Spotlight Tech",
     "Mecha Base"
 }
