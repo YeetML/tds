@@ -140,8 +140,7 @@ end
 -- ===== OWN TOWER CHECK =====
 local function OwnsTower(towerName)
     SetStatus("Checking ownership: " .. towerName)
-    local maxAttempts = 15
-    for attempt = 1, maxAttempts do
+    while true do
         local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
         if playerGui then
             local inventoryView = playerGui:FindFirstChild("ReactUniversalInventoryView")
@@ -178,8 +177,6 @@ local function OwnsTower(towerName)
         end
         task.wait(0.5)
     end
-    warn("[AutoProgression] Timeout waiting for inventory UI – assuming tower NOT owned.")
-    return false
 end
 
 -- ===== AUTO BUY TOWERS =====
