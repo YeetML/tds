@@ -28,6 +28,27 @@ local UBERCHARGE_DURATION = {
     [5] = 15
 }
 
+local function getTimescaleMultiplier()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return 1 end
+
+    local hotbar = playerGui:FindFirstChild("ReactUniversalHotbar")
+    local frame = hotbar and hotbar:FindFirstChild("Frame")
+    local timescale = frame and frame:FindFirstChild("timescale")
+
+    if not timescale or not timescale.Visible then
+        return 1
+    end
+
+    -- Lock visible = still locked (1x). No Lock = unlocked (normally 2x)
+    if timescale:FindFirstChild("Lock") then
+        return 1
+    end
+
+    -- Unlocked → treat as 2x (same assumption the Commander chain uses)
+    return 2
+end
+
 local function resolveTargetPlayer(targetInput)
     if type(targetInput) == "number" then
         return targetInput, nil
@@ -339,14 +360,20 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle)
                 targetTowers = getTargetTowersFromIndex(targetPlayer, towersToSelect, capacity)
             end
 
-            local duration = getUberchargeDuration(medicTower)
+            local duration = getUberchargeDuration(medicTower)        
+            local multiplier = getTimescaleMultiplier()
+            local realWait = duration / multiplier
 
-            print(string.format("[AutoMedic.Chain]: Medic [%d] (Level %d) -> Attaching %d target(s) & activating Ubercharge (Duration: %.1fs)...", index, currentUpgrade, #targetTowers, duration))
-            
+            print(string.format(
+                "[AutoMedic.Chain]: Medic [%d] (Level %d) -> Attaching %d target(s) & activating Ubercharge (Duration: %.1fs | Timescale x%.1f → waiting %.2fs)",
+                index, currentUpgrade, #targetTowers, duration, multiplier, realWait
+            ))
+
             local attachedTargets = table.clone(targetTowers)
             toggleMedicTargets(medicTower, attachedTargets)
             activateUbercharge(medicTower)
-            task.wait(duration)
+            task.wait(realWait)
+
             if medicTower and medicTower.Parent then
                 toggleMedicTargets(medicTower, attachedTargets)
                 print(string.format("[AutoMedic.Chain]: Medic [%d] -> Detached targets.", index))
