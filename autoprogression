@@ -137,9 +137,30 @@ local function SmartTeleportToLobby()
     end)
 end
 
+-- ===== OPEN INVENTORY VIA REMOTE =====
+local function OpenInventory()
+    local network = ReplicatedStorage:FindFirstChild("Network")
+    if not network then return false end
+    local inventory = network:FindFirstChild("Inventory")
+    if not inventory then return false end
+    local openRemote = inventory:FindFirstChild("URE:OpenInventory")
+    if not openRemote then return false end
+
+    -- If inventory is already open, skip
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui and playerGui:FindFirstChild("ReactUniversalInventoryView") then
+        return true
+    end
+
+    openRemote:FireServer()
+    task.wait(1.5) -- allow UI to open and render
+    return true
+end
+
 -- ===== OWN TOWER CHECK =====
 local function OwnsTower(towerName)
     SetStatus("Checking ownership: " .. towerName)
+    OpenInventory()
     local maxAttempts = 15
     for attempt = 1, maxAttempts do
         local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
