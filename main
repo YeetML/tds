@@ -201,8 +201,6 @@ local StackerErrorShown = false
 local PremiumLoaded = false
 local AutoMedicRunning = false
 local AutoBountyRunning = false
-local AutoMedicLib = nil
-local AutoBountyLib = nil
 
 -- [FEATURE 5] Auto Upgrade variables
 local AutoUpgradeSelectedRunning = false
