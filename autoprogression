@@ -12,15 +12,10 @@ local platform = UserInputService:GetPlatform()
 local IsMobile = (platform == Enum.Platform.IOS or platform == Enum.Platform.Android)
 local SETTINGS_FILE = "AutoProgression.json"
 
--- ===== NEW: cross-script guards so hardcoreevo/hardcoreunevo can't be double-loaded =====
--- These are read/written from within the loaded hardcoreevo/hardcoreunevo scripts too,
--- so a running match loop is visible here even though RunHardcoreEvo() itself returns fast.
+-- ===== cross-script guards =====
 getgenv().HcEvoActive = getgenv().HcEvoActive or false
 getgenv().HcUnevoActive = getgenv().HcUnevoActive or false
 
--- NEW: AutoUpgradeSelected / AutoUpgradeAll are never persisted and always default to false on
--- every load, regardless of whatever they were last set to (manually, or by a previous session).
--- Force them off right here at boot, before anything else can read them.
 getgenv().AutoUpgradeSelected = false
 getgenv().AutoUpgradeAll = false
 if Globals then
@@ -28,7 +23,6 @@ if Globals then
     Globals.AutoUpgradeAll = false
 end
 
--- Default settings (only Easy, Frost, HC Unevo, HC Evo)
 _G.AutoProgSettings = _G.AutoProgSettings or {
     AutoProgressionEnabled = false,
     ForceEasy = false,
@@ -59,28 +53,43 @@ local function LogDecision(entry)
     end)
 end
 
+-- ===== NEW: Log decision with context =====
+local function LogAutoProgDecision(decision, details)
+    LogDecision({
+        timestamp = os.time(),
+        type = "AutoProgression",
+        decision = decision,
+        details = details,
+        level = GetStat("Level"),
+        coins = GetStat("Coins"),
+        gems = GetStat("Gems"),
+        inLobby = IsInLobby(),
+        forceEasy = _G.AutoProgSettings.ForceEasy,
+        forceFrost = _G.AutoProgSettings.ForceFrost,
+        forceHcUnevo = _G.AutoProgSettings.ForceHardcoreUnevo,
+        forceHcEvo = _G.AutoProgSettings.ForceHardcoreEvo,
+    })
+end
+
 -- ===== UI STATUS UPDATE =====
 local function SetStatus(text)
     local ui = getgenv().AutoProgressionUI
     if ui and ui.status then
         ui.status.Text = "Status: " .. text
     else
-        -- store pending status for when UI is created
         _G._pendingStatus = text
     end
 end
 getgenv().SetStatus = SetStatus
 
--- ===== APPLY STRATEGY SETTINGS (AutoSkip, AutoPremium, etc.) =====
+-- ===== APPLY STRATEGY SETTINGS =====
 local function ApplyStrategySettings(strategy)
     local MainGlobals = getgenv().Globals or _G.Globals
     local settings = {
         AutoSkip          = (strategy.autoSkip ~= nil) and strategy.autoSkip or false,
         AutoPremium       = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
         AutoRejoin        = (strategy.autoRejoin ~= nil) and strategy.autoRejoin or true,
-        AutoRestart        = (strategy.autoRestart ~= nil) and strategy.autoRestart or false,
-        -- NEW: hardcoded false every time, never taken from the strategy table and never
-        -- carried over from a previous run — every loadout starts with both of these off.
+        AutoRestart       = (strategy.autoRestart ~= nil) and strategy.autoRestart or false,
         AutoUpgradeSelected = false,
         AutoUpgradeAll      = false,
     }
@@ -113,10 +122,12 @@ local function BuyTower(towerName)
         if success then
             print("Successfully bought " .. name)
             SetStatus("Bought " .. name)
+            LogDecision({ timestamp = os.time(), type = "Purchase", tower = name, success = true })
             return true
         else
             print("Failed to buy " .. name .. ": " .. tostring(result))
             SetStatus("Failed to buy " .. name)
+            LogDecision({ timestamp = os.time(), type = "Purchase", tower = name, success = false, error = tostring(result) })
             return false
         end
     end
@@ -167,14 +178,13 @@ local function OpenInventory()
     local openRemote = inventory:FindFirstChild("URE:OpenInventory")
     if not openRemote then return false end
 
-    -- If inventory is already open, skip
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if playerGui and playerGui:FindFirstChild("ReactUniversalInventoryView") then
         return true
     end
 
     openRemote:FireServer()
-    task.wait(1.5) -- allow UI to open and render
+    task.wait(1.5)
     return true
 end
 
@@ -205,12 +215,15 @@ local function OwnsTower(towerName)
                                             if main then
                                                 local topThing = main:FindFirstChild("topThing")
                                                 if topThing then
-                                                    return not topThing.Visible
+                                                    local owned = not topThing.Visible
+                                                    LogDecision({ timestamp = os.time(), type = "Ownership", tower = towerName, owned = owned })
+                                                    return owned
                                                 end
                                             end
                                         end
                                     end
                                 end
+                                LogDecision({ timestamp = os.time(), type = "Ownership", tower = towerName, owned = false })
                                 return false
                             end
                         end
@@ -221,6 +234,7 @@ local function OwnsTower(towerName)
         task.wait(0.5)
     end
     warn("[AutoProgression] Timeout waiting for inventory UI – assuming tower NOT owned.")
+    LogDecision({ timestamp = os.time(), type = "Ownership", tower = towerName, owned = false, error = "Timeout" })
     return false
 end
 
@@ -260,11 +274,13 @@ local function AutoBuyTowers(towerList)
             if not hasCoins then
                 print("[AutoProgression] Not enough Coins for " .. towerName)
                 SetStatus("Not enough Coins for " .. towerName)
+                LogDecision({ timestamp = os.time(), type = "AutoBuy", result = "Coins", tower = towerName })
                 return "Coins"
             end
             if not hasGems then
                 print("[AutoProgression] Not enough Gems for " .. towerName)
                 SetStatus("Not enough Gems for " .. towerName)
+                LogDecision({ timestamp = os.time(), type = "AutoBuy", result = "Gems", tower = towerName })
                 return "Gems"
             end
             local msg = ("[AutoProgression] Buying %s"):format(towerName)
@@ -284,6 +300,7 @@ local function AutoBuyTowers(towerList)
             SetStatus("Already own " .. towerName)
         end
     end
+    LogDecision({ timestamp = os.time(), type = "AutoBuy", result = "OK" })
     return "OK"
 end
 
@@ -309,12 +326,6 @@ local function GetAvailableMaps()
     return maps
 end
 
-local function GetKeys(t)
-    local keys = {}
-    for k in pairs(t) do keys[#keys+1] = k end
-    return keys
-end
-
 local function GetVetoInfo()
     local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not PlayerGui then return nil end
@@ -328,19 +339,11 @@ local function GetVetoInfo()
     if not VetoButton then return nil end
     local valueLabel = VetoButton:FindFirstChild("value")
     if valueLabel and valueLabel:IsA("TextLabel") then
-        local text = valueLabel.Text  -- "Veto (0/1)" or "Veto (1/1)"
+        local text = valueLabel.Text
         local used, total = text:match("Veto %((%d+)/(%d+)%)")
         if used and total then
             return { used = tonumber(used), total = tonumber(total) }
         end
-    end
-    return nil
-end
-
-local function GetRemainingVetos()
-    local info = GetVetoInfo()
-    if info then
-        return info.total - info.used
     end
     return nil
 end
@@ -352,7 +355,7 @@ local function VetoMap()
         RemoteEvent:FireServer("LobbyVoting", "Veto")
         print("[AutoProgression] Veto fired.")
     end)
-    task.wait(1)  -- give time for UI to update (though in VIP it won't)
+    task.wait(1)
     return true
 end
 
@@ -375,62 +378,49 @@ local FrostStrategies = {
 
 -- ===== HARDCORE UNEVO / EVO HELPERS =====
 local function RunHardcoreUnevo()
-    -- NEW: guard against a second concurrent load (e.g. UI-recovery re-triggering RunAutoProgression
-    -- while a hardcoreunevo match loop is already active in the background)
     if getgenv().HcUnevoActive then
         print("[AutoProgression] Hardcore UNEVO already running, skipping duplicate load.")
         SetStatus("Hardcore UNEVO already running")
         return
     end
 
-    -- NEW: force AutoRejoin off BEFORE the strategy script loads TDS's "main" module. main.lua
-    -- reads AutoRejoin once at load time and, if it's true, sets up its own auto-teleport-to-
-    -- lobby-on-loss behavior — which fires on the very first loss and overrides hardcoreunevo's
-    -- own restart/loss-count logic. Leftover true from a prior Easy/Frost run (they set
-    -- autoRejoin = true) or from ApplyStrategySettings will otherwise leak in here.
     getgenv().AutoRejoin = false
-    -- NEW: this loadout bypasses ApplyStrategySettings, so force these off here too.
     getgenv().AutoUpgradeSelected = false
     getgenv().AutoUpgradeAll = false
 
     print("[AutoProgression] Running Hardcore UNEVO strategy")
     SetStatus("Running Hardcore UNEVO strategy...")
+    LogDecision({ timestamp = os.time(), type = "Strategy", mode = "HardcoreUnevo", start = true })
     local result = AutoBuyTowers({
         {"Minigunner", 8000},
         {"Boomerang", 300},
     })
     if result == "OK" then
         SetStatus("Loading Hardcore UNEVO strategy...")
+        LogDecision({ timestamp = os.time(), type = "Strategy", mode = "HardcoreUnevo", loaded = true })
         loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreunevo"))()
     else
         print("[AutoProgression] Not enough coins for UNEVO towers, farming Easy.")
         SetStatus("Not enough coins for UNEVO – farming Easy")
+        LogDecision({ timestamp = os.time(), type = "Fallback", from = "HardcoreUnevo", to = "Easy", reason = "not enough coins" })
         RunYeetEasy()
     end
 end
 
 local function RunHardcoreEvo()
-    -- NEW: guard against a second concurrent load. Without this, if RunAutoProgression() fires
-    -- twice while a hardcoreevo match loop is already running in the background (which can happen
-    -- via the UI-recovery loop, or clicking the force toggle twice), you get two independent
-    -- 30-loss counters both watching the same match result — each real loss gets counted twice,
-    -- so it teleports to lobby after ~15 real losses instead of 30, and looks "broken".
     if getgenv().HcEvoActive then
         print("[AutoProgression] Hardcore EVO already running, skipping duplicate load.")
         SetStatus("Hardcore EVO already running")
         return
     end
 
-    -- NEW: same reasoning as RunHardcoreUnevo above — force AutoRejoin off before "main" loads,
-    -- so hardcoreevo's own 30-loss counter/restart logic actually gets to run instead of main.lua
-    -- teleporting to lobby on the first loss.
     getgenv().AutoRejoin = false
-    -- NEW: this loadout bypasses ApplyStrategySettings, so force these off here too.
     getgenv().AutoUpgradeSelected = false
     getgenv().AutoUpgradeAll = false
 
     print("[AutoProgression] Running Hardcore EVO strategy")
     SetStatus("Running Hardcore EVO strategy...")
+    LogDecision({ timestamp = os.time(), type = "Strategy", mode = "HardcoreEvo", start = true })
     local result = AutoBuyTowers({
         {"EvolvedOperator", 15000, "Coins", 4500, "Gems"},
         {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"},
@@ -439,10 +429,12 @@ local function RunHardcoreEvo()
     })
     if result == "OK" then
         SetStatus("Loading Hardcore EVO strategy...")
+        LogDecision({ timestamp = os.time(), type = "Strategy", mode = "HardcoreEvo", loaded = true })
         loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreevo"))()
     else
         print("[AutoProgression] Not enough resources for EVO towers, falling back to UNEVO.")
         SetStatus("Not enough resources for EVO – falling back to UNEVO")
+        LogDecision({ timestamp = os.time(), type = "Fallback", from = "HardcoreEvo", to = "HardcoreUnevo", reason = "not enough resources" })
         RunHardcoreUnevo()
     end
 end
@@ -475,6 +467,7 @@ local function RunYeetEasy()
                 task.wait(0.3)
                 print("[AutoProgression] Selected Easy: " .. chosen.name .. " on " .. chosen.mapName)
                 SetStatus("Loading Easy: " .. chosen.name .. " on " .. chosen.mapName)
+                LogDecision({ timestamp = os.time(), type = "Strategy", mode = "Easy", map = chosen.mapName, strategy = chosen.name })
                 loadstring(game:HttpGet(chosen.url))()
                 runningEasy = false
                 return
@@ -497,6 +490,7 @@ local function RunYeetEasy()
 
         print("[AutoProgression] No Easy maps available. Teleporting to lobby...")
         SetStatus("No Easy maps – teleporting to lobby")
+        LogDecision({ timestamp = os.time(), type = "Teleport", reason = "No Easy maps available" })
         SmartTeleportToLobby()
     else
         local chosen = EasyStrategies[math.random(1, #EasyStrategies)]
@@ -504,6 +498,7 @@ local function RunYeetEasy()
         task.wait(0.3)
         print("[AutoProgression] In lobby, selected Easy: " .. chosen.name)
         SetStatus("In lobby – loading Easy: " .. chosen.name)
+        LogDecision({ timestamp = os.time(), type = "Strategy", mode = "Easy", map = chosen.mapName, strategy = chosen.name, context = "lobby" })
         loadstring(game:HttpGet(chosen.url))()
     end
 
@@ -515,6 +510,7 @@ local function RunFrostStrategy()
     runningFrost = true
     getgenv().TimeScaleEnabled = false
     SetStatus("Starting Frost strategy...")
+    LogDecision({ timestamp = os.time(), type = "Strategy", mode = "Frost", start = true })
 
     if not IsInLobby() then
         while true do
@@ -532,6 +528,7 @@ local function RunFrostStrategy()
                 task.wait(0.3)
                 print("[AutoProgression] Selected Frost: " .. chosen.name .. " on " .. chosen.mapName)
                 SetStatus("Loading Frost: " .. chosen.name .. " on " .. chosen.mapName)
+                LogDecision({ timestamp = os.time(), type = "Strategy", mode = "Frost", map = chosen.mapName, strategy = chosen.name })
                 loadstring(game:HttpGet(chosen.url))()
                 runningFrost = false
                 return
@@ -554,6 +551,7 @@ local function RunFrostStrategy()
 
         print("[AutoProgression] No Frost maps available. Teleporting to lobby...")
         SetStatus("No Frost maps – teleporting to lobby")
+        LogDecision({ timestamp = os.time(), type = "Teleport", reason = "No Frost maps available" })
         SmartTeleportToLobby()
     else
         local chosen = FrostStrategies[math.random(1, #FrostStrategies)]
@@ -561,73 +559,38 @@ local function RunFrostStrategy()
         task.wait(0.3)
         print("[AutoProgression] In lobby, selected Frost: " .. chosen.name)
         SetStatus("In lobby – loading Frost: " .. chosen.name)
+        LogDecision({ timestamp = os.time(), type = "Strategy", mode = "Frost", map = chosen.mapName, strategy = chosen.name, context = "lobby" })
         loadstring(game:HttpGet(chosen.url))()
     end
 
     runningFrost = false
 end
 
--- ===== MAIN AUTO PROGRESSION LOGIC (with force overrides) =====
+-- ===== MAIN AUTO PROGRESSION LOGIC (with logging) =====
 local function RunAutoProgression()
     if AutoProgressionRunning then return end
     AutoProgressionRunning = true
     task.wait(0.5)
 
-    -- Gather base info for logging
-    local level = GetStat("Level")
-    local currentDifficulty = (ReplicatedStorage:FindFirstChild("State") and ReplicatedStorage.State:FindFirstChild("Difficulty")) and ReplicatedStorage.State.Difficulty.Value or nil
-    local inLobby = IsInLobby()
     local forceEasy = _G.AutoProgSettings.ForceEasy or false
     local forceFrost = _G.AutoProgSettings.ForceFrost or false
     local forceHcUnevo = _G.AutoProgSettings.ForceHardcoreUnevo or false
     local forceHcEvo = _G.AutoProgSettings.ForceHardcoreEvo or false
 
-    -- Prepare log entry (will be filled as we go)
-    local logEntry = {
-        timestamp = os.time(),
-        level = level,
-        currentDifficulty = currentDifficulty,
-        inLobby = inLobby,
-        forceEasy = forceEasy,
-        forceFrost = forceFrost,
-        forceHcUnevo = forceHcUnevo,
-        forceHcEvo = forceHcEvo,
-        haveRocketeer = nil,
-        haveGatling = nil,
-        haveTrapper = nil,
-        haveHacker = nil,
-        autoBuyResult = nil,
-        decision = "unknown",
-        details = "",
-    }
-
-    -- Helper to log before returning
-    local function logAndReturn(decision, details)
-        logEntry.decision = decision
-        logEntry.details = details or ""
-        LogDecision(logEntry)
-        AutoProgressionRunning = false
-    end
-
-    -- Check force toggles
     if forceEasy then
+        LogAutoProgDecision("Force Easy", "User forced Easy mode")
         SetStatus("Force mode: Easy")
-        logAndReturn("Force Easy", "User forced Easy mode")
         RunYeetEasy()
+        AutoProgressionRunning = false
         return
     elseif forceFrost then
+        LogAutoProgDecision("Force Frost", "User forced Frost mode")
         SetStatus("Force mode: Frost")
         local haveRocketeer = OwnsTower("Rocketeer")
         local haveGatling = OwnsTower("Gatling Gun")
         local haveTrapper = OwnsTower("Trapper")
         local haveHacker = OwnsTower("Hacker")
-        logEntry.haveRocketeer = haveRocketeer
-        logEntry.haveGatling = haveGatling
-        logEntry.haveTrapper = haveTrapper
-        logEntry.haveHacker = haveHacker
-
         if haveGatling and haveTrapper and haveHacker and haveRocketeer then
-            logAndReturn("Force Frost (all towers owned)", "All Frost towers owned")
             RunFrostStrategy()
         else
             local result = AutoBuyTowers({
@@ -636,95 +599,97 @@ local function RunAutoProgression()
                 {"Hacker", 5500, "Gems"},
                 {"Rocketeer", 2500, "Coins"},
             })
-            logEntry.autoBuyResult = result
             if result == "OK" then
-                logAndReturn("Force Frost (bought missing towers)", "AutoBuy OK")
                 RunFrostStrategy()
             elseif result == "Coins" then
-                logAndReturn("Force Frost fallback -> Easy", "Need coins for Frost")
+                LogAutoProgDecision("Fallback Easy (coins)", "Force Frost – not enough coins for Frost towers")
                 RunYeetEasy()
             elseif result == "Gems" then
-                logAndReturn("Force Frost fallback -> UNEVO", "Need gems for Frost")
+                LogAutoProgDecision("Fallback HC Unevo (gems)", "Force Frost – not enough gems for Frost towers")
                 RunHardcoreUnevo()
             end
         end
+        AutoProgressionRunning = false
         return
     elseif forceHcUnevo then
+        LogAutoProgDecision("Force HC Unevo", "User forced Hardcore Unevo")
         SetStatus("Force mode: Hardcore UNEVO")
-        logAndReturn("Force Hardcore UNEVO", "")
         RunHardcoreUnevo()
+        AutoProgressionRunning = false
         return
     elseif forceHcEvo then
+        LogAutoProgDecision("Force HC Evo", "User forced Hardcore Evo")
         SetStatus("Force mode: Hardcore EVO")
-        logAndReturn("Force Hardcore EVO", "")
         RunHardcoreEvo()
+        AutoProgressionRunning = false
         return
     end
 
-    -- No force – use level‑based logic
+    -- No force – level‑based logic
+    local level = GetStat("Level")
+    local currentDifficulty = (ReplicatedStorage:FindFirstChild("State") and ReplicatedStorage.State:FindFirstChild("Difficulty")) and ReplicatedStorage.State.Difficulty.Value or nil
+
     if level >= 176 then
+        LogAutoProgDecision("Frost path", "Level " .. level .. " >= 176")
         SetStatus("Level " .. level .. " → Frost path")
         local haveRocketeer = OwnsTower("Rocketeer")
         local haveGatling = OwnsTower("Gatling Gun")
         local haveTrapper = OwnsTower("Trapper")
         local haveHacker = OwnsTower("Hacker")
-        logEntry.haveRocketeer = haveRocketeer
-        logEntry.haveGatling = haveGatling
-        logEntry.haveTrapper = haveTrapper
-        logEntry.haveHacker = haveHacker
 
         if haveGatling and haveTrapper and haveHacker and haveRocketeer then
-            -- All towers owned – decide whether to run Frost now or teleport to lobby
-            if inLobby or currentDifficulty == "Frost" then
-                logAndReturn("Frost (all towers owned)", "In lobby or Frost match")
+            LogAutoProgDecision("Frost ready", "All required towers owned")
+            if IsInLobby() or currentDifficulty == "Frost" then
                 RunFrostStrategy()
             else
-                logAndReturn("Teleport to lobby for Frost", "In non-Frost match, need lobby")
+                LogAutoProgDecision("Teleport to lobby (Frost)", "In non-Frost match, teleporting to lobby")
                 SmartTeleportToLobby()
             end
         else
-            -- Missing some towers – try to buy them
+            local missing = {}
+            if not haveGatling then table.insert(missing, "Gatling") end
+            if not haveTrapper then table.insert(missing, "Trapper") end
+            if not haveHacker then table.insert(missing, "Hacker") end
+            if not haveRocketeer then table.insert(missing, "Rocketeer") end
+            LogAutoProgDecision("Missing towers for Frost", "Missing: " .. table.concat(missing, ", "))
             local result = AutoBuyTowers({
                 {"Gatling Gun", 35000, "Coins"},
                 {"Trapper", 3000, "Coins"},
                 {"Hacker", 5500, "Gems"},
                 {"Rocketeer", 2500, "Coins"},
             })
-            logEntry.autoBuyResult = result
             if result == "OK" then
-                logAndReturn("Frost (bought missing towers)", "AutoBuy OK")
                 RunFrostStrategy()
             elseif result == "Coins" then
-                -- Teleport if we're in Easy or Frost match (we don't want to farm Easy while in a match)
-                if currentDifficulty == "Frost" or currentDifficulty == "Easy" then
-                    logAndReturn("Teleport to lobby for Frost (need coins)", "In Easy/Frost match, need coins")
+                if currentDifficulty == "Frost" then
+                    LogAutoProgDecision("Need coins in Frost match", "Teleporting to lobby to farm coins")
                     SmartTeleportToLobby()
                 else
-                    logAndReturn("Fallback to Easy (need coins)", "Not enough coins for Frost")
+                    LogAutoProgDecision("Fallback Easy (coins)", "Not enough coins for Frost towers")
                     RunYeetEasy()
                 end
             elseif result == "Gems" then
-                if currentDifficulty == "Frost" or currentDifficulty == "Easy" then
-                    logAndReturn("Teleport to lobby for Frost (need gems)", "In Easy/Frost match, need gems")
+                if currentDifficulty == "Frost" then
+                    LogAutoProgDecision("Need gems in Frost match", "Teleporting to lobby to farm gems")
                     SmartTeleportToLobby()
                 else
-                    logAndReturn("Fallback to UNEVO (need gems)", "Not enough gems for Frost")
+                    LogAutoProgDecision("Fallback HC Unevo (gems)", "Not enough gems for Frost towers")
                     RunHardcoreUnevo()
                 end
             end
         end
 
     elseif level >= 120 then
+        LogAutoProgDecision("HC Evo", "Level " .. level .. " between 120 and 175")
         SetStatus("Level " .. level .. " → Hardcore EVO path")
-        logAndReturn("Hardcore EVO", "Level >= 120")
         RunHardcoreEvo()
     elseif level >= 51 then
+        LogAutoProgDecision("HC Unevo", "Level " .. level .. " between 51 and 119")
         SetStatus("Level " .. level .. " → Hardcore UNEVO path")
-        logAndReturn("Hardcore UNEVO", "Level between 51 and 119")
         RunHardcoreUnevo()
     else
+        LogAutoProgDecision("Easy", "Level " .. level .. " <= 50")
         SetStatus("Level " .. level .. " → Farming Easy")
-        logAndReturn("Easy farm", "Level < 51")
         RunYeetEasy()
     end
 
@@ -797,7 +762,7 @@ local function redeemCodesFromBeebom()
     SetStatus("Code redemption complete")
 end
 
--- ===== UI CREATION (only Easy, Frost, HC Unevo, HC Evo) =====
+-- ===== UI CREATION =====
 local function CreateUI()
     local oldGui = CoreGui:FindFirstChild("AutoProgressionUI")
     if oldGui then oldGui:Destroy() end
@@ -808,7 +773,7 @@ local function CreateUI()
     gui.Parent = CoreGui
 
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 300, 0, 380)  -- reduced height
+    frame.Size = UDim2.new(0, 300, 0, 380)
     frame.Position = UDim2.new(0.5, -150, 0.7, -190)
     frame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
     frame.BorderSizePixel = 0
@@ -893,7 +858,6 @@ local function CreateUI()
     statusDisplay.TextXAlignment = Enum.TextXAlignment.Center
     statusDisplay.Parent = frame
 
-    -- Apply any pending status
     if _G._pendingStatus then
         statusDisplay.Text = "Status: " .. _G._pendingStatus
         _G._pendingStatus = nil
@@ -942,7 +906,6 @@ local function CreateUI()
     local hcUnevoBtn = CreateModeToggle(260, "HC Unevo", "ForceHardcoreUnevo")
     local hcEvoBtn = CreateModeToggle(286, "HC Evo", "ForceHardcoreEvo")
 
-    -- Helper to update a mode button
     local function updateModeButton(btn, settingKey)
         if _G.AutoProgSettings[settingKey] then
             btn.Text = btn.Text:gsub(": OFF", ": ON")
@@ -953,7 +916,6 @@ local function CreateUI()
         end
     end
 
-    -- Save settings
     local function saveSettings()
         if writefile then
             local saveData = {
@@ -967,7 +929,6 @@ local function CreateUI()
         end
     end
 
-    -- Update main UI
     local function updateMainUI()
         local anyForceOn = _G.AutoProgSettings.ForceEasy or
                            _G.AutoProgSettings.ForceFrost or
@@ -998,12 +959,7 @@ local function CreateUI()
         end
     end
 
-    -- Force toggle handler (mutual exclusivity)
     local function toggleMode(settingKey, btn)
-        -- NEW: clear the cross-script "active" flags whenever a force mode is switched. This
-        -- signals any currently-running hardcoreevo/hardcoreunevo loop to stop cleanly (see the
-        -- stop-check added to hardcoreevo's loop), and guarantees RunHardcoreEvo/Unevo's guard
-        -- won't block the fresh run we're about to trigger below.
         getgenv().HcEvoActive = false
         getgenv().HcUnevoActive = false
 
@@ -1033,7 +989,6 @@ local function CreateUI()
         end
     end
 
-    -- Main toggle click
     toggle.MouseButton1Click:Connect(function()
         AutoProgressionEnabled = not AutoProgressionEnabled
         _G.AutoProgSettings.AutoProgressionEnabled = AutoProgressionEnabled
@@ -1043,7 +998,6 @@ local function CreateUI()
             _G.AutoProgSettings.ForceFrost = false
             _G.AutoProgSettings.ForceHardcoreUnevo = false
             _G.AutoProgSettings.ForceHardcoreEvo = false
-            -- NEW: stop signal for any active hardcore loop
             getgenv().HcEvoActive = false
             getgenv().HcUnevoActive = false
             updateModeButton(easyBtn, "ForceEasy")
@@ -1065,13 +1019,11 @@ local function CreateUI()
         end
     end)
 
-    -- Mode button clicks
     easyBtn.MouseButton1Click:Connect(function() toggleMode("ForceEasy", easyBtn) end)
     frostBtn.MouseButton1Click:Connect(function() toggleMode("ForceFrost", frostBtn) end)
     hcUnevoBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreUnevo", hcUnevoBtn) end)
     hcEvoBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreEvo", hcEvoBtn) end)
 
-    -- Load saved state
     if isfile and isfile(SETTINGS_FILE) then
         local success, data = pcall(function()
             return HttpService:JSONDecode(readfile(SETTINGS_FILE))
@@ -1083,9 +1035,6 @@ local function CreateUI()
         end
     end
 
-    -- NEW: belt-and-suspenders — even if a saved file (old or from elsewhere) had these keys
-    -- set true, force them back off right after loading. saveSettings() below never writes
-    -- these two keys either, so they can't get re-persisted from this script.
     _G.AutoProgSettings.AutoUpgradeSelected = false
     _G.AutoProgSettings.AutoUpgradeAll = false
     getgenv().AutoUpgradeSelected = false
@@ -1108,10 +1057,6 @@ local function CreateUI()
     updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
 
     if AutoProgressionEnabled then
-        -- NOTE: this fires on every UI recreation (e.g. from the recovery loop below). It's now
-        -- safe even if a hardcoreevo/hardcoreunevo match loop is still active, because
-        -- RunHardcoreEvo()/RunHardcoreUnevo() will see HcEvoActive/HcUnevoActive == true and
-        -- bail out instead of loading a duplicate copy.
         task.spawn(RunAutoProgression)
     end
 
@@ -1192,6 +1137,6 @@ getgenv().RunHardcoreUnevo = RunHardcoreUnevo
 getgenv().RunHardcoreEvo = RunHardcoreEvo
 
 task.spawn(function()
-    task.wait(1) -- wait for game to fully load
+    task.wait(1)
     redeemCodesFromBeebom()
 end)
