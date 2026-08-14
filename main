@@ -216,12 +216,6 @@ local StackEnabled = false
 local SelectedTower = nil
 local StackSphere = nil
 
-local AllModifiers = {
-    "HiddenEnemies", "Glass", "ExplodingEnemies", "Limitation", 
-    "Committed", "HealthyEnemies", "Fog", "FlyingEnemies", 
-    "Broke", "SpeedyEnemies", "Quarantine", "JailedTowers", "Inflation"
-}
-
 local AllTowers = {
     "Scout", "Sniper", "Paintballer", "Demoman", "Boomerang", "Slime Trooper", "Soldier",
     "Freezer", "Assassin", "Militant", "Shotgunner", "Hunter", "Pyromancer", "Ace Pilot", 
@@ -230,9 +224,15 @@ local AllTowers = {
     "Brawler", "Necromancer", "Accelerator", "Engineer", "Hacker", "EvolvedOperator", 
     "EvolvedKingpin", "EvolvedJuggernaut", "Gladiator","Commando","Slasher",
     "Frost Blaster", "Archer", "Swarmer", "Toxic Gunner", "Sledger", "Executioner",
-    "Elf Camp", "Jester", "Cryomancer", "Hallow Punk", "Harvester", " Snowballer",
+    "Elf Camp", "Jester", "Cryomancer", "Hallow Punk", "Harvester", "Snowballer",
     "Elementalist", "Firework Technician", "Biologist", "Warlock", "Spotlight Tech",
     "Mecha Base"
+}
+
+local AllModifiers = {
+    "HiddenEnemies", "Glass", "ExplodingEnemies", "Limitation", 
+    "Committed", "HealthyEnemies", "Fog", "FlyingEnemies", 
+    "Broke", "SpeedyEnemies", "Quarantine", "JailedTowers", "Inflation"
 }
 
 local DefaultSettings = {
@@ -280,353 +280,9 @@ local DefaultSettings = {
     tagName = "None",
     Modifiers = {},
     AutoMedic = false,
-    Towerslot = {},  -- list of tower names to heal
+    Towerslot = {},
     AutoBounty = false,
 }
-
--- ===================== AUTO MEDIC MODULE =====================
-local AutoMedic = {}
-local activeLoops = {}
-local activeChainThread = nil
-
-local CAPACITY_BY_LEVEL = {[0]=1,[1]=2,[2]=3,[3]=3,[4]=4,[5]=5}
-local UBERCHARGE_DURATION = {[3]=10,[4]=12.5,[5]=15}
-
-local function resolveTargetPlayer(targetInput)
-    if type(targetInput) == "number" then return targetInput, nil
-    elseif type(targetInput) == "string" then
-        if string.lower(targetInput) == "universal" or targetInput == "" then return "universal", "universal" end
-        local n = tonumber(targetInput)
-        if n then return n, nil end
-        return nil, targetInput
-    end
-    return "universal", "universal"
-end
-
-function AutoMedic.GetAllTowers()
-    local towersFolder = workspace:FindFirstChild("Towers")
-    local allTowers = {}
-    if not towersFolder then return allTowers end
-    for _, tower in ipairs(towersFolder:GetChildren()) do
-        local rep = tower:FindFirstChild("TowerReplicator")
-        if rep and tower.Parent then
-            table.insert(allTowers, {
-                Tower = tower,
-                Name = rep:GetAttribute("Name"),
-                CreatedAt = rep:GetAttribute("CreatedAt") or math.huge,
-                OwnerId = rep:GetAttribute("OwnerId"),
-                OwnerName = rep:GetAttribute("OwnerName"),
-                Upgrade = rep:GetAttribute("Upgrade") or 0,
-                TowersCanSelect = rep:GetAttribute("TowersCanSelect")
-            })
-        end
-    end
-    table.sort(allTowers, function(a,b) return a.CreatedAt < b.CreatedAt end)
-    return allTowers
-end
-
-local function getMyMedics()
-    local list = {}
-    for _, data in ipairs(AutoMedic.GetAllTowers()) do
-        local isOwner = (data.OwnerId == LocalPlayer.UserId) or (data.OwnerName == LocalPlayer.Name)
-        if isOwner and data.Name and string.lower(data.Name) == "medic" then
-            table.insert(list, data.Tower)
-        end
-    end
-    return list
-end
-
-local function countReadyMedics(medics)
-    local c = 0
-    for _, t in ipairs(medics) do
-        if t and t.Parent then
-            local up = t:FindFirstChild("TowerReplicator") and t.TowerReplicator:GetAttribute("Upgrade") or 0
-            if up >= 3 then c = c + 1 end
-        end
-    end
-    return c
-end
-
-local function activateUbercharge(medic)
-    if not medic or not medic.Parent then return end
-    pcall(function()
-        RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
-            Troop = medic, Name = "Ubercharge", Data = {}
-        })
-    end)
-end
-
-local function toggleMedicTargets(medic, targets)
-    if not medic or not medic.Parent or not targets then return end
-    for _, tgt in ipairs(targets) do
-        if tgt and tgt.Parent then
-            pcall(function()
-                RemoteFunc:InvokeServer("Troops", "TowerServerEvent", "ToggleSelectedTower", medic, tgt)
-            end)
-        end
-    end
-end
-
-local function getMedicCapacity(medic)
-    local rep = medic and medic:FindFirstChild("TowerReplicator")
-    if not rep then return 1 end
-    return rep:GetAttribute("TowersCanSelect") or CAPACITY_BY_LEVEL[rep:GetAttribute("Upgrade") or 0] or 1
-end
-
-local function getUberchargeDuration(medic)
-    local rep = medic and medic:FindFirstChild("TowerReplicator")
-    if not rep then return 10 end
-    return UBERCHARGE_DURATION[rep:GetAttribute("Upgrade") or 3] or 10
-end
-
-local function getTargetTowersFromIndex(targetPlayer, towersToSelect, maxCapacity)
-    local all = AutoMedic.GetAllTowers()
-    local targetId, targetName = resolveTargetPlayer(targetPlayer)
-    local isUniversal = (targetId == "universal")
-    local nameFilter = {}
-    for _, n in ipairs(towersToSelect or {}) do nameFilter[string.lower(n)] = true end
-
-    local result = {}
-    for _, data in ipairs(all) do
-        if data.Name and string.lower(data.Name) == "medic" then continue end
-        local isTargetOwner = isUniversal
-            or (targetId and data.OwnerId == targetId)
-            or (targetName and data.OwnerName and string.lower(data.OwnerName) == string.lower(targetName))
-        if isTargetOwner and nameFilter[string.lower(data.Name or "")] then
-            table.insert(result, data.Tower)
-            if #result >= maxCapacity then break end
-        end
-    end
-    return result
-end
-
-function AutoMedic.Chain(targetPlayer, towersToSelect, toggle)
-    if activeChainThread then
-        task.cancel(activeChainThread)
-        activeChainThread = nil
-    end
-    if not toggle then return end
-
-    activeChainThread = task.spawn(function()
-        while Globals.AutoMedic do
-            local medics = getMyMedics()
-            if countReadyMedics(medics) < 4 then
-                task.wait(1)
-                continue
-            end
-
-            for _, medic in ipairs(medics) do
-                if not Globals.AutoMedic then break end
-                if not medic or not medic.Parent then continue end
-                local up = medic:FindFirstChild("TowerReplicator") and medic.TowerReplicator:GetAttribute("Upgrade") or 0
-                if up < 3 then continue end
-
-                local capacity = getMedicCapacity(medic)
-                local targets = getTargetTowersFromIndex(targetPlayer, towersToSelect, capacity)
-                while #targets == 0 and Globals.AutoMedic do
-                    task.wait(1)
-                    targets = getTargetTowersFromIndex(targetPlayer, towersToSelect, capacity)
-                end
-                if not Globals.AutoMedic then break end
-
-                local duration = getUberchargeDuration(medic)
-                toggleMedicTargets(medic, targets)
-                activateUbercharge(medic)
-
-                -- Timescale-aware wait (same logic as AutoChain)
-                local waitTime = duration
-                local hotbar = PlayerGui:FindFirstChild("ReactUniversalHotbar")
-                local ts = hotbar and hotbar.Frame and hotbar.Frame:FindFirstChild("timescale")
-                if ts and ts.Visible then
-                    if ts:FindFirstChild("Lock") then
-                        waitTime = duration * 2   -- roughly matches the 10.3 vs 5.25 ratio
-                    end
-                end
-                task.wait(waitTime)
-
-                if medic and medic.Parent then
-                    toggleMedicTargets(medic, targets) -- detach
-                end
-            end
-            task.wait(0.3)
-        end
-    end)
-end
-
-function AutoMedic.Stop()
-    if activeChainThread then
-        task.cancel(activeChainThread)
-        activeChainThread = nil
-    end
-end
--- ===================== END AUTO MEDIC =====================
-
--- ===================== AUTO BOUNTY MODULE =====================
-local AutoBounty = {}
-local activeBountyThread = nil
-local enemyCache = {}
-local lastEnemySpawnTime = 0
-
-local function getDifficulty()
-    local state = ReplicatedStorage:FindFirstChild("State")
-    if not state then return nil end
-    local d = state:FindFirstChild("Difficulty")
-    if not d then return nil end
-    return d:IsA("ValueBase") and d.Value or (d:GetAttribute("Value") or d.Name)
-end
-
-local function getCurrentWave()
-    local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
-    local gsr = sr and sr:FindFirstChild("GameStateReplicator")
-    return gsr and gsr:GetAttribute("Wave") or 0
-end
-
-local function isBossWave()
-    local diff = getDifficulty()
-    local wave = getCurrentWave()
-    if not diff or wave == 0 then return false end
-    diff = string.lower(tostring(diff))
-    local config = {
-        easy = {bossWaves = {20}}, casual = {bossWaves = {25}},
-        inter = {bossWaves = {30}}, intermediate = {bossWaves = {30}},
-        molten = {bossWaves = {35}}, fallen = {bossWaves = {40}}, frost = {bossWaves = {40}}
-    }
-    local c = config[diff]
-    if c then
-        for _, w in ipairs(c.bossWaves) do if wave == w then return true end end
-    end
-    return false
-end
-
-local function getMyKingpins()
-    local list = {}
-    local folder = workspace:FindFirstChild("Towers")
-    if not folder then return list end
-    for _, t in ipairs(folder:GetChildren()) do
-        local rep = t:FindFirstChild("TowerReplicator")
-        if rep then
-            local isOwner = (rep:GetAttribute("OwnerId") == LocalPlayer.UserId) or (rep:GetAttribute("OwnerName") == LocalPlayer.Name)
-            if isOwner and string.lower(rep:GetAttribute("Name") or "") == "evolvedkingpin" and rep:GetAttribute("Path") == 1 then
-                table.insert(list, t)
-            end
-        end
-    end
-    return list
-end
-
-local function isBossNPC(npc)
-    local se = npc:FindFirstChild("StatusEffects")
-    return se and se:GetAttribute("Boss") ~= nil
-end
-
-local function updateEnemyCache()
-    local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
-    local folder = sr and (sr:FindFirstChild("NPCReplicators") or sr)
-    if not folder then return end
-    local current = {}
-    for _, npc in ipairs(folder:GetChildren()) do
-        if npc:GetAttribute("Type") == "Enemies" then
-            local hp = npc:GetAttribute("Health") or npc:GetAttribute("MaxHealth") or 0
-            if hp > 0 then
-                current[npc] = true
-                if not enemyCache[npc] then
-                    enemyCache[npc] = {Instance = npc, MaxHealth = npc:GetAttribute("MaxHealth") or 0, FirstSeen = os.clock()}
-                    lastEnemySpawnTime = os.clock()
-                end
-            end
-        end
-    end
-    for npc in pairs(enemyCache) do
-        if not current[npc] or not npc:IsDescendantOf(game) then enemyCache[npc] = nil end
-    end
-end
-
-local function getTargetEnemy(mode)
-    updateEnemyCache()
-    local bossOnly = (mode == "Boss") or (mode == "Universal" and isBossWave())
-    local candidates = {}
-    for npc, data in pairs(enemyCache) do
-        local hp = npc:GetAttribute("Health") or data.MaxHealth
-        if hp > 0 and (not bossOnly or isBossNPC(npc)) then
-            candidates[npc] = data
-        end
-    end
-    local best, maxHP = nil, -1
-    for npc, data in pairs(candidates) do
-        if data.MaxHealth > maxHP then maxHP = data.MaxHealth; best = npc end
-    end
-    if not best then return nil end
-    if maxHP >= 60000 then return best end
-    if os.clock() - lastEnemySpawnTime < 5 then return nil end
-    return best
-end
-
-function AutoBounty.Bounty(mode)
-    if activeBountyThread then
-        task.cancel(activeBountyThread)
-        activeBountyThread = nil
-    end
-    enemyCache = {}
-    lastEnemySpawnTime = 0
-    if not mode or mode == "Off" or mode == false then return end
-
-    activeBountyThread = task.spawn(function()
-        while Globals.AutoBounty do
-            local kingpins = getMyKingpins()
-            if #kingpins > 0 then
-                local target = getTargetEnemy(mode)
-                if target then
-                    for _, kp in ipairs(kingpins) do
-                        pcall(function()
-                            RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
-                                Troop = kp, Name = "Bounty", Data = {ReplicatorFolder = target}
-                            })
-                        end)
-                    end
-                end
-            end
-
-            -- Timescale-aware wait
-            local waitTime = 0.5
-            local hotbar = PlayerGui:FindFirstChild("ReactUniversalHotbar")
-            local ts = hotbar and hotbar.Frame and hotbar.Frame:FindFirstChild("timescale")
-            if ts and ts.Visible and ts:FindFirstChild("Lock") then
-                waitTime = 1.0
-            end
-            task.wait(waitTime)
-        end
-    end)
-end
-
-function AutoBounty.Stop()
-    if activeBountyThread then
-        task.cancel(activeBountyThread)
-        activeBountyThread = nil
-    end
-end
--- ===================== END AUTO BOUNTY =====================
-
-local function StartMedicChain()
-    if AutoMedicRunning then return end
-    AutoMedicRunning = true
-    AutoMedic.Chain("Universal", Globals.Towerslot or {}, true)
-end
-
-local function StopMedicChain()
-    AutoMedic.Stop()
-    AutoMedicRunning = false
-end
-
-local function StartBountyChain()
-    if AutoBountyRunning then return end
-    AutoBountyRunning = true
-    AutoBounty.Bounty("Universal")
-end
-
-local function StopBountyChain()
-    AutoBounty.Stop()
-    AutoBountyRunning = false
-end
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
 
@@ -1179,10 +835,10 @@ local function StartPrivacyMode()
     if pg then
         HookPrivacyRoot(pg)
     end
-    --[[local CoreGui = game:GetService("CoreGui")
+    local CoreGui = game:GetService("CoreGui")
     if CoreGui then
         HookPrivacyRoot(CoreGui)
-    end]]
+    end
     local TagsRoot = workspace:FindFirstChild("Nametags")
     if TagsRoot then
         HookPrivacyRoot(TagsRoot)
@@ -1852,34 +1508,34 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
         end
     })
 
+        Automation:Toggle({
+        Title = "Auto Medic",
+        Desc = "Chains Medic Ability",
+        Value = Globals.AutoMedic,
+        Callback = function(v)
+            SetSetting("AutoMedic", v)
+        end
+    })
+
+    Automation:Dropdown({
+        Title = "Towers:",
+        Desc = "Selected towers must be near medic!",
+        List = AllTowers,
+        Value = Globals.Towerslot,
+        Multi = true,
+        Callback = function(choice)
+            SetSetting("Towerslot", choice)
+        end
+    })
+
     Automation:Toggle({
-    Title = "Auto Medic",
-    Desc = "Chains Medic Ability on selected towers",
-    Value = Globals.AutoMedic,
-    Callback = function(v)
-        SetSetting("AutoMedic", v)
-    end
-})
-
-Automation:Dropdown({
-    Title = "Heal Target Towers",
-    Desc = "Choose which tower types to heal (multi-select)",
-    List = AllTowers,
-    Value = Globals.Towerslot or {},
-    Multi = true,
-    Callback = function(choice)
-        SetSetting("Towerslot", choice)
-    end
-})
-
-Automation:Toggle({
-    Title = "Auto Bounty",
-    Desc = "Targets the highest HP enemy / boss with Kingpin Bounty",
-    Value = Globals.AutoBounty,
-    Callback = function(v)
-        SetSetting("AutoBounty", v)
-    end
-})
+        Title = "Auto Bounty",
+        Desc = "Target The Highest HP Enemy / boss",
+        Value = Globals.AutoBounty,
+        Callback = function(v)
+            SetSetting("AutoBounty", v)
+        end
+    })
 
     Automation:Section({Title = "Unit Spawners"})
     
@@ -5064,6 +4720,136 @@ local function StartAutoNecro()
     end)
 end
 
+--== Auto Medic + Auto Bounty
+local AutoMedicLib = nil
+local AutoBountyLib = nil
+
+local function StopMedicChain()
+    if AutoMedicLib then
+        AutoMedicLib.Chain("Universal", {}, false)
+    end
+    AutoMedicRunning = false
+end
+
+local function StopBountyChain()
+    if AutoBountyLib then
+        AutoBountyLib.Bounty("Off")
+    end
+    AutoBountyRunning = false
+end
+
+local function StartMedicChain()
+    AutoMedicRunning = true
+
+    task.spawn(function()
+        local myMedics = {}
+        repeat
+            myMedics = {}
+            local towersFolder = workspace:FindFirstChild("Towers")
+            
+            if towersFolder then
+                for _, tower in ipairs(towersFolder:GetChildren()) do
+                    local replicator = tower:FindFirstChild("TowerReplicator")
+                    if replicator then
+                        local ownerId = replicator:GetAttribute("OwnerId")
+                        local ownerName = replicator:GetAttribute("OwnerName")
+                        local towerName = replicator:GetAttribute("Name")
+
+                        local isOwner = (ownerId and ownerId == LocalPlayer.UserId) or (ownerName and ownerName == LocalPlayer.Name)
+
+                        if isOwner and towerName and string.lower(towerName) == "medic" then
+                            table.insert(myMedics, tower)
+                        end
+                    end
+                end
+            end
+            
+            if #myMedics == 0 then
+                task.wait(1)
+            end
+        until #myMedics > 0 or not Globals.AutoMedic
+
+        if not Globals.AutoMedic then
+            AutoMedicRunning = false
+            return
+        end
+
+        if not AutoMedicLib then
+            local success, loadedLib = pcall(function()
+                local url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoMedic"
+                return loadstring(game:HttpGet(url))()
+            end)
+
+            if success and loadedLib then
+                AutoMedicLib = loadedLib
+            else
+                AutoMedicRunning = false
+                return
+            end
+        end
+
+        -- Note: use Globals.Towerslot (the second script had a small bug using the bare name)
+        AutoMedicLib.Chain("Universal", Globals.Towerslot or {}, true)
+    end)
+end
+
+local function StartBountyChain()
+    AutoBountyRunning = true
+
+    task.spawn(function()
+        local myKingpins = {}
+
+        repeat
+            myKingpins = {}
+            local towersFolder = workspace:FindFirstChild("Towers")
+            
+            if towersFolder then
+                for _, tower in ipairs(towersFolder:GetChildren()) do
+                    local replicator = tower:FindFirstChild("TowerReplicator")
+                    if replicator then
+                        local ownerId = replicator:GetAttribute("OwnerId")
+                        local ownerName = replicator:GetAttribute("OwnerName")
+                        local towerName = replicator:GetAttribute("Name")
+                        local pathAttr = replicator:GetAttribute("Path")
+
+                        local isOwner = (ownerId and ownerId == LocalPlayer.UserId) or (ownerName and ownerName == LocalPlayer.Name)
+
+                        if isOwner and towerName and string.lower(towerName) == "evolvedkingpin" and pathAttr == 1 then
+                            table.insert(myKingpins, tower)
+                        end
+                    end
+                end
+            end
+            
+            if #myKingpins == 0 then
+                task.wait(1)
+            end
+        until #myKingpins > 0 or not Globals.AutoBounty
+
+        if not Globals.AutoBounty then
+            AutoBountyRunning = false
+            return
+        end
+
+        if not AutoBountyLib then
+            local success, loadedLib = pcall(function()
+                local url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoBounty"
+                return loadstring(game:HttpGet(url))()
+            end)
+
+            if success and loadedLib then
+                AutoBountyLib = loadedLib
+            else
+                warn("[AutoBounty]: Failed to load AutoBounty.lua library.")
+                AutoBountyRunning = false
+                return
+            end
+        end
+
+        AutoBountyLib.Bounty("Universal")
+    end)
+end
+
 -- [FEATURE 6] Auto Mercenary Base with automatic path distance to max
 local function StartAutoMercenary()
     if not Globals.AutoMercenary and not Globals.AutoMilitary then return end
@@ -5376,7 +5162,7 @@ task.spawn(function()
             StartAutoUpgradeAll()
         end
 
-        if Globals.AutoMedic and not AutoMedicRunning then
+                if Globals.AutoMedic and not AutoMedicRunning then
             StartMedicChain()
         elseif not Globals.AutoMedic and AutoMedicRunning then
             StopMedicChain()
