@@ -280,6 +280,7 @@ local DefaultSettings = {
     tagName = "None",
     Modifiers = {},
     AutoMedic = false,
+    MedicTarget = "Universal",
     Towerslot = {},
     AutoBounty = false,
 }
@@ -1516,6 +1517,16 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
             SetSetting("AutoMedic", v)
         end
     })
+
+    Automation:Dropdown({
+    Title = "Medic Target",
+    Desc = "Select which towers to heal: Universal (all players) or Self (only your own towers)",
+    List = {"Universal", "Self"},
+    Value = Globals.MedicTarget or "Universal",
+    Callback = function(choice)
+        SetSetting("MedicTarget", choice)
+    end
+})
 
     Automation:Dropdown({
         Title = "Towers:",
@@ -4788,8 +4799,13 @@ local function StartMedicChain()
             end
         end
 
-        -- Note: use Globals.Towerslot (the second script had a small bug using the bare name)
-        AutoMedicLib.Chain("Universal", Globals.Towerslot or {}, true)
+        -- Determine target based on setting
+        local target = "universal"
+        if Globals.MedicTarget == "Self" then
+            target = LocalPlayer.Name   -- or LocalPlayer.UserId (number)
+        end
+
+        AutoMedicLib.Chain(target, Globals.Towerslot or {}, true)
     end)
 end
 
