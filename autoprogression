@@ -38,6 +38,27 @@ _G.AutoProgSettings = _G.AutoProgSettings or {
     __locked = false,
 }
 
+local HISTORY_FILE = "AutoProgressionHistory.json"
+local MAX_HISTORY = 100
+
+local function LogDecision(entry)
+    if not writefile then return end
+    local history = {}
+    if isfile(HISTORY_FILE) then
+        local success, json = pcall(readfile, HISTORY_FILE)
+        if success then
+            history = HttpService:JSONDecode(json) or {}
+        end
+    end
+    table.insert(history, entry)
+    if #history > MAX_HISTORY then
+        table.remove(history, 1)
+    end
+    pcall(function()
+        writefile(HISTORY_FILE, HttpService:JSONEncode(history))
+    end)
+end
+
 -- ===== UI STATUS UPDATE =====
 local function SetStatus(text)
     local ui = getgenv().AutoProgressionUI
@@ -552,16 +573,47 @@ local function RunAutoProgression()
     AutoProgressionRunning = true
     task.wait(0.5)
 
-    -- Check force toggles
+    -- Gather base info for logging
+    local level = GetStat("Level")
+    local currentDifficulty = (ReplicatedStorage:FindFirstChild("State") and ReplicatedStorage.State:FindFirstChild("Difficulty")) and ReplicatedStorage.State.Difficulty.Value or nil
+    local inLobby = IsInLobby()
     local forceEasy = _G.AutoProgSettings.ForceEasy or false
     local forceFrost = _G.AutoProgSettings.ForceFrost or false
     local forceHcUnevo = _G.AutoProgSettings.ForceHardcoreUnevo or false
     local forceHcEvo = _G.AutoProgSettings.ForceHardcoreEvo or false
 
+    -- Prepare log entry (will be filled as we go)
+    local logEntry = {
+        timestamp = os.time(),
+        level = level,
+        currentDifficulty = currentDifficulty,
+        inLobby = inLobby,
+        forceEasy = forceEasy,
+        forceFrost = forceFrost,
+        forceHcUnevo = forceHcUnevo,
+        forceHcEvo = forceHcEvo,
+        haveRocketeer = nil,
+        haveGatling = nil,
+        haveTrapper = nil,
+        haveHacker = nil,
+        autoBuyResult = nil,
+        decision = "unknown",
+        details = "",
+    }
+
+    -- Helper to log before returning
+    local function logAndReturn(decision, details)
+        logEntry.decision = decision
+        logEntry.details = details or ""
+        LogDecision(logEntry)
+        AutoProgressionRunning = false
+    end
+
+    -- Check force toggles
     if forceEasy then
         SetStatus("Force mode: Easy")
+        logAndReturn("Force Easy", "User forced Easy mode")
         RunYeetEasy()
-        AutoProgressionRunning = false
         return
     elseif forceFrost then
         SetStatus("Force mode: Frost")
@@ -569,7 +621,13 @@ local function RunAutoProgression()
         local haveGatling = OwnsTower("Gatling Gun")
         local haveTrapper = OwnsTower("Trapper")
         local haveHacker = OwnsTower("Hacker")
+        logEntry.haveRocketeer = haveRocketeer
+        logEntry.haveGatling = haveGatling
+        logEntry.haveTrapper = haveTrapper
+        logEntry.haveHacker = haveHacker
+
         if haveGatling and haveTrapper and haveHacker and haveRocketeer then
+            logAndReturn("Force Frost (all towers owned)", "All Frost towers owned")
             RunFrostStrategy()
         else
             local result = AutoBuyTowers({
@@ -578,56 +636,51 @@ local function RunAutoProgression()
                 {"Hacker", 5500, "Gems"},
                 {"Rocketeer", 2500, "Coins"},
             })
+            logEntry.autoBuyResult = result
             if result == "OK" then
+                logAndReturn("Force Frost (bought missing towers)", "AutoBuy OK")
                 RunFrostStrategy()
             elseif result == "Coins" then
-                print("[AutoProgression] Not enough Coins for Frost – farming Easy.")
-                SetStatus("Not enough Coins for Frost – farming Easy")
+                logAndReturn("Force Frost fallback -> Easy", "Need coins for Frost")
                 RunYeetEasy()
             elseif result == "Gems" then
-                print("[AutoProgression] Not enough Gems for Frost – farming UNEVO.")
-                SetStatus("Not enough Gems for Frost – farming UNEVO")
+                logAndReturn("Force Frost fallback -> UNEVO", "Need gems for Frost")
                 RunHardcoreUnevo()
             end
         end
-        AutoProgressionRunning = false
         return
     elseif forceHcUnevo then
         SetStatus("Force mode: Hardcore UNEVO")
+        logAndReturn("Force Hardcore UNEVO", "")
         RunHardcoreUnevo()
-        AutoProgressionRunning = false
         return
     elseif forceHcEvo then
         SetStatus("Force mode: Hardcore EVO")
+        logAndReturn("Force Hardcore EVO", "")
         RunHardcoreEvo()
-        AutoProgressionRunning = false
         return
     end
 
     -- No force – use level‑based logic
-    local level = GetStat("Level")
-    local currentDifficulty = (ReplicatedStorage:FindFirstChild("State") and ReplicatedStorage.State:FindFirstChild("Difficulty")) and ReplicatedStorage.State.Difficulty.Value or nil
-
     if level >= 176 then
         SetStatus("Level " .. level .. " → Frost path")
-        -- Frost path
         local haveRocketeer = OwnsTower("Rocketeer")
         local haveGatling = OwnsTower("Gatling Gun")
         local haveTrapper = OwnsTower("Trapper")
         local haveHacker = OwnsTower("Hacker")
+        logEntry.haveRocketeer = haveRocketeer
+        logEntry.haveGatling = haveGatling
+        logEntry.haveTrapper = haveTrapper
+        logEntry.haveHacker = haveHacker
 
         if haveGatling and haveTrapper and haveHacker and haveRocketeer then
             -- All towers owned – decide whether to run Frost now or teleport to lobby
-            if IsInLobby() or currentDifficulty == "Frost" then
-                -- Already in lobby or in a Frost match – proceed
+            if inLobby or currentDifficulty == "Frost" then
+                logAndReturn("Frost (all towers owned)", "In lobby or Frost match")
                 RunFrostStrategy()
             else
-                -- In an Easy match (or other non‑Frost) – teleport to lobby
-                print("[AutoProgression] In non-Frost match, teleporting to lobby to run Frost.")
-                SetStatus("Not Frost match – teleporting to lobby")
+                logAndReturn("Teleport to lobby for Frost", "In non-Frost match, need lobby")
                 SmartTeleportToLobby()
-                -- After teleport, the script will restart and re‑enter this function,
-                -- then IsInLobby() will be true and RunFrostStrategy() will be called.
             end
         else
             -- Missing some towers – try to buy them
@@ -637,26 +690,25 @@ local function RunAutoProgression()
                 {"Hacker", 5500, "Gems"},
                 {"Rocketeer", 2500, "Coins"},
             })
+            logEntry.autoBuyResult = result
             if result == "OK" then
+                logAndReturn("Frost (bought missing towers)", "AutoBuy OK")
                 RunFrostStrategy()
             elseif result == "Coins" then
-                if currentDifficulty == "Frost" then
-                    print("[AutoProgression] In Frost match but need Coins – teleporting to lobby.")
-                    SetStatus("In Frost match, need Coins – teleporting to lobby")
+                -- Teleport if we're in Easy or Frost match (we don't want to farm Easy while in a match)
+                if currentDifficulty == "Frost" or currentDifficulty == "Easy" then
+                    logAndReturn("Teleport to lobby for Frost (need coins)", "In Easy/Frost match, need coins")
                     SmartTeleportToLobby()
                 else
-                    print("[AutoProgression] Not enough Coins for Frost – farming Easy.")
-                    SetStatus("Not enough Coins for Frost – farming Easy")
+                    logAndReturn("Fallback to Easy (need coins)", "Not enough coins for Frost")
                     RunYeetEasy()
                 end
             elseif result == "Gems" then
-                if currentDifficulty == "Frost" then
-                    print("[AutoProgression] In Frost match but need Gems – teleporting to lobby.")
-                    SetStatus("In Frost match, need Gems – teleporting to lobby")
+                if currentDifficulty == "Frost" or currentDifficulty == "Easy" then
+                    logAndReturn("Teleport to lobby for Frost (need gems)", "In Easy/Frost match, need gems")
                     SmartTeleportToLobby()
                 else
-                    print("[AutoProgression] Not enough Gems for Frost – farming UNEVO.")
-                    SetStatus("Not enough Gems for Frost – farming UNEVO")
+                    logAndReturn("Fallback to UNEVO (need gems)", "Not enough gems for Frost")
                     RunHardcoreUnevo()
                 end
             end
@@ -664,12 +716,15 @@ local function RunAutoProgression()
 
     elseif level >= 120 then
         SetStatus("Level " .. level .. " → Hardcore EVO path")
+        logAndReturn("Hardcore EVO", "Level >= 120")
         RunHardcoreEvo()
     elseif level >= 51 then
         SetStatus("Level " .. level .. " → Hardcore UNEVO path")
+        logAndReturn("Hardcore UNEVO", "Level between 51 and 119")
         RunHardcoreUnevo()
     else
         SetStatus("Level " .. level .. " → Farming Easy")
+        logAndReturn("Easy farm", "Level < 51")
         RunYeetEasy()
     end
 
