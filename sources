@@ -171,7 +171,6 @@ ScreenGui.Parent = game:GetService("CoreGui")
 
 local U, Tw = game:GetService("UserInputService"), game:GetService("TweenService")
 
-do
 	function addToTheme(name, obj)
 		if not SaveTheme[name] then
 			SaveTheme[name] = {}
