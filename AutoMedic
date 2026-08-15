@@ -23,9 +23,9 @@ local CAPACITY_BY_LEVEL = {
 }
 
 local UBERCHARGE_DURATION = {
-    [3] = 7.5,
-    [4] = 10,
-    [5] = 10
+    [3] = 10,
+    [4] = 12.5,
+    [5] = 15
 }
 
 local function getTimescaleMultiplier()
