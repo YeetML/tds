@@ -394,9 +394,14 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
                 targetTowers = getTargetTowersFromIndex(targetPlayer, towersToSelect, capacity, chainMode)
             end
 
-            local duration = getUberchargeDuration(medicTower)
-            local multiplier = getTimescaleMultiplier()
-            local realWait = duration / multiplier
+           local duration = getUberchargeDuration(medicTower)
+local multiplier = getTimescaleMultiplier()
+local realWait
+if multiplier == 2 then
+    realWait = (duration / 2) + 0.1
+else
+    realWait = duration
+end
 
             print(string.format(
                 "[AutoMedic.Chain]: Medic [%d] (Level %d) -> Attaching %d target(s) & activating Ubercharge (Duration: %.1fs | Timescale x%.1f → waiting %.2fs)",
