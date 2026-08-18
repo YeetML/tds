@@ -4800,15 +4800,15 @@ local function StartMedicChain()
         end
 
         local target = "universal"
-        local mode = "universal"
-        
-        if Globals.MedicTarget == "Self" then
-            target = LocalPlayer.Name
-            mode = "self"
-        elseif Globals.MedicTarget == "Self First" then
-            target = LocalPlayer.Name
-            mode = "self_first"   -- use this name inside the library
-        end
+local mode = "universal"
+
+if Globals.MedicTarget == "Self" then
+    target = LocalPlayer.UserId
+    mode = "self"
+elseif Globals.MedicTarget == "Self First" then
+    target = LocalPlayer.UserId
+    mode = "self_first"
+end
 
         AutoMedicLib.Chain(target, Globals.Towerslot or {}, true, mode)
     end)
