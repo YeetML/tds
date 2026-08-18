@@ -1,15 +1,12 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
 local LocalPlayer = Players.LocalPlayer
 local PlayerUserId = LocalPlayer.UserId
 local PlayerName = LocalPlayer.Name
-
 local RemoteFunction = ReplicatedStorage:FindFirstChild("RemoteFunction")
 
 local AutoMedic = {}
-
 local activeLoops = {}
 local activeChainThread = nil
 
@@ -31,21 +28,16 @@ local UBERCHARGE_DURATION = {
 local function getTimescaleMultiplier()
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not playerGui then return 1 end
-
     local hotbar = playerGui:FindFirstChild("ReactUniversalHotbar")
     local frame = hotbar and hotbar:FindFirstChild("Frame")
     local timescale = frame and frame:FindFirstChild("timescale")
-
     if not timescale or not timescale.Visible then
         return 1
     end
-
     -- Lock visible = still locked (1x). No Lock = unlocked (normally 2x)
     if timescale:FindFirstChild("Lock") then
         return 1
     end
-
-    -- Unlocked → treat as 2x (same assumption the Commander chain uses)
     return 2
 end
 
@@ -68,7 +60,6 @@ end
 function AutoMedic.GetAllTowers()
     local towersFolder = Workspace:FindFirstChild("Towers")
     local allTowers = {}
-
     if not towersFolder then return allTowers end
 
     for _, tower in ipairs(towersFolder:GetChildren()) do
@@ -105,7 +96,9 @@ local function getMyMedics()
     local myMedics = {}
 
     for _, data in ipairs(allTowers) do
-        local isOwner = (data.OwnerId and data.OwnerId == PlayerUserId) or (data.OwnerName and data.OwnerName == PlayerName)
+        local isOwner = (data.OwnerId and data.OwnerId == PlayerUserId)
+            or (data.OwnerName and data.OwnerName == PlayerName)
+
         if isOwner and data.Name and string.lower(data.Name) == "medic" then
             table.insert(myMedics, data.Tower)
         end
@@ -130,7 +123,7 @@ end
 
 local function activateUbercharge(medicTower)
     if not RemoteFunction or not medicTower or not medicTower.Parent then return end
-    
+
     pcall(function()
         RemoteFunction:InvokeServer(
             "Troops",
@@ -147,7 +140,7 @@ end
 
 local function toggleMedicTargets(medicTower, targetTowers)
     if not RemoteFunction or not medicTower or not medicTower.Parent or not targetTowers or #targetTowers == 0 then return end
-    
+
     for _, targetTower in ipairs(targetTowers) do
         if targetTower and targetTower.Parent then
             pcall(function()
@@ -170,7 +163,7 @@ local function getMedicCapacity(medicTower)
 
     local currentUpgrade = medicReplicator:GetAttribute("Upgrade") or 0
     local attributeCapacity = medicReplicator:GetAttribute("TowersCanSelect")
-    
+
     return attributeCapacity or CAPACITY_BY_LEVEL[currentUpgrade] or 1
 end
 
@@ -183,16 +176,29 @@ local function getUberchargeDuration(medicTower)
     return UBERCHARGE_DURATION[currentUpgrade] or 10
 end
 
+-- Fixed version
 local function getTargetTowersFromIndex(targetPlayer, towersToSelect, maxCapacity, mode)
     local allTowers = AutoMedic.GetAllTowers()
     local targetId, targetName = resolveTargetPlayer(targetPlayer)
     local isUniversal = (targetId == "universal" or targetName == "universal")
-    local mode = mode or "universal"
+    mode = mode or "universal"
 
     local targetTowers = {}
     local usedIndices = {}
 
-    -- Helper: add towers matching ownerCondition ("self", "other", or nil for any)
+    local function isOwnedByTarget(data)
+        if isUniversal then
+            return true
+        end
+        if targetId and data.OwnerId and data.OwnerId == targetId then
+            return true
+        end
+        if targetName and data.OwnerName and string.lower(data.OwnerName) == string.lower(targetName) then
+            return true
+        end
+        return false
+    end
+
     local function addMatchingTowers(ownerCondition)
         for _, name in ipairs(towersToSelect or {}) do
             if #targetTowers >= maxCapacity then break end
@@ -200,35 +206,17 @@ local function getTargetTowersFromIndex(targetPlayer, towersToSelect, maxCapacit
 
             for i, data in ipairs(allTowers) do
                 if usedIndices[i] then continue end
+                if not data.Name or string.lower(data.Name) == "medic" then continue end
+                if string.lower(data.Name) ~= nameLower then continue end
 
-                local towerNameLower = data.Name and string.lower(data.Name) or ""
-                if towerNameLower == "medic" then continue end
+                local ownedByTarget = isOwnedByTarget(data)
 
-                -- Determine if tower belongs to the target player (self)
-                local isTargetOwner = false
-                if isUniversal then
-                    isTargetOwner = true
-                elseif targetId and data.OwnerId and data.OwnerId == targetId then
-                    isTargetOwner = true
-                elseif targetName and data.OwnerName and string.lower(data.OwnerName) == string.lower(targetName) then
-                    isTargetOwner = true
-                end
-
-                if not isTargetOwner then
-                    continue
-                end
-
-                if towerNameLower ~= nameLower then
-                    continue
-                end
-
-                -- Apply owner filter based on mode
                 local ownerMatches = false
                 if ownerCondition == "self" then
-                    ownerMatches = isTargetOwner
+                    ownerMatches = ownedByTarget
                 elseif ownerCondition == "other" then
-                    ownerMatches = not isTargetOwner
-                else -- universal or any other mode
+                    ownerMatches = not ownedByTarget
+                else -- universal / nil
                     ownerMatches = true
                 end
 
@@ -242,15 +230,14 @@ local function getTargetTowersFromIndex(targetPlayer, towersToSelect, maxCapacit
     end
 
     if mode == "self_first" then
-        -- First add self towers (priority)
         addMatchingTowers("self")
-        -- Then fill remaining slots with other players' towers
         if #targetTowers < maxCapacity then
             addMatchingTowers("other")
         end
+    elseif mode == "self" then
+        addMatchingTowers("self")
     else
-        -- For "self" mode (targetPlayer is specific) or "universal"
-        addMatchingTowers(nil) -- no extra filter
+        addMatchingTowers(nil) -- universal
     end
 
     return targetTowers
@@ -287,6 +274,7 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
 
     local medicReplicator = selectedMedic:FindFirstChild("TowerReplicator")
     local currentUpgrade = medicReplicator and medicReplicator:GetAttribute("Upgrade") or 0
+
     if currentUpgrade < 3 then
         warn(string.format("[AutoMedic]: Medic [%d] level is too low! (Level %d/3 required)", medicIndex, currentUpgrade))
         return false
@@ -295,7 +283,6 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
     if toggle then
         local thread = task.spawn(function()
             while true do
-                -- Check if Medic still exists in workspace
                 if not selectedMedic or not selectedMedic.Parent then
                     if #activeLoops[medicIndex].lastTargets > 0 then
                         activeLoops[medicIndex].lastTargets = {}
@@ -324,14 +311,16 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
                 toggleMedicTargets(selectedMedic, targetTowers)
                 activeLoops[medicIndex].lastTargets = targetTowers
                 activateUbercharge(selectedMedic)
-                
+
                 task.wait(1)
             end
         end)
+
         activeLoops[medicIndex].thread = thread
     else
         local capacity = getMedicCapacity(selectedMedic)
         local targetTowers = getTargetTowersFromIndex(targetPlayer, towersToSelect, capacity)
+
         if #targetTowers > 0 then
             toggleMedicTargets(selectedMedic, targetTowers)
             activateUbercharge(selectedMedic)
@@ -394,14 +383,15 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
                 targetTowers = getTargetTowersFromIndex(targetPlayer, towersToSelect, capacity, chainMode)
             end
 
-           local duration = getUberchargeDuration(medicTower)
-local multiplier = getTimescaleMultiplier()
-local realWait
-if multiplier == 2 then
-    realWait = (duration / 2) + 0.1
-else
-    realWait = duration
-end
+            local duration = getUberchargeDuration(medicTower)
+            local multiplier = getTimescaleMultiplier()
+            local realWait
+
+            if multiplier == 2 then
+                realWait = (duration / 2) + 0.1
+            else
+                realWait = duration
+            end
 
             print(string.format(
                 "[AutoMedic.Chain]: Medic [%d] (Level %d) -> Attaching %d target(s) & activating Ubercharge (Duration: %.1fs | Timescale x%.1f → waiting %.2fs)",
@@ -411,6 +401,7 @@ end
             local attachedTargets = table.clone(targetTowers)
             toggleMedicTargets(medicTower, attachedTargets)
             activateUbercharge(medicTower)
+
             task.wait(realWait)
 
             if medicTower and medicTower.Parent then
