@@ -474,6 +474,10 @@ Apply3dRendering()
 
 Globals.HideUsername = false -- [FEATURE 10] default false
 SetSetting("HideUsername", false)
+Globals.AutoUpgradeSelected = false
+Globals.AutoUpgradeAll = false
+SetSetting("AutoUpgradeSelected", false)
+SetSetting("AutoUpgradeAll", false)
 
 local isTagChangerRunning = false
 local tagChangerConn = nil
