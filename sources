@@ -1054,7 +1054,7 @@ do
 						if selectedValues[v.TextLabel.Text] then
 							tw({v = v.TextLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0}}):Play()
 						else
-							tw({v = v.TextLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0.8}}):Play()
+							tw({v = v.TextLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0.4}}):Play()
 						end
 					end
 				end
@@ -1071,7 +1071,7 @@ do
 							if textLabel.Text == value then
 								tw({v = textLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0}}):Play()
 							else
-								tw({v = textLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0.8}}):Play()
+								tw({v = textLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0.4}}):Play()
 							end
 						end
 					end
