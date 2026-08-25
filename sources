@@ -170,6 +170,7 @@ ScreenGui.DisplayOrder = 999
 ScreenGui.Parent = game:GetService("CoreGui")
 
 local U, Tw = game:GetService("UserInputService"), game:GetService("TweenService")
+
 do
 	function addToTheme(name, obj)
 		if not SaveTheme[name] then
@@ -543,8 +544,7 @@ do
 
 		return Background, f
 	end
-	-- [MODIFIED] addDropdownSelect now accepts ShowPriority parameter
-	function addDropdownSelect(p, p2, Multi, Callback, Value, List, ShowPriority)
+	function addDropdownSelect(p, p2, Multi, Callback, Value, List)
 		local F = Instance.new("Frame")
 		local UIListLayout_1 = Instance.new("UIListLayout")
 		local UIPadding_1 = Instance.new("UIPadding")
@@ -909,8 +909,8 @@ do
 			Value = nil
 		end
 
-		-- [MODIFIED] itemslist:Add now uses ShowPriority for display formatting
 		function itemslist:Add(text)
+
 			local Item_1 = Instance.new("Frame")
 			local TextLabel_1 = Instance.new("TextLabel")
 
@@ -933,7 +933,7 @@ do
 			TextLabel_1.TextColor3 = Color3.fromRGB(255,255,255)
 			TextLabel_1.TextSize = 12
 			TextLabel_1.TextXAlignment = Enum.TextXAlignment.Left
-			TextLabel_1.TextTransparency = 0.8
+			TextLabel_1.TextTransparency = 0.4
 
 			addToTheme('Function.Dropdown.Dropdown Select.Item Background', Item_1)
 			addToTheme('Text & Icon', TextLabel_1)
@@ -943,7 +943,7 @@ do
 
 			local ClickItem = click(Item_1)
 			local function unselect()
-				tw({v = TextLabel_1, t = 0.15, s = Enum.EasingStyle.Linear, d = "Out", g = {TextTransparency = 0.8}}):Play()
+				tw({v = TextLabel_1, t = 0.15, s = Enum.EasingStyle.Linear, d = "Out", g = {TextTransparency = 0.4}}):Play()
 			end
 			local function hasselect()
 				tw({v = TextLabel_1, t = 0.15, s = Enum.EasingStyle.Linear, d = "Out", g = {TextTransparency = 0}}):Play()
@@ -963,17 +963,7 @@ do
 						table.insert(selectedList, i)
 					end
 					if #selectedList > 0 then
-						if ShowPriority then
-							local displayText = {}
-							local priority = 1
-							for _, name in ipairs(selectedList) do
-								table.insert(displayText, priority .. ". " .. name)
-								priority = priority + 1
-							end
-							TextLabelValue_1.Text = table.concat(displayText, ", ")
-						else
-							TextLabelValue_1.Text = table.concat(selectedList, ", ")
-						end
+						TextLabelValue_1.Text = table.concat(selectedList, ", ")
 					else
 						TextLabelValue_1.Text = "--"
 					end
@@ -1018,17 +1008,7 @@ do
 							table.insert(selectedList, i)
 						end
 						if #selectedList > 0 then
-							if ShowPriority then
-								local displayText = {}
-								local priority = 1
-								for _, name in ipairs(selectedList) do
-									table.insert(displayText, priority .. ". " .. name)
-									priority = priority + 1
-								end
-								TextLabelValue_1.Text = table.concat(displayText, ", ")
-							else
-								TextLabelValue_1.Text = table.concat(selectedList, ", ")
-							end
+							TextLabelValue_1.Text = table.concat(selectedList, ", ")
 						else
 							TextLabelValue_1.Text = "--"
 						end
@@ -1045,10 +1025,10 @@ do
 			end)
 		end
 
-		-- [MODIFIED] itemslist:SetValue now uses ShowPriority for display formatting
 		function itemslist:SetValue(value)
 			if Multi then
 				selectedValues = {}
+				-- Handle both table and single value for backward compatibility
 				if type(value) == "table" then
 					for _, val in ipairs(value) do
 						selectedValues[val] = true
@@ -1057,26 +1037,18 @@ do
 					selectedValues[value] = true
 				end
 				
+				-- Update display text
 				local selectedList = {}
 				for i, v in pairs(selectedValues) do
 					table.insert(selectedList, i)
 				end
 				if #selectedList > 0 then
-					if ShowPriority then
-						local displayText = {}
-						local priority = 1
-						for _, name in ipairs(selectedList) do
-							table.insert(displayText, priority .. ". " .. name)
-							priority = priority + 1
-						end
-						TextLabelValue_1.Text = table.concat(displayText, ", ")
-					else
-						TextLabelValue_1.Text = table.concat(selectedList, ", ")
-					end
+					TextLabelValue_1.Text = table.concat(selectedList, ", ")
 				else
 					TextLabelValue_1.Text = "--"
 				end
 				
+				-- Update visual state of all items
 				for _, v in ipairs(ScrollingFrame_1:GetChildren()) do
 					if v:IsA("Frame") and v:FindFirstChild("TextLabel") then
 						if selectedValues[v.TextLabel.Text] then
@@ -3384,7 +3356,6 @@ function Library:Window(p)
 			return New
 		end
 
-		-- [MODIFIED] Func:Dropdown now accepts ShowPriority parameter and passes it to addDropdownSelect
 		function Func:Dropdown(p)
 			local Title = p.Title or 'null'
 			local Desc = p.Desc or ''
@@ -3392,7 +3363,6 @@ function Library:Window(p)
 			local List = p.List or {}
 			local Value = p.Value or List[1]
 			local Multi = p.Multi or false
-			local ShowPriority = p.ShowPriority or false  -- <-- NEW
 			local Callback = p.Callback or function() end
 
 			local parent = currentSection or ScrollingFrame_1
@@ -3401,8 +3371,7 @@ function Library:Window(p)
 			Config:SetTextTransparencyTitle(0)
 			Config:SetSizeT(125)
 
-			-- Pass ShowPriority to addDropdownSelect
-			local DropdownSelect = addDropdownSelect(Dropdown, Dropdown, Multi, Callback, Value, List, ShowPriority)
+			local DropdownSelect = addDropdownSelect(Dropdown, Dropdown, Multi, Callback, Value, List)
 
 			local New = {}
 
