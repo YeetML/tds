@@ -2,18 +2,7 @@ local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/td
 
 TDS:Loadout("Gatling Gun", "DJ Booth", "Mercenary Base", "Trapper", "Hacker")
 TDS:Mode("Frost")
-TDS:GameInfo("Dusty Bridges", {})
-
-local prol = {
-    Glass = true,
-    Committed = true,
-    HiddenEnemies = true,
-    Quarantine = true,
-    Limitation = true,
-    ExplodingEnemies = true,
-}
-game:GetService("ReplicatedStorage").Network.Modifiers["RF:BulkVoteModifiers"]:InvokeServer(prol)
-
+TDS:GameInfo("Dusty Bridges", {HiddenEnemies = true, Glass = true, ExplodingEnemies = true, Limitation = true, Committed = true, Quarantine = true})
 TDS:UnlockTimeScale()
 TDS:TimeScale(2)
 TDS:VoteSkip(11, 39)
