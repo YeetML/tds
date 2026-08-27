@@ -15,7 +15,6 @@ local SETTINGS_FILE = "AutoProgression.json"
 -- ===== cross-script guards =====
 getgenv().HcEvoActive = getgenv().HcEvoActive or false
 getgenv().HcUnevoActive = getgenv().HcUnevoActive or false
-
 getgenv().AutoUpgradeSelected = false
 getgenv().AutoUpgradeAll = false
 if Globals then
@@ -48,10 +47,10 @@ getgenv().SetStatus = SetStatus
 local function ApplyStrategySettings(strategy)
     local MainGlobals = getgenv().Globals or _G.Globals
     local settings = {
-        AutoSkip          = (strategy.autoSkip ~= nil) and strategy.autoSkip or false,
-        AutoPremium       = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
-        AutoRejoin        = (strategy.autoRejoin ~= nil) and strategy.autoRejoin or true,
-        AutoRestart        = (strategy.autoRestart ~= nil) and strategy.autoRestart or false,
+        AutoSkip            = (strategy.autoSkip ~= nil) and strategy.autoSkip or false,
+        AutoPremium         = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
+        AutoRejoin          = false,   -- NEVER rejoin the same match
+        AutoRestart         = false,   -- NEVER auto-restart
         AutoUpgradeSelected = false,
         AutoUpgradeAll      = false,
     }
@@ -129,6 +128,37 @@ local function SmartTeleportToLobby()
     end)
 end
 
+-- ===== POST-MATCH → LOBBY WATCHER =====
+local PostMatchWatcherRunning = false
+local function StartPostMatchLobbyWatcher()
+    if PostMatchWatcherRunning then return end
+    PostMatchWatcherRunning = true
+
+    task.spawn(function()
+        local stateReplicators = ReplicatedStorage:WaitForChild("StateReplicators", 30)
+        local gameStateReplicator = stateReplicators and stateReplicators:WaitForChild("GameStateReplicator", 30)
+
+        if not gameStateReplicator then
+            PostMatchWatcherRunning = false
+            return
+        end
+
+        while true do
+            if gameStateReplicator:GetAttribute("GameOver") == true then
+                local health = gameStateReplicator:GetAttribute("Health") or 0
+                print("[AutoProgression] Match ended (Health=" .. tostring(health) .. "). Teleporting to lobby...")
+                SetStatus("Match ended – returning to lobby")
+                task.wait(2)
+                SmartTeleportToLobby()
+                break
+            end
+            task.wait(1)
+        end
+
+        PostMatchWatcherRunning = false
+    end)
+end
+
 -- ===== OPEN INVENTORY VIA REMOTE =====
 local function OpenInventory()
     task.wait(2)
@@ -138,12 +168,10 @@ local function OpenInventory()
     if not inventory then return false end
     local openRemote = inventory:FindFirstChild("URE:OpenInventory")
     if not openRemote then return false end
-
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if playerGui and playerGui:FindFirstChild("ReactUniversalInventoryView") then
         return true
     end
-
     openRemote:FireServer()
     task.wait(1.5)
     return true
@@ -345,17 +373,16 @@ local FrostStrategies = {
 }
 
 -- ===== HARDCORE UNEVO / EVO HELPERS =====
+-- (UNTOUCHED)
 local function RunHardcoreUnevo()
     if getgenv().HcUnevoActive then
         print("[AutoProgression] Hardcore UNEVO already running, skipping duplicate load.")
         SetStatus("Hardcore UNEVO already running")
         return
     end
-
     getgenv().AutoRejoin = false
     getgenv().AutoUpgradeSelected = false
     getgenv().AutoUpgradeAll = false
-
     print("[AutoProgression] Running Hardcore UNEVO strategy")
     SetStatus("Running Hardcore UNEVO strategy...")
     local result = AutoBuyTowers({
@@ -378,11 +405,9 @@ local function RunHardcoreEvo()
         SetStatus("Hardcore EVO already running")
         return
     end
-
     getgenv().AutoRejoin = false
     getgenv().AutoUpgradeSelected = false
     getgenv().AutoUpgradeAll = false
-
     print("[AutoProgression] Running Hardcore EVO strategy")
     SetStatus("Running Hardcore EVO strategy...")
     local result = AutoBuyTowers({
@@ -412,7 +437,6 @@ local function RunYeetEasy()
     runningEasy = true
     getgenv().TimeScaleEnabled = false
     SetStatus("Starting Easy strategy...")
-
     if not IsInLobby() then
         while true do
             local availableMaps = GetAvailableMaps()
@@ -422,7 +446,6 @@ local function RunYeetEasy()
                     table.insert(availableStrategies, strategy)
                 end
             end
-
             if #availableStrategies > 0 then
                 local chosen = availableStrategies[math.random(1, #availableStrategies)]
                 ApplyStrategySettings(chosen)
@@ -430,16 +453,15 @@ local function RunYeetEasy()
                 print("[AutoProgression] Selected Easy: " .. chosen.name .. " on " .. chosen.mapName)
                 SetStatus("Loading Easy: " .. chosen.name .. " on " .. chosen.mapName)
                 loadstring(game:HttpGet(chosen.url))()
+                StartPostMatchLobbyWatcher()          -- ← return to lobby after match
                 runningEasy = false
                 return
             end
-
             local vetoInfo = GetVetoInfo()
             if not vetoInfo then
                 print("[AutoProgression] Could not read veto text – assuming no vetoes.")
                 break
             end
-
             if vetoInfo.used < vetoInfo.total then
                 print("[AutoProgression] Text: Veto (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ") – vetoing.")
                 VetoMap()
@@ -448,7 +470,6 @@ local function RunYeetEasy()
                 break
             end
         end
-
         print("[AutoProgression] No Easy maps available. Teleporting to lobby...")
         SetStatus("No Easy maps – teleporting to lobby")
         SmartTeleportToLobby()
@@ -459,8 +480,8 @@ local function RunYeetEasy()
         print("[AutoProgression] In lobby, selected Easy: " .. chosen.name)
         SetStatus("In lobby – loading Easy: " .. chosen.name)
         loadstring(game:HttpGet(chosen.url))()
+        StartPostMatchLobbyWatcher()                  -- ← return to lobby after match
     end
-
     runningEasy = false
 end
 
@@ -469,7 +490,6 @@ local function RunFrostStrategy()
     runningFrost = true
     getgenv().TimeScaleEnabled = false
     SetStatus("Starting Frost strategy...")
-
     if not IsInLobby() then
         while true do
             local availableMaps = GetAvailableMaps()
@@ -479,7 +499,6 @@ local function RunFrostStrategy()
                     table.insert(availableStrategies, strategy)
                 end
             end
-
             if #availableStrategies > 0 then
                 local chosen = availableStrategies[math.random(1, #availableStrategies)]
                 ApplyStrategySettings(chosen)
@@ -487,16 +506,15 @@ local function RunFrostStrategy()
                 print("[AutoProgression] Selected Frost: " .. chosen.name .. " on " .. chosen.mapName)
                 SetStatus("Loading Frost: " .. chosen.name .. " on " .. chosen.mapName)
                 loadstring(game:HttpGet(chosen.url))()
+                StartPostMatchLobbyWatcher()          -- ← return to lobby after match
                 runningFrost = false
                 return
             end
-
             local vetoInfo = GetVetoInfo()
             if not vetoInfo then
                 print("[AutoProgression] Could not read veto text – assuming no vetoes.")
                 break
             end
-
             if vetoInfo.used < vetoInfo.total then
                 print("[AutoProgression] Text: Veto (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ") – vetoing.")
                 VetoMap()
@@ -505,7 +523,6 @@ local function RunFrostStrategy()
                 break
             end
         end
-
         print("[AutoProgression] No Frost maps available. Teleporting to lobby...")
         SetStatus("No Frost maps – teleporting to lobby")
         SmartTeleportToLobby()
@@ -516,8 +533,8 @@ local function RunFrostStrategy()
         print("[AutoProgression] In lobby, selected Frost: " .. chosen.name)
         SetStatus("In lobby – loading Frost: " .. chosen.name)
         loadstring(game:HttpGet(chosen.url))()
+        StartPostMatchLobbyWatcher()                  -- ← return to lobby after match
     end
-
     runningFrost = false
 end
 
@@ -589,19 +606,15 @@ local function RunAutoProgression()
         local haveGatling = OwnsTower("Gatling Gun")
         local haveTrapper = OwnsTower("Trapper")
         local haveHacker = OwnsTower("Hacker")
-
         if haveGatling and haveTrapper and haveHacker and haveRocketeer then
-            -- All towers owned – decide whether to run Frost now or teleport to lobby
             if IsInLobby() or currentDifficulty == "Frost" then
                 RunFrostStrategy()
             else
-                -- In an Easy match (or other non‑Frost) – teleport to lobby
                 print("[AutoProgression] In non-Frost match, teleporting to lobby to run Frost.")
                 SetStatus("Not Frost match – teleporting to lobby")
                 SmartTeleportToLobby()
             end
         else
-            -- Missing some towers – try to buy them
             local result = AutoBuyTowers({
                 {"Gatling Gun", 35000, "Coins"},
                 {"Trapper", 3000, "Coins"},
@@ -632,7 +645,6 @@ local function RunAutoProgression()
                 end
             end
         end
-
     elseif level >= 120 then
         SetStatus("Level " .. level .. " → Hardcore EVO path")
         RunHardcoreEvo()
@@ -643,7 +655,6 @@ local function RunAutoProgression()
         SetStatus("Level " .. level .. " → Farming Easy")
         RunYeetEasy()
     end
-
     AutoProgressionRunning = false
 end
 
@@ -654,7 +665,6 @@ local function fetchCodesFromBeebom()
         warn("[CodeRedeemer] No HTTP support – skipping.")
         return {}
     end
-
     local response = httpRequest({
         Url = "https://beebom.com/tower-defense-simulator-tds-codes/",
         Method = "GET",
@@ -662,12 +672,10 @@ local function fetchCodesFromBeebom()
             ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
     })
-
     if response.StatusCode ~= 200 then
         warn("[CodeRedeemer] Failed to fetch page. Status: " .. tostring(response.StatusCode))
         return {}
     end
-
     local html = response.Body or ""
     local codes = {}
     
@@ -683,7 +691,6 @@ local function fetchCodesFromBeebom()
             table.insert(codes, code)
         end
     end
-
     return codes
 end
 
@@ -696,7 +703,6 @@ local function redeemCodesFromBeebom()
         SetStatus("No codes found")
         return
     end
-
     print("[CodeRedeemer] Found codes: " .. table.concat(codeList, ", "))
     SetStatus("Redeeming " .. #codeList .. " codes...")
     
@@ -717,12 +723,10 @@ end
 local function CreateUI()
     local oldGui = CoreGui:FindFirstChild("AutoProgressionUI")
     if oldGui then oldGui:Destroy() end
-
     local gui = Instance.new("ScreenGui")
     gui.Name = "AutoProgressionUI"
     gui.ResetOnSpawn = false
     gui.Parent = CoreGui
-
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0, 300, 0, 380)
     frame.Position = UDim2.new(0.5, -150, 0.7, -190)
@@ -734,7 +738,6 @@ local function CreateUI()
     stroke.Color = Color3.fromRGB(60, 60, 80)
     stroke.Thickness = 2
     stroke.Parent = frame
-
     -- Header
     local header = Instance.new("Frame")
     header.Size = UDim2.new(1, -24, 0, 38)
@@ -749,7 +752,6 @@ local function CreateUI()
         ColorSequenceKeypoint.new(1, Color3.fromRGB(170, 80, 220))
     })
     gradient.Parent = header
-
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, 0, 1, 0)
     title.BackgroundTransparency = 1
@@ -763,7 +765,6 @@ local function CreateUI()
     titleConstraint.MaxTextSize = 22
     titleConstraint.MinTextSize = 15
     titleConstraint.Parent = title
-
     -- Stats display
     local levelDisplay = Instance.new("TextLabel")
     levelDisplay.Size = UDim2.new(1, 0, 0, 20)
@@ -775,7 +776,6 @@ local function CreateUI()
     levelDisplay.Font = Enum.Font.GothamBold
     levelDisplay.TextXAlignment = Enum.TextXAlignment.Center
     levelDisplay.Parent = frame
-
     local coinsDisplay = Instance.new("TextLabel")
     coinsDisplay.Size = UDim2.new(1, 0, 0, 20)
     coinsDisplay.Position = UDim2.new(0, 0, 0, 78)
@@ -786,7 +786,6 @@ local function CreateUI()
     coinsDisplay.Font = Enum.Font.GothamBold
     coinsDisplay.TextXAlignment = Enum.TextXAlignment.Center
     coinsDisplay.Parent = frame
-
     local gemsDisplay = Instance.new("TextLabel")
     gemsDisplay.Size = UDim2.new(1, 0, 0, 20)
     gemsDisplay.Position = UDim2.new(0, 0, 0, 98)
@@ -797,7 +796,6 @@ local function CreateUI()
     gemsDisplay.Font = Enum.Font.GothamBold
     gemsDisplay.TextXAlignment = Enum.TextXAlignment.Center
     gemsDisplay.Parent = frame
-
     local statusDisplay = Instance.new("TextLabel")
     statusDisplay.Size = UDim2.new(1, 0, 0, 20)
     statusDisplay.Position = UDim2.new(0, 0, 0, 118)
@@ -808,12 +806,10 @@ local function CreateUI()
     statusDisplay.Font = Enum.Font.GothamBold
     statusDisplay.TextXAlignment = Enum.TextXAlignment.Center
     statusDisplay.Parent = frame
-
     if _G._pendingStatus then
         statusDisplay.Text = "Status: " .. _G._pendingStatus
         _G._pendingStatus = nil
     end
-
     -- Main toggle
     local toggle = Instance.new("TextButton")
     toggle.Size = UDim2.new(0, 90, 0, 30)
@@ -825,7 +821,6 @@ local function CreateUI()
     toggle.Font = Enum.Font.GothamBold
     toggle.Parent = frame
     Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 10)
-
     -- Mode override toggles
     local modeLabel = Instance.new("TextLabel")
     modeLabel.Size = UDim2.new(1, -20, 0, 18)
@@ -837,7 +832,6 @@ local function CreateUI()
     modeLabel.Font = Enum.Font.GothamBold
     modeLabel.TextXAlignment = Enum.TextXAlignment.Left
     modeLabel.Parent = frame
-
     local function CreateModeToggle(yOffset, label, settingKey)
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(0, 130, 0, 22)
@@ -851,12 +845,10 @@ local function CreateUI()
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
         return btn
     end
-
     local easyBtn = CreateModeToggle(208, "Easy", "ForceEasy")
     local frostBtn = CreateModeToggle(234, "Frost", "ForceFrost")
     local hcUnevoBtn = CreateModeToggle(260, "HC Unevo", "ForceHardcoreUnevo")
     local hcEvoBtn = CreateModeToggle(286, "HC Evo", "ForceHardcoreEvo")
-
     local function updateModeButton(btn, settingKey)
         if _G.AutoProgSettings[settingKey] then
             btn.Text = btn.Text:gsub(": OFF", ": ON")
@@ -866,7 +858,6 @@ local function CreateUI()
             btn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
         end
     end
-
     local function saveSettings()
         if writefile then
             local saveData = {
@@ -879,15 +870,12 @@ local function CreateUI()
             writefile(SETTINGS_FILE, HttpService:JSONEncode(saveData))
         end
     end
-
     local function updateMainUI()
         local anyForceOn = _G.AutoProgSettings.ForceEasy or
                            _G.AutoProgSettings.ForceFrost or
                            _G.AutoProgSettings.ForceHardcoreUnevo or
                            _G.AutoProgSettings.ForceHardcoreEvo
-
         local isRunning = AutoProgressionEnabled or anyForceOn
-
         if isRunning then
             toggle.Text = "ON"
             toggle.BackgroundColor3 = Color3.fromRGB(0, 170, 80)
@@ -909,25 +897,20 @@ local function CreateUI()
             statusDisplay.Text = "Status: Stopped"
         end
     end
-
     local function toggleMode(settingKey, btn)
         getgenv().HcEvoActive = false
         getgenv().HcUnevoActive = false
-
         local forceKeys = {"ForceEasy", "ForceFrost", "ForceHardcoreUnevo", "ForceHardcoreEvo"}
         for _, key in ipairs(forceKeys) do
             if key ~= settingKey then
                 _G.AutoProgSettings[key] = false
             end
         end
-
         _G.AutoProgSettings[settingKey] = not _G.AutoProgSettings[settingKey]
-
         updateModeButton(easyBtn, "ForceEasy")
         updateModeButton(frostBtn, "ForceFrost")
         updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
         updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
-
         if _G.AutoProgSettings[settingKey] then
             AutoProgressionEnabled = true
             _G.AutoProgSettings.AutoProgressionEnabled = true
@@ -939,11 +922,9 @@ local function CreateUI()
             saveSettings()
         end
     end
-
     toggle.MouseButton1Click:Connect(function()
         AutoProgressionEnabled = not AutoProgressionEnabled
         _G.AutoProgSettings.AutoProgressionEnabled = AutoProgressionEnabled
-
         if not AutoProgressionEnabled then
             _G.AutoProgSettings.ForceEasy = false
             _G.AutoProgSettings.ForceFrost = false
@@ -959,22 +940,18 @@ local function CreateUI()
         else
             SetStatus("Starting...")
         end
-
         updateMainUI()
         saveSettings()
-
         if AutoProgressionEnabled then
             task.spawn(RunAutoProgression)
         else
             _G.AutoProgSettings.__locked = false
         end
     end)
-
     easyBtn.MouseButton1Click:Connect(function() toggleMode("ForceEasy", easyBtn) end)
     frostBtn.MouseButton1Click:Connect(function() toggleMode("ForceFrost", frostBtn) end)
     hcUnevoBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreUnevo", hcUnevoBtn) end)
     hcEvoBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreEvo", hcEvoBtn) end)
-
     if isfile and isfile(SETTINGS_FILE) then
         local success, data = pcall(function()
             return HttpService:JSONDecode(readfile(SETTINGS_FILE))
@@ -985,12 +962,10 @@ local function CreateUI()
             end
         end
     end
-
     _G.AutoProgSettings.AutoUpgradeSelected = false
     _G.AutoProgSettings.AutoUpgradeAll = false
     getgenv().AutoUpgradeSelected = false
     getgenv().AutoUpgradeAll = false
-
     AutoProgressionEnabled = _G.AutoProgSettings.AutoProgressionEnabled or false
     local anyForceOn = _G.AutoProgSettings.ForceEasy or
                        _G.AutoProgSettings.ForceFrost or
@@ -1000,17 +975,14 @@ local function CreateUI()
         AutoProgressionEnabled = true
         _G.AutoProgSettings.AutoProgressionEnabled = true
     end
-
     updateMainUI()
     updateModeButton(easyBtn, "ForceEasy")
     updateModeButton(frostBtn, "ForceFrost")
     updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
     updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
-
     if AutoProgressionEnabled then
         task.spawn(RunAutoProgression)
     end
-
     -- Dragging
     local dragging = false
     local dragInput, dragStart, startPos
@@ -1036,7 +1008,6 @@ local function CreateUI()
                                        startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
-
     -- Update stats every second
     task.spawn(function()
         while task.wait(1) do
@@ -1048,7 +1019,6 @@ local function CreateUI()
             gemsDisplay.Text = "Gems: " .. tostring(gems)
         end
     end)
-
     return {
         title = title,
         status = statusDisplay,
