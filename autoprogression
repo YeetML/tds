@@ -128,33 +128,50 @@ local function SmartTeleportToLobby()
     end)
 end
 
--- ===== POST-MATCH → LOBBY WATCHER =====
+-- ===== UI‑BASED MATCH STATUS (from HardcoreScout) =====
+local function GetMatchStatus()
+    local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not PlayerGui then return nil end
+    local uiRoot = PlayerGui:FindFirstChild("ReactGameNewRewards")
+    if not uiRoot then return nil end
+    local mainFrame = uiRoot:FindFirstChild("Frame")
+    if not mainFrame or not mainFrame.Visible then return nil end
+    local gameOver = mainFrame:FindFirstChild("gameOver")
+    if not gameOver or not gameOver.Visible then return nil end
+    local rewardsScreen = gameOver:FindFirstChild("RewardsScreen")
+    if not rewardsScreen or not rewardsScreen.Visible then return nil end
+    local topBanner = rewardsScreen:FindFirstChild("RewardBanner")
+    if not topBanner then return nil end
+    local label = topBanner:FindFirstChild("textLabel") or topBanner:FindFirstChildOfClass("TextLabel")
+    if not label then return nil end
+    local txt = label.Text:upper()
+    if txt == "" then return nil end
+    if txt:find("TRIUMPH") or txt:find("VICTORY") or txt:find("WIN") then
+        return "WIN"
+    elseif txt:find("LOST") or txt:find("DEFEAT") or txt:find("FAIL") then
+        return "LOSS"
+    end
+    return nil
+end
+
+-- ===== POST‑MATCH → LOBBY WATCHER (UI‑BASED, for Easy/Frost) =====
 local PostMatchWatcherRunning = false
 local function StartPostMatchLobbyWatcher()
     if PostMatchWatcherRunning then return end
     PostMatchWatcherRunning = true
 
     task.spawn(function()
-        local stateReplicators = ReplicatedStorage:WaitForChild("StateReplicators", 30)
-        local gameStateReplicator = stateReplicators and stateReplicators:WaitForChild("GameStateReplicator", 30)
-
-        if not gameStateReplicator then
-            PostMatchWatcherRunning = false
-            return
-        end
-
         while true do
-            if gameStateReplicator:GetAttribute("GameOver") == true then
-                local health = gameStateReplicator:GetAttribute("Health") or 0
-                print("[AutoProgression] Match ended (Health=" .. tostring(health) .. "). Teleporting to lobby...")
+            local status = GetMatchStatus()
+            if status then
+                print("[AutoProgression] Match ended (status: " .. status .. "). Teleporting to lobby...")
                 SetStatus("Match ended – returning to lobby")
-                task.wait(2)
+                task.wait(2)  -- let rewards screen settle
                 SmartTeleportToLobby()
                 break
             end
             task.wait(1)
         end
-
         PostMatchWatcherRunning = false
     end)
 end
@@ -372,8 +389,7 @@ local FrostStrategies = {
     { name = "frost5", mapName = "Dusty Bridges", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost5", autoPremium = false, autoSkip = false, autoRejoin = true },
 }
 
--- ===== HARDCORE UNEVO / EVO HELPERS =====
--- (UNTOUCHED)
+-- ===== HARDCORE UNEVO / EVO HELPERS (UNTOUCHED) =====
 local function RunHardcoreUnevo()
     if getgenv().HcUnevoActive then
         print("[AutoProgression] Hardcore UNEVO already running, skipping duplicate load.")
