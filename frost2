@@ -1,13 +1,11 @@
-local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Library.lua"))()
 
-TDS:Loadout("Gatling Gun", "DJ Booth", "Trapper", "Mercenary Base", "Hacker")
+TDS:Loadout("Trapper", "Hacker", "Gatling Gun", "Mercenary Base", "DJ Booth")
 TDS:Mode("Frost")
-TDS:GameInfo("Lay By", {})
-local prol = { Glass = true, Committed = true, HiddenEnemies = true, Quarantine = true, Limitation= true, ExplodingEnemies = true, Fog = true }
-game:GetService("ReplicatedStorage").Network.Modifiers["RF:BulkVoteModifiers"]:InvokeServer(prol)
+TDS:GameInfo("Lay By", {HiddenEnemies = true, Glass = true, ExplodingEnemies = true, Limitation = true, Committed = true, Quarantine = true, Fog = true})
+TDS:VoteSkip(11, 39)
 TDS:UnlockTimeScale()
 TDS:TimeScale(2)
-TDS:VoteSkip(11, 39)
 
 TDS:Place("Trapper", -2.537647247314453, 242.99996948242188, 235.9556427001953) --1
 TDS:Ready()
@@ -88,6 +86,7 @@ TDS:Upgrade(7)
 TDS:Upgrade(12)
 TDS:Upgrade(13)
 TDS:Upgrade(14)
+TDS:WaitForWave(33)
 TDS:Upgrade(7)
 TDS:Upgrade(7)
 TDS:Upgrade(9)
