@@ -2,11 +2,10 @@ local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/td
 
 TDS:Loadout("Gatling Gun", "DJ Booth", "Mercenary Base", "Trapper", "Hacker")
 TDS:Mode("Frost")
-TDS:GameInfo("Retro Crossroads", {})
-local prol = { Glass = true, Committed = true, HiddenEnemies = true, Quarantine = true, Limitation= true, ExplodingEnemies = true }
-game:GetService("ReplicatedStorage").Network.Modifiers["RF:BulkVoteModifiers"]:InvokeServer(prol)
+TDS:GameInfo("Retro Crossroads", {HiddenEnemies = true, Glass = true, ExplodingEnemies = true, Limitation = true, Committed = true, Quarantine = true})
 TDS:UnlockTimeScale()
 TDS:TimeScale(2)
+
 -- Index 1 (Trapper)
 TDS:Place("Trapper", -125.47618103027344, -44.53631591796875, 23.470918655395508)
 TDS:Ready()
