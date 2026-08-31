@@ -253,8 +253,11 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
 
     if toggle == false then
         if #activeLoops[medicIndex].lastTargets > 0 then
-            toggleMedicTargets(selectedMedic, activeLoops[medicIndex].lastTargets)
+            local oldTargets = activeLoops[medicIndex].lastTargets
             activeLoops[medicIndex].lastTargets = {}
+            task.spawn(function()
+                toggleMedicTargets(selectedMedic, oldTargets)
+            end)
         end
         return true
     end
@@ -281,18 +284,26 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
 
                 if #targetTowers == 0 then
                     if #activeLoops[medicIndex].lastTargets > 0 then
-                        toggleMedicTargets(selectedMedic, activeLoops[medicIndex].lastTargets)
+                        local oldTargets = activeLoops[medicIndex].lastTargets
                         activeLoops[medicIndex].lastTargets = {}
+                        task.spawn(function()
+                            toggleMedicTargets(selectedMedic, oldTargets)
+                        end)
                     end
                     task.wait(0.1)
                     continue
                 end
 
+                -- Detach old targets in background
                 if #activeLoops[medicIndex].lastTargets > 0 then
-                    toggleMedicTargets(selectedMedic, activeLoops[medicIndex].lastTargets)
+                    local oldTargets = activeLoops[medicIndex].lastTargets
                     activeLoops[medicIndex].lastTargets = {}
+                    task.spawn(function()
+                        toggleMedicTargets(selectedMedic, oldTargets)
+                    end)
                 end
 
+                -- Attach new targets (blocking, but fast because it's just sending)
                 toggleMedicTargets(selectedMedic, targetTowers)
                 activeLoops[medicIndex].lastTargets = targetTowers
                 activateUbercharge(selectedMedic)
@@ -373,8 +384,11 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
 
             task.wait(realWait)
 
+            -- Detach in background – this makes the deselect instant from the loop's perspective
             if medicTower and medicTower.Parent then
-                toggleMedicTargets(medicTower, attachedTargets)
+                task.spawn(function()
+                    toggleMedicTargets(medicTower, attachedTargets)
+                end)
             end
         end
 
