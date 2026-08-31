@@ -856,8 +856,40 @@ do
 		end)
 
 		local itemslist = {}
-		local selectedValues = {}
-		local selectedItem
+local selectedValues = {}   -- set: name -> true
+local selectedOrder = {}    -- array: click order
+local selectedItem
+
+local function rebuildSelectedList()
+	local selectedList = {}
+	for _, name in ipairs(selectedOrder) do
+		if selectedValues[name] then
+			table.insert(selectedList, name)
+		end
+	end
+	return selectedList
+end
+
+local function addSelected(name)
+	if selectedValues[name] then
+		return
+	end
+	selectedValues[name] = true
+	table.insert(selectedOrder, name)
+end
+
+local function removeSelected(name)
+	if not selectedValues[name] then
+		return
+	end
+	selectedValues[name] = nil
+	for i = #selectedOrder, 1, -1 do
+		if selectedOrder[i] == name then
+			table.remove(selectedOrder, i)
+			break
+		end
+	end
+end
 
 		function itemslist:Clear(a)
 			local function shouldClear(v)
@@ -876,10 +908,11 @@ do
 			end
 
 			if Multi then
-				selectedValues = {}
-				TextLabelValue_1.Text = "--"
-				pcall(Callback ,selectedValues)
-			end
+	selectedValues = {}
+	selectedOrder = {}
+	TextLabelValue_1.Text = "--"
+	pcall(Callback, {})
+end
 
 			local children = ScrollingFrame_1:GetChildren()
 			for _, v in ipairs(children) do
@@ -950,24 +983,21 @@ do
 			end
 
 			ClickItem.MouseButton1Click:Connect(function()
-				if Multi then
-					if selectedValues[text] then
-						selectedValues[text] = nil
-						unselect()
-					else
-						selectedValues[text] = true
-						hasselect()
-					end
-					local selectedList = {}
-					for i, v in pairs(selectedValues) do
-						table.insert(selectedList, i)
-					end
-					if #selectedList > 0 then
-						TextLabelValue_1.Text = table.concat(selectedList, ", ")
-					else
-						TextLabelValue_1.Text = "--"
-					end
-					pcall(Callback, selectedList)
+	if Multi then
+		if selectedValues[text] then
+			removeSelected(text)
+			unselect()
+		else
+			addSelected(text)
+			hasselect()
+		end
+		local selectedList = rebuildSelectedList()
+		if #selectedList > 0 then
+			TextLabelValue_1.Text = table.concat(selectedList, ", ")
+		else
+			TextLabelValue_1.Text = "--"
+		end
+		pcall(Callback, selectedList)
 				else
 					local children = ScrollingFrame_1:GetChildren()
 					for i,v in pairs(children) do
@@ -999,21 +1029,18 @@ do
 			end
 
 			delay(0,function()
-				if Multi then
-					if isValueInTable(text, Value) then
-						hasselect()
-						selectedValues[text] = true
-						local selectedList = {}
-						for i, v in pairs(selectedValues) do
-							table.insert(selectedList, i)
-						end
-						if #selectedList > 0 then
-							TextLabelValue_1.Text = table.concat(selectedList, ", ")
-						else
-							TextLabelValue_1.Text = "--"
-						end
-						pcall(Callback,selectedList)
-					end
+	if Multi then
+		if isValueInTable(text, Value) then
+			hasselect()
+			addSelected(text)
+			local selectedList = rebuildSelectedList()
+			if #selectedList > 0 then
+				TextLabelValue_1.Text = table.concat(selectedList, ", ")
+			else
+				TextLabelValue_1.Text = "--"
+			end
+			pcall(Callback, selectedList)
+		end
 				else
 					if text == Value then
 						hasselect()
@@ -1026,40 +1053,36 @@ do
 		end
 
 		function itemslist:SetValue(value)
-			if Multi then
-				selectedValues = {}
-				-- Handle both table and single value for backward compatibility
-				if type(value) == "table" then
-					for _, val in ipairs(value) do
-						selectedValues[val] = true
-					end
+	if Multi then
+		selectedValues = {}
+		selectedOrder = {}
+
+		if type(value) == "table" then
+			for _, val in ipairs(value) do
+				addSelected(val)
+			end
+		elseif value ~= nil and value ~= "" then
+			addSelected(value)
+		end
+
+		local selectedList = rebuildSelectedList()
+		if #selectedList > 0 then
+			TextLabelValue_1.Text = table.concat(selectedList, ", ")
+		else
+			TextLabelValue_1.Text = "--"
+		end
+
+		for _, v in ipairs(ScrollingFrame_1:GetChildren()) do
+			if v:IsA("Frame") and v:FindFirstChild("TextLabel") then
+				if selectedValues[v.TextLabel.Text] then
+					tw({v = v.TextLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0}}):Play()
 				else
-					selectedValues[value] = true
+					tw({v = v.TextLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0.8}}):Play()
 				end
-				
-				-- Update display text
-				local selectedList = {}
-				for i, v in pairs(selectedValues) do
-					table.insert(selectedList, i)
-				end
-				if #selectedList > 0 then
-					TextLabelValue_1.Text = table.concat(selectedList, ", ")
-				else
-					TextLabelValue_1.Text = "--"
-				end
-				
-				-- Update visual state of all items
-				for _, v in ipairs(ScrollingFrame_1:GetChildren()) do
-					if v:IsA("Frame") and v:FindFirstChild("TextLabel") then
-						if selectedValues[v.TextLabel.Text] then
-							tw({v = v.TextLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0}}):Play()
-						else
-							tw({v = v.TextLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0.8}}):Play()
-						end
-					end
-				end
-				
-				pcall(Callback, selectedList)
+			end
+		end
+
+		pcall(Callback, selectedList)
 			else
 				Value = value
 				TextLabelValue_1.Text = value
