@@ -530,15 +530,6 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
             end
 
             local liveTarget, liveMode, liveTowers = getCurrentSettings()
-            if targetPlayer and targetPlayer ~= "" then
-                liveTarget = targetPlayer
-            end
-            if mode and mode ~= "" then
-                liveMode = mode
-            end
-            if towersToSelect and #towersToSelect > 0 then
-                liveTowers = towersToSelect
-            end
 
             local capacity = getMedicCapacity(medic)
             local targets  = getTargetTowersFromIndex(liveTarget, liveTowers, capacity, liveMode)
