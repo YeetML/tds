@@ -966,7 +966,7 @@ end
 			TextLabel_1.TextColor3 = Color3.fromRGB(255,255,255)
 			TextLabel_1.TextSize = 12
 			TextLabel_1.TextXAlignment = Enum.TextXAlignment.Left
-			TextLabel_1.TextTransparency = 0.8
+			TextLabel_1.TextTransparency = 0.4
 
 			addToTheme('Function.Dropdown.Dropdown Select.Item Background', Item_1)
 			addToTheme('Text & Icon', TextLabel_1)
@@ -976,7 +976,7 @@ end
 
 			local ClickItem = click(Item_1)
 			local function unselect()
-				tw({v = TextLabel_1, t = 0.15, s = Enum.EasingStyle.Linear, d = "Out", g = {TextTransparency = 0.8}}):Play()
+				tw({v = TextLabel_1, t = 0.15, s = Enum.EasingStyle.Linear, d = "Out", g = {TextTransparency = 0.4}}):Play()
 			end
 			local function hasselect()
 				tw({v = TextLabel_1, t = 0.15, s = Enum.EasingStyle.Linear, d = "Out", g = {TextTransparency = 0}}):Play()
@@ -1004,7 +1004,7 @@ end
 						if v:IsA("Frame") then
 							local textLabel = v:FindFirstChild("TextLabel")
 							if textLabel then
-								tw({v = textLabel, t = 0.15, s = Enum.EasingStyle.Linear, d = "Out", g = {TextTransparency = 0.8}}):Play()
+								tw({v = textLabel, t = 0.15, s = Enum.EasingStyle.Linear, d = "Out", g = {TextTransparency = 0.4}}):Play()
 							end
 						end
 					end
@@ -1077,7 +1077,7 @@ end
 				if selectedValues[v.TextLabel.Text] then
 					tw({v = v.TextLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0}}):Play()
 				else
-					tw({v = v.TextLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0.8}}):Play()
+					tw({v = v.TextLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0.4}}):Play()
 				end
 			end
 		end
@@ -1094,7 +1094,7 @@ end
 							if textLabel.Text == value then
 								tw({v = textLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0}}):Play()
 							else
-								tw({v = textLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0.8}}):Play()
+								tw({v = textLabel, t = 0.05, s = Enum.EasingStyle.Exponential, d = "Out", g = {TextTransparency = 0.4}}):Play()
 							end
 						end
 					end
