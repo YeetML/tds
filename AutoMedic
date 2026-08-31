@@ -1,24 +1,25 @@
 --[[
-    AutoMedic (improved)
-    - Same API as your current module
-    - Icon readiness + DamageBuff detection (from Ceepizz-style MedicChain)
+    AutoMedic
+    - Icon readiness + DamageBuff detection
     - Live Globals.MedicTarget / Globals.Towerslot
+    - Patient wait on current Medic (no 5s hop)
+    - After successful Uber → move to next Medic
 ]]
 
 local Players           = game:GetService("Players")
 local Workspace         = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local LocalPlayer   = Players.LocalPlayer
-local PlayerUserId  = LocalPlayer.UserId
-local PlayerName    = LocalPlayer.Name
-local PlayerGui     = LocalPlayer:WaitForChild("PlayerGui")
+local LocalPlayer    = Players.LocalPlayer
+local PlayerUserId   = LocalPlayer.UserId
+local PlayerName     = LocalPlayer.Name
+local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
 local RemoteFunction = ReplicatedStorage:FindFirstChild("RemoteFunction")
-local Globals       = getgenv()
+local Globals        = getgenv()
 
 local AutoMedic = {}
 
-local activeLoops      = {}
+local activeLoops       = {}
 local activeChainThread = nil
 
 local MEDIC_ABILITY_ICON = "rbxassetid://231100685"
@@ -27,7 +28,6 @@ local CAPACITY_BY_LEVEL = {
     [0] = 1, [1] = 2, [2] = 3, [3] = 3, [4] = 4, [5] = 5
 }
 
--- DamageBuff % and nominal duration by upgrade (used for signal checks + fallback)
 local MEDIC_UBER_DATA = {
     [3] = { DamageBuff = 20,   Duration = 7.5 },
     [4] = { DamageBuff = 27.5, Duration = 10  },
@@ -64,9 +64,7 @@ local function resolveTargetPlayer(targetInput)
             return "universal", "universal"
         end
         local numericId = tonumber(targetInput)
-        if numericId then
-            return numericId, nil
-        end
+        if numericId then return numericId, nil end
         return nil, targetInput
     end
     return "universal", "universal"
@@ -115,20 +113,6 @@ local function getMyMedics()
     return mine
 end
 
-local function countReadyMedics(medicsList)
-    local count = 0
-    for _, medic in ipairs(medicsList) do
-        if IsAlive(medic) then
-            local rep = GetReplicator(medic)
-            local up  = rep and (rep:GetAttribute("Upgrade") or 0) or 0
-            if up >= 3 then
-                count += 1
-            end
-        end
-    end
-    return count
-end
-
 local function getMedicCapacity(medic)
     if not IsAlive(medic) then return 0 end
     local rep = GetReplicator(medic)
@@ -144,7 +128,7 @@ local function getUberData(medic)
 end
 
 ----------------------------------------------------------------
--- Targeting (self / self_first / universal)
+-- Targeting
 ----------------------------------------------------------------
 
 local function getTargetTowersFromIndex(targetPlayer, towersToSelect, maxCapacity, mode)
@@ -207,7 +191,6 @@ local function getTargetTowersFromIndex(targetPlayer, towersToSelect, maxCapacit
     return targetTowers
 end
 
--- Live settings (re-checked every cycle)
 local function getCurrentSettings()
     local target = "universal"
     local mode   = "universal"
@@ -250,13 +233,13 @@ local function toggleMedicTargets(medic, targets)
                     medic, t
                 )
             end)
-            task.wait() -- small yield so server can process
+            task.wait()
         end
     end
 end
 
 ----------------------------------------------------------------
--- Icon readiness (Ceepizz-style)
+-- Icon readiness
 ----------------------------------------------------------------
 
 local function GetMedicAbilityContent()
@@ -276,7 +259,7 @@ end
 
 local function IsMedicReady()
     local content = GetMedicAbilityContent()
-    if not content then return true end -- assume ready if UI missing
+    if not content then return true end
 
     local label = content:FindFirstChild("timeLeftAbility")
     if not label then return true end
@@ -289,7 +272,7 @@ local function IsMedicReady()
 end
 
 ----------------------------------------------------------------
--- DamageBuff signal detection
+-- DamageBuff signals
 ----------------------------------------------------------------
 
 local function GetDamageBuff(tower)
@@ -311,30 +294,29 @@ end
 local function HasMedicDamageSignal(tower, baselineValue, expectedBuff)
     local current = GetDamageBuff(tower)
     if current <= baselineValue + 0.001 then return false end
-
-    -- Strongest-buff-wins or stacking both covered
     if current >= expectedBuff - 0.001 then return true end
     if current - baselineValue >= expectedBuff - 0.001 then return true end
     return false
 end
 
 ----------------------------------------------------------------
--- Uber lifecycle (wait for start / end via signals)
+-- Uber lifecycle
 ----------------------------------------------------------------
 
-local function WaitForReady(timeout)
-    local deadline = os.clock() + (timeout or 30)
-    while os.clock() < deadline do
-        if IsMedicReady() then return true end
+-- Patient wait: never times out and forces a hop
+local function WaitForReady(medic)
+    while IsAlive(medic) do
+        if IsMedicReady() then
+            return true
+        end
         task.wait(0.05)
     end
-    return IsMedicReady()
+    return false
 end
 
 local function WaitForUberStart(medic, targets, baseline, uberData, timeout)
     local deadline = os.clock() + (timeout or 1.5)
-    while os.clock() < deadline do
-        -- Cooldown started = server accepted the activation
+    while os.clock() < deadline and IsAlive(medic) do
         if not IsMedicReady() then
             local saw = false
             for _, t in ipairs(targets) do
@@ -348,7 +330,6 @@ local function WaitForUberStart(medic, targets, baseline, uberData, timeout)
             end
             return true, saw
         end
-
         for _, t in ipairs(targets) do
             if IsAlive(t) then
                 local before = baseline[t] or 0
@@ -407,27 +388,36 @@ local function WaitForUberEnd(targets, baseline, uberData, activationAt, sawDama
     end
 end
 
+-- Patient retries on the SAME medic until Uber actually starts
 local function TryStartUber(medic, targets)
     local uberData = getUberData(medic)
-    if not uberData then return false, nil, nil, nil, false end
-
-    if not WaitForReady(5) then
+    if not uberData then
         return false, nil, nil, nil, false
     end
 
-    local baseline = CaptureDamageBuffs(targets)
-    local activationAt = os.clock()
-    activateUbercharge(medic)
+    while IsAlive(medic) do
+        if not WaitForReady(medic) then
+            return false, nil, nil, nil, false
+        end
 
-    local started, saw = WaitForUberStart(medic, targets, baseline, uberData, 1.6)
-    if started then
-        return true, baseline, uberData, activationAt, saw
+        local baseline = CaptureDamageBuffs(targets)
+        local activationAt = os.clock()
+        activateUbercharge(medic)
+
+        local started, saw = WaitForUberStart(medic, targets, baseline, uberData, 1.6)
+        if started then
+            return true, baseline, uberData, activationAt, saw
+        end
+
+        -- Did not start → wait a bit and retry SAME medic (no hop)
+        task.wait(0.2)
     end
+
     return false, nil, nil, nil, false
 end
 
 ----------------------------------------------------------------
--- Public: Function (per-medic loop – mostly for debugging)
+-- Public: Function (single-index debug loop – unchanged idea)
 ----------------------------------------------------------------
 
 function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
@@ -453,9 +443,7 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
         return true
     end
 
-    local rep = GetReplicator(selected)
-    local up  = rep and (rep:GetAttribute("Upgrade") or 0) or 0
-    if up < 3 then return false end
+    if not getUberData(selected) then return false end
 
     local thread = task.spawn(function()
         while true do
@@ -477,7 +465,6 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
                 continue
             end
 
-            -- Detach previous
             if #activeLoops[medicIndex].lastTargets > 0 then
                 toggleMedicTargets(selected, activeLoops[medicIndex].lastTargets)
                 activeLoops[medicIndex].lastTargets = {}
@@ -506,7 +493,8 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
 end
 
 ----------------------------------------------------------------
--- Public: Chain (the one your main script uses)
+-- Public: Chain
+-- Patient wait on current Medic → Uber → only THEN move to next
 ----------------------------------------------------------------
 
 function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
@@ -516,88 +504,78 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
     end
 
     if toggle == false then
-        -- Best-effort detach any lingering selections
-        local medics = getMyMedics()
-        for _, medic in ipairs(medics) do
-            -- We don't keep a global lastTargets for Chain; next start will re-select cleanly
-        end
         return
-    end
-
-    local function runOneMedic(medic)
-        if not IsAlive(medic) then return false end
-        local uberData = getUberData(medic)
-        if not uberData then return false end
-
-        local liveTarget, liveMode, liveTowers = getCurrentSettings()
-        -- Prefer explicit args if caller passed them; otherwise live Globals
-        if targetPlayer and targetPlayer ~= "" then
-            liveTarget = targetPlayer
-        end
-        if mode and mode ~= "" then
-            liveMode = mode
-        end
-        if towersToSelect and #towersToSelect > 0 then
-            liveTowers = towersToSelect
-        end
-
-        local capacity = getMedicCapacity(medic)
-        local targets  = getTargetTowersFromIndex(liveTarget, liveTowers, capacity, liveMode)
-
-        local waitStart = os.clock()
-        while #targets == 0 do
-            if os.clock() - waitStart > 8 then return false end
-            if countReadyMedics(getMyMedics()) < 1 then return false end
-            task.wait(0.15)
-            liveTarget, liveMode, liveTowers = getCurrentSettings()
-            if targetPlayer and targetPlayer ~= "" then liveTarget = targetPlayer end
-            if mode and mode ~= "" then liveMode = mode end
-            if towersToSelect and #towersToSelect > 0 then liveTowers = towersToSelect end
-            targets = getTargetTowersFromIndex(liveTarget, liveTowers, capacity, liveMode)
-        end
-
-        toggleMedicTargets(medic, targets)
-
-        local started, baseline, ud, at, saw = TryStartUber(medic, targets)
-        if started and baseline and ud and at then
-            WaitForUberEnd(targets, baseline, ud, at, saw)
-        end
-
-        if IsAlive(medic) then
-            toggleMedicTargets(medic, targets) -- detach
-        end
-        return started
     end
 
     activeChainThread = task.spawn(function()
         local nextIdx = 1
+
         while true do
             local medics = getMyMedics()
-            local ready  = countReadyMedics(medics)
 
-            -- Your original gate was >= 4; keep it configurable via a soft check
-            if ready < 1 then
-                task.wait(0.25)
+            -- Keep only Medics that can Uber (upgrade >= 3)
+            local usable = {}
+            for _, m in ipairs(medics) do
+                if IsAlive(m) and getUberData(m) then
+                    table.insert(usable, m)
+                end
+            end
+
+            if #usable == 0 then
+                task.wait(0.3)
                 continue
             end
 
-            if nextIdx > #medics then
+            if nextIdx > #usable then
                 nextIdx = 1
             end
 
-            local medic = medics[nextIdx]
-            nextIdx += 1
-
-            if medic and IsAlive(medic) then
-                local ok = runOneMedic(medic)
-                if ok then
-                    task.wait() -- tiny yield between successful ubers
-                else
-                    task.wait(0.08)
-                end
-            else
-                task.wait(0.1)
+            local medic = usable[nextIdx]
+            if not medic or not IsAlive(medic) then
+                nextIdx += 1
+                task.wait(0.05)
+                continue
             end
+
+            local liveTarget, liveMode, liveTowers = getCurrentSettings()
+            if targetPlayer and targetPlayer ~= "" then
+                liveTarget = targetPlayer
+            end
+            if mode and mode ~= "" then
+                liveMode = mode
+            end
+            if towersToSelect and #towersToSelect > 0 then
+                liveTowers = towersToSelect
+            end
+
+            local capacity = getMedicCapacity(medic)
+            local targets  = getTargetTowersFromIndex(liveTarget, liveTowers, capacity, liveMode)
+
+            -- No targets yet → stay on this Medic index, wait
+            if #targets == 0 then
+                task.wait(0.2)
+                continue
+            end
+
+            -- Attach and patient-Uber on THIS Medic only
+            toggleMedicTargets(medic, targets)
+
+            local started, baseline, ud, at, saw = TryStartUber(medic, targets)
+
+            if started and baseline and ud and at then
+                WaitForUberEnd(targets, baseline, ud, at, saw)
+                -- Success → advance to next Medic
+                nextIdx += 1
+            else
+                -- Medic died / unusable mid-wait → skip this one
+                nextIdx += 1
+            end
+
+            if IsAlive(medic) then
+                toggleMedicTargets(medic, targets)
+            end
+
+            task.wait(0.05)
         end
     end)
 end
