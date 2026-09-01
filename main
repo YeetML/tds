@@ -1635,16 +1635,17 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
     end
 })
 
-    Automation:Dropdown({
-        Title = "Towers:",
-        Desc = "Selected towers must be near medic!",
-        List = AllTowers,
-        Value = Globals.Towerslot,
-        Multi = true,
-        Callback = function(choice)
-            SetSetting("Towerslot", choice)
-        end
-    })
+    local towerDropdown = Automation:Dropdown({
+    Title = "Towers:",
+    Desc = "Selected towers must be near medic!",
+    List = AllTowers,
+    Value = Globals.Towerslot,
+    Multi = true,
+    Callback = function(choice)
+        SetSetting("Towerslot", choice)
+    end
+})
+towerDropdown:SetValue(Globals.Towerslot)
 
     Automation:Toggle({
         Title = "Auto Bounty",
