@@ -201,12 +201,14 @@ local StackerErrorShown = false
 local PremiumLoaded = false
 local AutoMedicRunning = false
 local AutoBountyRunning = false
+local AutoRedeemRunning = false
+local CodesRedeemed = false
 
 -- [FEATURE 5] Auto Upgrade variables
 local AutoUpgradeSelectedRunning = false
 local AutoUpgradeAllRunning = false
 
-local MaxPathDistance = 300 -- default
+local MaxPathDistance = 300 
 local MilMarker = nil
 local MercMarker = nil
 
@@ -283,6 +285,7 @@ local DefaultSettings = {
     MedicTarget = "Universal",
     Towerslot = {},
     AutoBounty = false,
+    AutoRedeemCodes = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -308,6 +311,106 @@ local function GetTimescaleFrame()
     local hotbar = PlayerGui:FindFirstChild("ReactUniversalHotbar")
     local frame = hotbar and hotbar:FindFirstChild("Frame")
     return frame and frame:FindFirstChild("timescale")
+end
+
+-- [FEATURE 15] Auto Redeem Codes functions
+local function fetchCodesFromBeebom()
+    local httpRequest = SendRequest
+    if not httpRequest then
+        warn("[CodeRedeemer] No HTTP support – skipping.")
+        return {}
+    end
+    local response = httpRequest({
+        Url = "https://beebom.com/tower-defense-simulator-tds-codes/",
+        Method = "GET",
+        Headers = {
+            ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+    })
+    if response.StatusCode ~= 200 then
+        warn("[CodeRedeemer] Failed to fetch page. Status: " .. tostring(response.StatusCode))
+        return {}
+    end
+    local html = response.Body or ""
+    local codes = {}
+    
+    for code in html:gmatch("<strong>([A-Z0-9]+)</strong>") do
+        local alreadyExists = false
+        for _, existing in ipairs(codes) do
+            if existing == code then
+                alreadyExists = true
+                break
+            end
+        end
+        if not alreadyExists then
+            table.insert(codes, code)
+        end
+    end
+    return codes
+end
+
+local function redeemCodesFromBeebom()
+    if AutoRedeemRunning then return end
+    AutoRedeemRunning = true
+
+    task.spawn(function()
+        print("[CodeRedeemer] Fetching codes from Beebom...")
+        if Window and Window.Notify then
+            Window:Notify({
+                Title = "Auto Redeem Codes",
+                Desc = "Fetching codes from Beebom...",
+                Time = 5,
+                Type = "normal"
+            })
+        end
+
+        local codeList = fetchCodesFromBeebom()
+        if #codeList == 0 then
+            print("[CodeRedeemer] No codes found.")
+            if Window and Window.Notify then
+                Window:Notify({
+                    Title = "Auto Redeem Codes",
+                    Desc = "No codes found.",
+                    Time = 3,
+                    Type = "error"
+                })
+            end
+            AutoRedeemRunning = false
+            return
+        end
+
+        print("[CodeRedeemer] Found codes: " .. table.concat(codeList, ", "))
+        if Window and Window.Notify then
+            Window:Notify({
+                Title = "Auto Redeem Codes",
+                Desc = "Redeeming " .. #codeList .. " codes...",
+                Time = 5,
+                Type = "normal"
+            })
+        end
+
+        local redeemed = 0
+        for _, code in ipairs(codeList) do
+            print("[CodeRedeemer] Redeeming: " .. code)
+            pcall(function()
+                RemoteFunc:InvokeServer("Codes", "Redeem", code)
+                redeemed = redeemed + 1
+            end)
+            task.wait(0.5)
+        end
+
+        print("[CodeRedeemer] Done! Redeemed " .. redeemed .. " codes.")
+        if Window and Window.Notify then
+            Window:Notify({
+                Title = "Auto Redeem Codes",
+                Desc = "Redeemed " .. redeemed .. " codes!",
+                Time = 5,
+                Type = "normal"
+            })
+        end
+        CodesRedeemed = true
+        AutoRedeemRunning = false
+    end)
 end
 
 local StartTimeScale
@@ -1718,6 +1821,27 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
             SetSetting("ClaimRewards", v)
         end
     })
+
+    -- [FEATURE 15] Auto Redeem Codes toggle and button
+Automation:Toggle({
+    Title = "Auto Redeem Codes",
+    Desc = "Automatically fetches and redeems all available TDS codes from Beebom when the script starts.",
+    Value = Globals.AutoRedeemCodes,
+    Callback = function(v)
+        SetSetting("AutoRedeemCodes", v)
+        if v and not CodesRedeemed then
+            redeemCodesFromBeebom()
+        end
+    end
+})
+
+Automation:Button({
+    Title = "Redeem Codes Now",
+    Desc = "Manually fetch and redeem codes from Beebom.",
+    Callback = function()
+        redeemCodesFromBeebom()
+    end
+})
 end
 
 Window:Line()
@@ -5198,6 +5322,10 @@ task.spawn(function()
         elseif not Globals.AutoBounty and AutoBountyRunning then
             StopBountyChain()
         end
+
+        if Globals.AutoRedeemCodes and not CodesRedeemed and not AutoRedeemRunning then
+    redeemCodesFromBeebom()
+end
 
         task.wait(1)
     end
