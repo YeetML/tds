@@ -249,7 +249,6 @@ local function toggleMedicTargets(medic, targets)
                     medic, t
                 )
             end)
-            task.wait()
         end
     end
 end
@@ -345,7 +344,7 @@ local function WaitForReady(medic)
         if IsMedicReady() then
             return true
         end
-        task.wait(0.05)
+        task.wait(0.02)
     end
     return false
 end
@@ -374,7 +373,7 @@ local function WaitForUberStart(medic, targets, baseline, uberData, timeout)
                 end
             end
         end
-        task.wait(0.05)
+        task.wait(0.02)
     end
     return not IsMedicReady(), false
 end
@@ -420,7 +419,7 @@ local function WaitForUberEnd(targets, baseline, uberData, activationAt, sawDama
         if anyObserved and allReturned then
             return
         end
-        task.wait(0.05)
+        task.wait(0.02)
     end
 end
 
@@ -444,7 +443,7 @@ local function TryStartUber(medic, targets)
             return true, baseline, uberData, activationAt, saw
         end
 
-        task.wait(0.2)
+        task.wait(0.02)
     end
 
     return false, nil, nil, nil, false
@@ -495,7 +494,7 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
                     detachTargets(selected, activeLoops[medicIndex].lastTargets)
                     activeLoops[medicIndex].lastTargets = {}
                 end
-                task.wait(0.15)
+                task.wait(0.02)
                 continue
             end
 
@@ -511,12 +510,12 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
             if started and baseline and uberData and at then
                 WaitForUberEnd(attached, baseline, uberData, at, saw)
             else
-                task.wait(0.3)
+                task.wait(0.02)
             end
 
             detachTargets(selected, attached)
             activeLoops[medicIndex].lastTargets = {}
-            task.wait(0.05)
+            task.wait(0.02)
         end
     end)
 
@@ -552,7 +551,7 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
             end
 
             if #usable == 0 then
-                task.wait(0.3)
+                task.wait(0.02)
                 continue
             end
 
@@ -563,7 +562,7 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
             local medic = usable[nextIdx]
             if not medic or not IsAlive(medic) then
                 nextIdx += 1
-                task.wait(0.05)
+                task.wait(0.02)
                 continue
             end
 
@@ -574,7 +573,7 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
             local targets  = getTargetTowersFromIndex(liveTarget, liveTowers, capacity, liveMode)
 
             if #targets == 0 then
-                task.wait(0.2)
+                task.wait(0.05)
                 continue
             end
 
@@ -590,8 +589,6 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
 
             -- Single detach of the exact attached list
             detachTargets(medic, attached)
-
-            task.wait(0.01)
         end
     end)
 end
