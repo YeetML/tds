@@ -380,7 +380,7 @@ end
 
 local function WaitForUberEnd(targets, baseline, uberData, activationAt, sawDamageIncrease)
     local multiplier = getTimescaleMultiplier()
-    local fallbackEnd = activationAt + (uberData.Duration / multiplier) + 0.4
+    local fallbackEnd = activationAt + (uberData.Duration / multiplier)
 
     local observed = {}
     for _, t in ipairs(targets) do
