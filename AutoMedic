@@ -1,3 +1,12 @@
+--[[
+    AutoMedic
+    - Icon readiness + DamageBuff detection
+    - Live Globals.MedicTarget / Globals.Towerslot
+    - Patient wait on current Medic (no 5s hop)
+    - After successful Uber → next Medic
+    - Attach/detach uses the SAME tower list (no double-toggle)
+]]
+
 local Players           = game:GetService("Players")
 local Workspace         = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -62,6 +71,14 @@ local function resolveTargetPlayer(targetInput)
     return "universal", "universal"
 end
 
+local function towerLabel(t)
+    local rep = GetReplicator(t)
+    if not rep then return tostring(t) end
+    local name = tostring(rep:GetAttribute("Name") or "?")
+    local ca = tonumber(rep:GetAttribute("CreatedAt")) or 0
+    return string.format("%s@%.2f", name, ca)
+end
+
 ----------------------------------------------------------------
 -- Tower discovery
 ----------------------------------------------------------------
@@ -117,6 +134,11 @@ local function getUberData(medic)
     local rep = GetReplicator(medic)
     if not rep then return nil end
     return MEDIC_UBER_DATA[rep:GetAttribute("Upgrade") or 0]
+end
+
+local function getMedicUpgrade(medic)
+    local rep = GetReplicator(medic)
+    return rep and (rep:GetAttribute("Upgrade") or 0) or 0
 end
 
 ----------------------------------------------------------------
@@ -201,7 +223,7 @@ local function getCurrentSettings()
 end
 
 ----------------------------------------------------------------
--- Remote helpers
+-- Remote helpers (single toggle pass only)
 ----------------------------------------------------------------
 
 local function activateUbercharge(medic)
@@ -216,7 +238,9 @@ local function activateUbercharge(medic)
 end
 
 local function toggleMedicTargets(medic, targets)
-    if not RemoteFunction or not IsAlive(medic) or not targets or #targets == 0 then return end
+    if not RemoteFunction or not IsAlive(medic) or not targets or #targets == 0 then
+        return
+    end
     for _, t in ipairs(targets) do
         if IsAlive(t) then
             pcall(function()
@@ -225,8 +249,29 @@ local function toggleMedicTargets(medic, targets)
                     medic, t
                 )
             end)
-            task.wait()
+            task.wait(0.03)
         end
+    end
+end
+
+-- Attach once; return exact list for later detach (never double-toggle)
+local function attachTargets(medic, targets)
+    local attached = {}
+    for _, t in ipairs(targets) do
+        if IsAlive(t) then
+            table.insert(attached, t)
+        end
+    end
+    if #attached > 0 then
+        toggleMedicTargets(medic, attached)
+    end
+    return attached
+end
+
+local function detachTargets(medic, attached)
+    if not attached or #attached == 0 then return end
+    if IsAlive(medic) then
+        toggleMedicTargets(medic, attached) -- ONCE only
     end
 end
 
@@ -295,7 +340,6 @@ end
 -- Uber lifecycle
 ----------------------------------------------------------------
 
--- Patient wait: never times out and forces a hop
 local function WaitForReady(medic)
     while IsAlive(medic) do
         if IsMedicReady() then
@@ -380,7 +424,6 @@ local function WaitForUberEnd(targets, baseline, uberData, activationAt, sawDama
     end
 end
 
--- Patient retries on the SAME medic until Uber actually starts
 local function TryStartUber(medic, targets)
     local uberData = getUberData(medic)
     if not uberData then
@@ -401,7 +444,6 @@ local function TryStartUber(medic, targets)
             return true, baseline, uberData, activationAt, saw
         end
 
-        -- Did not start → wait a bit and retry SAME medic (no hop)
         task.wait(0.2)
     end
 
@@ -409,7 +451,7 @@ local function TryStartUber(medic, targets)
 end
 
 ----------------------------------------------------------------
--- Public: Function (single-index debug loop – unchanged idea)
+-- Public: Function
 ----------------------------------------------------------------
 
 function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
@@ -429,7 +471,7 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
 
     if toggle == false then
         if #activeLoops[medicIndex].lastTargets > 0 then
-            toggleMedicTargets(selected, activeLoops[medicIndex].lastTargets)
+            detachTargets(selected, activeLoops[medicIndex].lastTargets)
             activeLoops[medicIndex].lastTargets = {}
         end
         return true
@@ -450,7 +492,7 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
 
             if #targets == 0 then
                 if #activeLoops[medicIndex].lastTargets > 0 then
-                    toggleMedicTargets(selected, activeLoops[medicIndex].lastTargets)
+                    detachTargets(selected, activeLoops[medicIndex].lastTargets)
                     activeLoops[medicIndex].lastTargets = {}
                 end
                 task.wait(0.15)
@@ -458,23 +500,21 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
             end
 
             if #activeLoops[medicIndex].lastTargets > 0 then
-                toggleMedicTargets(selected, activeLoops[medicIndex].lastTargets)
+                detachTargets(selected, activeLoops[medicIndex].lastTargets)
                 activeLoops[medicIndex].lastTargets = {}
             end
 
-            toggleMedicTargets(selected, targets)
-            activeLoops[medicIndex].lastTargets = targets
+            local attached = attachTargets(selected, targets)
+            activeLoops[medicIndex].lastTargets = attached
 
-            local started, baseline, uberData, at, saw = TryStartUber(selected, targets)
+            local started, baseline, uberData, at, saw = TryStartUber(selected, attached)
             if started and baseline and uberData and at then
-                WaitForUberEnd(targets, baseline, uberData, at, saw)
+                WaitForUberEnd(attached, baseline, uberData, at, saw)
             else
                 task.wait(0.3)
             end
 
-            if IsAlive(selected) then
-                toggleMedicTargets(selected, targets)
-            end
+            detachTargets(selected, attached)
             activeLoops[medicIndex].lastTargets = {}
             task.wait(0.05)
         end
@@ -486,7 +526,6 @@ end
 
 ----------------------------------------------------------------
 -- Public: Chain
--- Patient wait on current Medic → Uber → only THEN move to next
 ----------------------------------------------------------------
 
 function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
@@ -505,7 +544,6 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
         while true do
             local medics = getMyMedics()
 
-            -- Keep only Medics that can Uber (upgrade >= 3)
             local usable = {}
             for _, m in ipairs(medics) do
                 if IsAlive(m) and getUberData(m) then
@@ -529,45 +567,31 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
                 continue
             end
 
+            -- Always live from Globals
             local liveTarget, liveMode, liveTowers = getCurrentSettings()
-            if targetPlayer and targetPlayer ~= "" then
-                liveTarget = targetPlayer
-            end
-            if mode and mode ~= "" then
-                liveMode = mode
-            end
-            if towersToSelect and #towersToSelect > 0 then
-                liveTowers = towersToSelect
-            end
 
             local capacity = getMedicCapacity(medic)
             local targets  = getTargetTowersFromIndex(liveTarget, liveTowers, capacity, liveMode)
 
-            -- No targets yet → stay on this Medic index, wait
             if #targets == 0 then
                 task.wait(0.2)
                 continue
             end
 
-            -- Attach and patient-Uber on THIS Medic only
-            toggleMedicTargets(medic, targets)
+            local attached = attachTargets(medic, targets)
 
-            local started, baseline, ud, at, saw = TryStartUber(medic, targets)
+            local started, baseline, ud, at, saw = TryStartUber(medic, attached)
 
             if started and baseline and ud and at then
-                WaitForUberEnd(targets, baseline, ud, at, saw)
-                -- Success → advance to next Medic
-                nextIdx += 1
-            else
-                -- Medic died / unusable mid-wait → skip this one
-                nextIdx += 1
+                WaitForUberEnd(attached, baseline, ud, at, saw)
             end
 
-            if IsAlive(medic) then
-                toggleMedicTargets(medic, targets)
-            end
+            nextIdx += 1
 
-            task.wait(0.05)
+            -- Single detach of the exact attached list
+            detachTargets(medic, attached)
+
+            task.wait(0.1)
         end
     end)
 end
