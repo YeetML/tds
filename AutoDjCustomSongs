@@ -1,0 +1,290 @@
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local PlayerUserId = LocalPlayer.UserId
+
+-- Your song list (copied from your earlier file)
+local RandomSongIDs = {
+    76160569570885,
+    125224772648479,
+    101101342670886,
+    81457346687617,
+    86448838380572,
+    96826097312702,
+    95872520427620,
+    135689333778399,
+    119181820374358,
+    131456278230291,
+    138013570586935,
+    78586039905107,
+    96688874266744,
+    134849902748599,
+    139769280318833,
+    88378288910365,
+    93316204367148,
+    80059228606274,
+    138195684228540,
+    118241465317467,
+    80159531756934,
+    104603824839639,
+    124114599222464,
+    134108795864875,
+    102892380593258,
+    135071730662747,
+    118673350158682,
+    129127997655557,
+    75764445212230,
+    74624205665267,
+    137189594264459,
+    138391671909650,
+    100221387261601,
+    111353716537070,
+    99202286140027,
+    86517694279595,
+    136716637489655,
+    101098976710405,
+    120477473525627,
+    102827114027930,
+    134178255757517,
+    130104736468172,
+    127096476530496,
+    120569165858495,
+    97192334657561,
+    95697900241820,
+    129176894324463,
+    124170748342120,
+    1127916915218718842,
+    103415930328599,
+    111109407506851,
+    72653741821355,
+    135209837340816,
+    138801603792399,
+    140439256760765,
+    140504265985079,
+    139694762285253,
+    140580823167015,
+    140667339171815,
+    139815305627554,
+    136974179670066,
+    139719375902695,
+    110817176848617,
+    94935794334796,
+    112576678639596,
+    8563581147445167,
+    125476440612900,
+    139161205970637,
+    14145622615,
+    114145613542169,
+    86375151296706,
+    86802355429172,
+    93666258819111,
+    129276852097746,
+    83624433031847,
+    108621585736031,
+    14145623221,
+    123047130884626,
+    105100211445392,
+    79891860327495,
+    138118304933431,
+    101241740024903,
+    134434412138800,
+    129098116998483,
+    16190784875,
+    93203762220779,
+    8053389869,
+    14145621445,
+    104596909675653,
+    73326647630445,
+    125498129824026,
+    89824897586105,
+    83348506277910,
+    96461852889782,
+    16190783774,
+    16190760285,
+    16190782181,
+    14145621151,
+    90441404910975,
+    17422168798,
+    15689451063,
+    123636731441495,
+    105529482486905,
+    14145625743,
+    16662833837,
+    85290495098172,
+    18841887539,
+    134366188285514,
+    17422207260,
+    71837666565538,
+    18841894272,
+    15689445424,
+    86179292245507,
+    17422173467,
+    120296689321275,
+    15689453529,
+    14145620056,
+    14145627474,
+    101326109963284,
+    136757074728111,
+    14145626744,
+    14145626111,
+    16190760005,
+    17422074849,
+    136932193331774,
+    15689443663,
+    14145623221,
+    89198968265350,
+    116896498238234,
+    16190756998,
+    14145623658,
+    1208893711139,
+}
+
+local AutoDJ = {
+    _running = false,
+    _thread = nil,
+    _stopFlag = false,
+}
+
+-- Internal: find the player's own DJ Booth tower
+local function FindOwnDJ()
+    local towersFolder = Workspace:FindFirstChild("Towers")
+    if not towersFolder then return nil end
+
+    local towerNames = {
+        "Default", "Neon Rave", "Neko", "Ghost", "Plushie",
+        "Masquerade", "Mako", "Garage Band", "Ducky", "Seal",
+        "Gingerbread"
+    }
+
+    for _, name in ipairs(towerNames) do
+        local tower = towersFolder:FindFirstChild(name)
+        if tower then
+            local owner = tower:FindFirstChild("Owner")
+            if owner and owner.Value == PlayerUserId then
+                return tower
+            end
+        end
+    end
+    return nil
+end
+
+-- Internal: set a random song on a given tower
+local function SetRandomSong(tower)
+    local hrp = tower:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    local audioPlayer = hrp:FindFirstChild("AudioPlayer")
+    if not audioPlayer then return false end
+
+    local randomId = RandomSongIDs[math.random(#RandomSongIDs)]
+    local fullId = "rbxassetid://" .. randomId
+
+    local success = pcall(function()
+        audioPlayer.AssetId = fullId
+        audioPlayer:Play()
+    end)
+
+    if success then
+        print("[AutoDJ] Now playing: " .. randomId)
+        return true
+    end
+    return false
+end
+
+-- Internal: play the next song and wait for it to finish
+local function PlayNext()
+    if AutoDJ._stopFlag then return end
+
+    local tower = FindOwnDJ()
+    if not tower then
+        -- No DJ tower, wait and retry
+        task.wait(1)
+        PlayNext()
+        return
+    end
+
+    if not SetRandomSong(tower) then
+        task.wait(1)
+        PlayNext()
+        return
+    end
+
+    local hrp = tower:FindFirstChild("HumanoidRootPart")
+    local audioPlayer = hrp and hrp:FindFirstChild("AudioPlayer")
+    if audioPlayer then
+        local endedConn
+        endedConn = audioPlayer.Ended:Connect(function()
+            endedConn:Disconnect()
+            if not AutoDJ._stopFlag then
+                PlayNext()
+            end
+        end)
+
+        -- Safety timer in case Ended never fires (max 180 seconds)
+        task.wait(180)
+        if endedConn and endedConn.Connected then
+            endedConn:Disconnect()
+            if not AutoDJ._stopFlag then
+                PlayNext()
+            end
+        end
+    end
+end
+
+-- Main loop
+local function RunLoop()
+    AutoDJ._running = true
+    AutoDJ._stopFlag = false
+
+    while AutoDJ._running and not AutoDJ._stopFlag do
+        PlayNext()
+        -- Wait until either stopped or the next song is triggered via Ended
+        while AutoDJ._running and not AutoDJ._stopFlag do
+            task.wait(1)
+        end
+    end
+
+    AutoDJ._running = false
+end
+
+-- Public API
+function AutoDJ.Start()
+    if AutoDJ._running then
+        print("[AutoDJ] Already running.")
+        return
+    end
+    AutoDJ._stopFlag = false
+    if AutoDJ._thread then
+        task.cancel(AutoDJ._thread)
+        AutoDJ._thread = nil
+    end
+    AutoDJ._thread = task.spawn(RunLoop)
+    print("[AutoDJ] Started.")
+end
+
+function AutoDJ.Stop()
+    if not AutoDJ._running then
+        print("[AutoDJ] Not running.")
+        return
+    end
+    AutoDJ._stopFlag = true
+    AutoDJ._running = false
+    if AutoDJ._thread then
+        task.cancel(AutoDJ._thread)
+        AutoDJ._thread = nil
+    end
+    print("[AutoDJ] Stopped.")
+end
+
+function AutoDJ.Toggle()
+    if AutoDJ._running then
+        AutoDJ.Stop()
+    else
+        AutoDJ.Start()
+    end
+end
+
+function AutoDJ.IsRunning()
+    return AutoDJ._running
+end
+
+return AutoDJ
