@@ -203,6 +203,7 @@ local AutoMedicRunning = false
 local AutoBountyRunning = false
 local AutoRedeemRunning = false
 local CodesRedeemed = false
+local AutoDJ = nil
 
 -- [FEATURE 5] Auto Upgrade variables
 local AutoUpgradeSelectedRunning = false
@@ -286,6 +287,7 @@ local DefaultSettings = {
     AutoBounty = false,
     AutoRedeemCodes = false,
     MuteOtherDJs = false,
+    RandomDJ = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -574,6 +576,13 @@ end
 LoadSettings()
 Globals.TimeScaleValue = CoerceTimeScaleValue(Globals.TimeScaleValue, 2)
 Apply3dRendering()
+
+if Globals.RandomDJ then
+    if not AutoDJ then
+        AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+    end
+    AutoDJ.Start()
+end
 
 Globals.HideUsername = false -- [FEATURE 10] default false
 SetSetting("HideUsername", false)
@@ -1377,6 +1386,7 @@ end
 
 -- [FEATURE 4] Enhanced DJ Booth (no gamepass, continuous)
 local function AutoSetDJSong()
+    if Globals.RandomDJ then return end
     task.spawn(function()
         local ownerId = LocalPlayer.UserId
         local towerNames = {
@@ -1655,7 +1665,7 @@ towerDropdown:SetValue(Globals.Towerslot)
         end
     })
 
-    Automation:Toggle({
+Automation:Toggle({
     Title = "Mute Other Players' DJ",
     Desc = "Sets volume to 0 for DJ Booth towers owned by other players.",
     Value = Globals.MuteOtherDJs or false,
@@ -1663,6 +1673,29 @@ towerDropdown:SetValue(Globals.Towerslot)
         SetSetting("MuteOtherDJs", v)
         if v then
             task.spawn(MuteOtherDJsLoop)
+        end
+    end
+})
+
+Automation:Toggle({
+    Title = "Random DJ Songs",
+    Desc = "Plays random songs from a curated list (overrides manual ID).",
+    Value = Globals.RandomDJ or false,
+    Callback = function(v)
+        SetSetting("RandomDJ", v)
+
+        if v then
+            if not AutoDJ then
+                AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+            end
+            AutoDJ.Start()
+        else
+            if AutoDJ then
+                AutoDJ.Stop()
+            end
+            if Globals.DJCustomSongID and Globals.DJCustomSongID ~= "" then
+                AutoSetDJSong()
+            end
         end
     end
 })
