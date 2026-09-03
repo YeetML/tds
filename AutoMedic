@@ -28,7 +28,7 @@ local MEDIC_UBER_DATA = {
 }
 
 local EXCLUDED_TOWERS = {
-    ["Farm"] = true,
+    ["farm"] = true,
 }
 
 local function IsAlive(inst)
