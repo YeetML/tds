@@ -1,27 +1,3 @@
---[[
-    AutoMedic
-    - Icon readiness + DamageBuff detection
-    - Live Globals.MedicTarget / Globals.Towerslot
-    - Patient wait on current Medic (no 5s hop)
-    - After successful Uber → next Medic
-    - Attach/detach uses the SAME tower list (no double-toggle)
- 
-    - Claim-aware targeting (Self First / Universal only):
-        * Skips any tower already claimed (selected) by ANY medic,
-          yours or another player's — read live off TowersSelected.
-        * If your Towerslot list runs dry before hitting capacity,
-          falls back to any other unclaimed non-Medic tower (still
-          respecting the mode's owner rule) so no slot sits empty.
-        * Medics can never target other Medics (game rule).
-        * Self mode is UNCHANGED — your own towers only, no claim
-          checking, no fallback (you always control your own towers).
- 
-    - UID watchdog: if a target gets manually deselected WHILE WAITING
-      for Uber to actually start, it's snapped back instantly (event
-      driven off TowersSelected changing — no polling). Once Uber is
-      actually live, deselects are left alone until the next cycle.
-]]
- 
 local Players           = game:GetService("Players")
 local Workspace         = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -108,24 +84,37 @@ end
 -- Handles both "[]" (empty array) and {"uid":true,...} (dict) JSON shapes.
 local function getSelectedUIDs(medic)
     local rep = GetReplicator(medic)
-    if not rep then return {} end
- 
+    if not rep then
+        return {}
+    end
+
     local raw = rep:GetAttribute("TowersSelected")
-    if type(raw) ~= "string" or raw == "" then return {} end
- 
+
+    if type(raw) ~= "string" or raw == "" then
+        return {}
+    end
+
+    -- Remove leading control characters / whitespace
+    raw = raw:gsub("^[%c%s]+", "")
+
     local ok, decoded = pcall(function()
         return HttpService:JSONDecode(raw)
     end)
-    if not ok or type(decoded) ~= "table" then return {} end
- 
+
+    if not ok or type(decoded) ~= "table" then
+        return {}
+    end
+
     local set = {}
+
     for k, v in pairs(decoded) do
         if type(k) == "string" then
-            set[k] = true          -- dict form: {"uid":true}
+            set[k] = true
         elseif type(v) == "string" then
-            set[v] = true          -- defensive: array form fallback
+            set[v] = true
         end
     end
+
     return set
 end
  
