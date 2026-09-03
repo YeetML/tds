@@ -5,15 +5,11 @@
     - Patient wait on current Medic (no 5s hop)
     - After successful Uber → next Medic
     - Attach/detach uses the SAME tower list (no double-toggle)
-    - FIX: attach/detach now reads the Medic's real TowersSelected state
-      before toggling, so a manual deselect/select in-game can no longer
-      desync the script's bookkeeping from the server truth.
 ]]
 
 local Players           = game:GetService("Players")
 local Workspace         = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService       = game:GetService("HttpService")
 
 local LocalPlayer    = Players.LocalPlayer
 local PlayerUserId   = LocalPlayer.UserId
@@ -227,7 +223,7 @@ local function getCurrentSettings()
 end
 
 ----------------------------------------------------------------
--- Remote helpers (state-checked toggle — FIXED)
+-- Remote helpers (single toggle pass only)
 ----------------------------------------------------------------
 
 local function activateUbercharge(medic)
@@ -241,74 +237,40 @@ local function activateUbercharge(medic)
     end)
 end
 
--- Read the medic's real, current selection from the server-replicated
--- attribute instead of trusting our own memory of what we selected.
-local function GetTowerUID(tower)
-    local rep = GetReplicator(tower)
-    return rep and rep:GetAttribute("UID")
-end
-
-local function GetMedicSelectedUIDs(medic)
-    local rep = GetReplicator(medic)
-    if not rep then return {} end
-    local raw = rep:GetAttribute("TowersSelected")
-    if type(raw) ~= "string" or raw == "" or raw == "[]" then
-        return {}
+local function toggleMedicTargets(medic, targets)
+    if not RemoteFunction or not IsAlive(medic) or not targets or #targets == 0 then
+        return
     end
-    local ok, decoded = pcall(function()
-        return HttpService:JSONDecode(raw)
-    end)
-    return (ok and type(decoded) == "table") and decoded or {}
-end
-
--- Attach: only toggle a tower ON if the medic doesn't already have it
--- selected server-side. Prevents a stray manual click (or a previous
--- desync) from flipping an already-selected tower back off.
-local function attachTargets(medic, targets)
-    if not RemoteFunction or not IsAlive(medic) then return {} end
-
-    local selected = GetMedicSelectedUIDs(medic)
-    local attached = {}
-
     for _, t in ipairs(targets) do
         if IsAlive(t) then
-            local uid = GetTowerUID(t)
-            if uid and not selected[uid] then
-                pcall(function()
-                    RemoteFunction:InvokeServer(
-                        "Troops", "TowerServerEvent", "ToggleSelectedTower",
-                        medic, t
-                    )
-                end)
-            end
+            pcall(function()
+                RemoteFunction:InvokeServer(
+                    "Troops", "TowerServerEvent", "ToggleSelectedTower",
+                    medic, t
+                )
+            end)
+        end
+    end
+end
+
+-- Attach once; return exact list for later detach (never double-toggle)
+local function attachTargets(medic, targets)
+    local attached = {}
+    for _, t in ipairs(targets) do
+        if IsAlive(t) then
             table.insert(attached, t)
         end
     end
-
+    if #attached > 0 then
+        toggleMedicTargets(medic, attached)
+    end
     return attached
 end
 
--- Detach: only toggle a tower OFF if the medic still actually has it
--- selected server-side. Prevents blindly re-selecting a tower that was
--- already manually deselected (or grabbed by a different flow) in the
--- meantime.
 local function detachTargets(medic, attached)
-    if not attached or #attached == 0 or not IsAlive(medic) then return end
-
-    local selected = GetMedicSelectedUIDs(medic)
-
-    for _, t in ipairs(attached) do
-        if IsAlive(t) then
-            local uid = GetTowerUID(t)
-            if uid and selected[uid] then
-                pcall(function()
-                    RemoteFunction:InvokeServer(
-                        "Troops", "TowerServerEvent", "ToggleSelectedTower",
-                        medic, t
-                    )
-                end)
-            end
-        end
+    if not attached or #attached == 0 then return end
+    if IsAlive(medic) then
+        toggleMedicTargets(medic, attached) -- ONCE only
     end
 end
 
