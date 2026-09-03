@@ -276,7 +276,6 @@ local DefaultSettings = {
     WebhookURL = "",
     PickupMethod = "Pathfinding",
     StreamerMode = false,
-    -- [FEATURE 10] Default HideUsername = false (was true in reference)
     HideUsername = false,
     StreamerName = "",
     tagName = "None",
@@ -286,6 +285,7 @@ local DefaultSettings = {
     Towerslot = {},
     AutoBounty = false,
     AutoRedeemCodes = false,
+    MuteOtherDJs = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -1593,20 +1593,6 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
         end
     })
 
-    -- [FEATURE 12] Updated description
-    Automation:Textbox({
-        Title = "DJ Custom Music",
-        Desc = "Custom audio ID for your owned tower (Default, Neon Rave, Neko, etc.)",
-        Placeholder = "Audio ID",
-        Value = Globals.DJCustomSongID or "",
-        ClearTextOnFocus = false,
-        Callback = function(value)
-            SetSetting("DJCustomSongID", value or "")
-            if not tonumber(value) then return end
-            AutoSetDJSong()
-        end
-    })
-
     Automation:Toggle({
         Title = "Auto Necro",
         Desc = "Uses Necromancer Ability",
@@ -1655,6 +1641,31 @@ towerDropdown:SetValue(Globals.Towerslot)
             SetSetting("AutoBounty", v)
         end
     })
+
+    Automation:Textbox({
+        Title = "DJ Custom Music",
+        Desc = "Custom audio ID for your owned tower (Default, Neon Rave, Neko, etc.)",
+        Placeholder = "Audio ID",
+        Value = Globals.DJCustomSongID or "",
+        ClearTextOnFocus = false,
+        Callback = function(value)
+            SetSetting("DJCustomSongID", value or "")
+            if not tonumber(value) then return end
+            AutoSetDJSong()
+        end
+    })
+
+    Automation:Toggle({
+    Title = "Mute Other Players' DJ",
+    Desc = "Sets volume to 0 for DJ Booth towers owned by other players.",
+    Value = Globals.MuteOtherDJs or false,
+    Callback = function(v)
+        SetSetting("MuteOtherDJs", v)
+        if v then
+            task.spawn(MuteOtherDJsLoop)
+        end
+    end
+})
 
     Automation:Section({Title = "Unit Spawners"})
     
@@ -4503,6 +4514,40 @@ local function StartClaimRewards()
 
     game:GetService("ReplicatedStorage").Network.DailySpin["RF:RedeemReward"]:InvokeServer()
     AutoClaimRewards = false
+end
+
+local MuteOtherDJsRunning = false
+
+local function MuteOtherDJsLoop()
+    if MuteOtherDJsRunning then return end
+    MuteOtherDJsRunning = true
+
+    task.spawn(function()
+        while Globals.MuteOtherDJs do
+            local towersFolder = workspace:FindFirstChild("Towers")
+            if towersFolder then
+                for _, tower in ipairs(towersFolder:GetChildren()) do
+                    local rep = tower:FindFirstChild("TowerReplicator")
+                    if rep and rep:GetAttribute("Name") == "DJ Booth" then
+                        local ownerId = rep:GetAttribute("OwnerId")
+                        if ownerId and ownerId ~= LocalPlayer.UserId then
+                            local hrp = tower:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local audioPlayer = hrp:FindFirstChild("AudioPlayer")
+                                if audioPlayer then
+                                    pcall(function()
+                                        audioPlayer.Volume = 0
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(1)
+        end
+        MuteOtherDJsRunning = false
+    end)
 end
 
 function StartBackToLobby()
