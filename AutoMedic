@@ -27,6 +27,10 @@ local MEDIC_UBER_DATA = {
 [5] = { DamageBuff = 35, Duration = 10 },
 }
 
+local EXCLUDED_TOWERS = {
+    ["Farm"] = true,
+}
+
 local function IsAlive(inst)
 return inst and inst.Parent ~= nil
 end
@@ -204,6 +208,7 @@ for i, data in ipairs(allTowers) do
 if used[i] then continue end
 if not data.Name or string.lower(data.Name) == "medic" then continue end
 if string.lower(data.Name) ~= nameLower then continue end
+if EXCLUDED_TOWERS[string.lower(data.Name or "")] then continue end
 if not isOwnedBySelf(data) then continue end
 
 table.insert(targetTowers, data.Tower)
@@ -236,6 +241,7 @@ end
 
 local function eligible(data)
 if not data.Name or string.lower(data.Name) == "medic" then return false end
+if EXCLUDED_TOWERS[string.lower(data.Name or "")] then return false end
 if not data.UID or claimed[data.UID] then return false end
 return true
 end
