@@ -117,7 +117,7 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local mouse = LocalPlayer:GetMouse()
 local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
 local RemoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent")
-local FileName = "ADS_Config.json"
+local FileName = "YEETML_Config.json"
 local Logger
 local StartBackToLobby
 local platform = UserInputService:GetPlatform()
