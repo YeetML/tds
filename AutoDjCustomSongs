@@ -5,138 +5,39 @@ local PlayerUserId = LocalPlayer.UserId
 local Globals = getgenv()
 
 local RandomSongIDs = {
-    76160569570885,
-    125224772648479,
-    101101342670886,
-    81457346687617,
-    86448838380572,
-    96826097312702,
-    95872520427620,
-    135689333778399,
-    119181820374358,
-    131456278230291,
-    138013570586935,
-    78586039905107,
-    96688874266744,
-    134849902748599,
-    139769280318833,
-    88378288910365,
-    93316204367148,
-    80059228606274,
-    138195684228540,
-    118241465317467,
-    80159531756934,
-    104603824839639,
-    124114599222464,
-    134108795864875,
-    102892380593258,
-    135071730662747,
-    118673350158682,
-    129127997655557,
-    75764445212230,
-    74624205665267,
-    137189594264459,
-    138391671909650,
-    100221387261601,
-    111353716537070,
-    99202286140027,
-    86517694279595,
-    136716637489655,
-    101098976710405,
-    120477473525627,
-    102827114027930,
-    134178255757517,
-    130104736468172,
-    127096476530496,
-    120569165858495,
-    97192334657561,
-    95697900241820,
-    129176894324463,
-    124170748342120,
-    1127916915218718842,
-    103415930328599,
-    111109407506851,
-    72653741821355,
-    135209837340816,
-    138801603792399,
-    140439256760765,
-    140504265985079,
-    139694762285253,
-    140580823167015,
-    140667339171815,
-    139815305627554,
-    136974179670066,
-    139719375902695,
-    110817176848617,
-    94935794334796,
-    112576678639596,
-    8563581147445167,
-    125476440612900,
-    139161205970637,
-    14145622615,
-    114145613542169,
-    86375151296706,
-    86802355429172,
-    93666258819111,
-    129276852097746,
-    83624433031847,
-    108621585736031,
-    14145623221,
-    123047130884626,
-    105100211445392,
-    79891860327495,
-    138118304933431,
-    101241740024903,
-    134434412138800,
-    129098116998483,
-    16190784875,
-    93203762220779,
-    8053389869,
-    14145621445,
-    104596909675653,
-    73326647630445,
-    125498129824026,
-    89824897586105,
-    83348506277910,
-    96461852889782,
-    16190783774,
-    16190760285,
-    16190782181,
-    14145621151,
-    90441404910975,
-    17422168798,
-    15689451063,
-    123636731441495,
-    105529482486905,
-    14145625743,
-    16662833837,
-    85290495098172,
-    18841887539,
-    134366188285514,
-    17422207260,
-    71837666565538,
-    18841894272,
-    15689445424,
-    86179292245507,
-    17422173467,
-    120296689321275,
-    15689453529,
-    14145620056,
-    14145627474,
-    101326109963284,
-    136757074728111,
-    14145626744,
-    14145626111,
-    16190760005,
-    17422074849,
-    136932193331774,
-    15689443663,
-    14145623221,
-    89198968265350,
-    116896498238234,
-    16190756998,
-    14145623658,
-    1208893711139,
+    76160569570885, 125224772648479, 101101342670886, 81457346687617,
+    86448838380572, 96826097312702, 95872520427620, 135689333778399,
+    119181820374358, 131456278230291, 138013570586935, 78586039905107,
+    96688874266744, 134849902748599, 139769280318833, 88378288910365,
+    93316204367148, 80059228606274, 138195684228540, 118241465317467,
+    80159531756934, 104603824839639, 124114599222464, 134108795864875,
+    102892380593258, 135071730662747, 118673350158682, 129127997655557,
+    75764445212230, 74624205665267, 137189594264459, 138391671909650,
+    100221387261601, 111353716537070, 99202286140027, 86517694279595,
+    136716637489655, 101098976710405, 120477473525627, 102827114027930,
+    134178255757517, 130104736468172, 127096476530496, 120569165858495,
+    97192334657561, 95697900241820, 129176894324463, 124170748342120,
+    1127916915218718842, 103415930328599, 111109407506851, 72653741821355,
+    135209837340816, 138801603792399, 140439256760765, 140504265985079,
+    139694762285253, 140580823167015, 140667339171815, 139815305627554,
+    136974179670066, 139719375902695, 110817176848617, 94935794334796,
+    112576678639596, 8563581147445167, 125476440612900, 139161205970637,
+    14145622615, 114145613542169, 86375151296706, 86802355429172,
+    93666258819111, 129276852097746, 83624433031847, 108621585736031,
+    14145623221, 123047130884626, 105100211445392, 79891860327495,
+    138118304933431, 101241740024903, 134434412138800, 129098116998483,
+    16190784875, 93203762220779, 8053389869, 14145621445,
+    104596909675653, 73326647630445, 125498129824026, 89824897586105,
+    83348506277910, 96461852889782, 16190783774, 16190760285,
+    16190782181, 14145621151, 90441404910975, 17422168798,
+    15689451063, 123636731441495, 105529482486905, 14145625743,
+    16662833837, 85290495098172, 18841887539, 134366188285514,
+    17422207260, 71837666565538, 18841894272, 15689445424,
+    86179292245507, 17422173467, 120296689321275, 15689453529,
+    14145620056, 14145627474, 101326109963284, 136757074728111,
+    14145626744, 14145626111, 16190760005, 17422074849,
+    136932193331774, 15689443663, 14145623221, 89198968265350,
+    116896498238234, 16190756998, 14145623658, 1208893711139,
 }
 
 local AutoDJ = {
@@ -147,11 +48,19 @@ local AutoDJ = {
 }
 
 ----------------------------------------------------------------
--- TowerReplicator-based DJ finder (any skin)
+-- TowerReplicator DJ finder (any skin)
 ----------------------------------------------------------------
-local function getDJAudioPlayer(tower)
-    local hrp = tower:FindFirstChild("HumanoidRootPart")
-    return hrp and hrp:FindFirstChild("AudioPlayer")
+local function isDJRep(rep)
+    if not rep then return false end
+    local name = rep:GetAttribute("Name")
+    if type(name) ~= "string" then return false end
+    name = string.lower(name)
+    return name == "dj booth" or name == "djbooth"
+end
+
+local function getOwnerId(rep)
+    local id = rep:GetAttribute("OwnerId")
+    return tonumber(id) or id
 end
 
 local function forEachDJ(callback)
@@ -159,7 +68,7 @@ local function forEachDJ(callback)
     if not folder then return end
     for _, tower in ipairs(folder:GetChildren()) do
         local rep = tower:FindFirstChild("TowerReplicator")
-        if rep and rep:GetAttribute("Name") == "DJ Booth" then
+        if isDJRep(rep) then
             callback(tower, rep)
         end
     end
@@ -168,15 +77,52 @@ end
 local function FindOwnDJ()
     local found = nil
     forEachDJ(function(tower, rep)
-        if rep:GetAttribute("OwnerId") == PlayerUserId then
+        if getOwnerId(rep) == PlayerUserId then
             found = tower
         end
     end)
     return found
 end
 
+local function getDJAudioPlayer(tower)
+    local hrp = tower:FindFirstChild("HumanoidRootPart")
+    local ap = hrp and hrp:FindFirstChild("AudioPlayer")
+    if ap then return ap end
+    for _, d in ipairs(tower:GetDescendants()) do
+        if d:IsA("AudioPlayer") or d.ClassName == "AudioPlayer" then
+            return d
+        end
+    end
+    return nil
+end
+
+local function muteAudioIn(tower)
+    for _, d in ipairs(tower:GetDescendants()) do
+        if d:IsA("AudioPlayer") or d.ClassName == "AudioPlayer" then
+            pcall(function()
+                d:Stop()
+                d.Volume = 0
+                d:Destroy()
+            end)
+        elseif d:IsA("Sound") then
+            pcall(function()
+                d:Stop()
+                d.Volume = 0
+                d:Destroy()
+            end)
+        end
+    end
+end
+
+local function MuteOtherDJsOnce()
+    forEachDJ(function(tower, rep)
+        if getOwnerId(rep) == PlayerUserId then return end
+        muteAudioIn(tower)
+    end)
+end
+
 ----------------------------------------------------------------
--- Play song on YOUR DJ only
+-- Songs (your DJ only)
 ----------------------------------------------------------------
 local function pickSongId()
     local custom = Globals and Globals.DJCustomSongID
@@ -203,22 +149,6 @@ local function SetSong(tower, songId)
     return success
 end
 
-local function MuteOtherDJsOnce()
-    forEachDJ(function(tower, rep)
-        if rep:GetAttribute("OwnerId") == PlayerUserId then return end
-        local ap = getDJAudioPlayer(tower)
-        if ap then
-            pcall(function()
-                ap:Stop()
-                ap:Destroy()
-            end)
-        end
-    end)
-end
-
-----------------------------------------------------------------
--- Play loop
-----------------------------------------------------------------
 local function PlayNext()
     if AutoDJ._stopFlag then return end
 
@@ -246,7 +176,6 @@ local function PlayNext()
             end
         end)
 
-        -- safety if Ended never fires
         task.wait(180)
         if endedConn and endedConn.Connected then
             endedConn:Disconnect()
@@ -260,19 +189,17 @@ end
 local function RunLoop()
     AutoDJ._running = true
     AutoDJ._stopFlag = false
-
     while AutoDJ._running and not AutoDJ._stopFlag do
         PlayNext()
         while AutoDJ._running and not AutoDJ._stopFlag do
             task.wait(1)
         end
     end
-
     AutoDJ._running = false
 end
 
 ----------------------------------------------------------------
--- Public API (same as before)
+-- Public API
 ----------------------------------------------------------------
 function AutoDJ.Start()
     if AutoDJ._running then
@@ -314,7 +241,6 @@ function AutoDJ.IsRunning()
     return AutoDJ._running
 end
 
--- optional: mute others while RandomDJ is on, or call from main
 function AutoDJ.StartMuteOthers()
     if AutoDJ._muteThread then return end
     AutoDJ._muteThread = task.spawn(function()
@@ -322,9 +248,10 @@ function AutoDJ.StartMuteOthers()
             if Globals.MuteOtherDJs then
                 MuteOtherDJsOnce()
             end
-            task.wait(0.5)
+            task.wait(0.25)
         end
     end)
+    print("[AutoDJ] Mute others loop started.")
 end
 
 function AutoDJ.MuteOthersOnce()
