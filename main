@@ -577,14 +577,14 @@ LoadSettings()
 Globals.TimeScaleValue = CoerceTimeScaleValue(Globals.TimeScaleValue, 2)
 Apply3dRendering()
 
-if Globals.RandomDJ then
+if Globals.RandomDJ or Globals.MuteOtherDJs then
     if not AutoDJ then
         AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
     end
-    if AutoDJ and not AutoDJ.IsRunning() then
+    if Globals.RandomDJ and AutoDJ and not AutoDJ.IsRunning() then
         AutoDJ.Start()
     end
-    if AutoDJ and AutoDJ.StartMuteOthers then
+    if Globals.MuteOtherDJs and AutoDJ and AutoDJ.StartMuteOthers then
         AutoDJ.StartMuteOthers()
     end
 end
@@ -5335,11 +5335,11 @@ task.spawn(function()
             StartAutoChain()
         end
 
-        if Globals.AutoDJ and not AutoDjRunning then
+                if Globals.AutoDJ and not AutoDjRunning then
             StartAutoDjBooth()
         end
 
-                if Globals.RandomDJ then
+        if Globals.RandomDJ then
             if not AutoDJ then
                 AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
             end
@@ -5350,8 +5350,13 @@ task.spawn(function()
             AutoDJ.Stop()
         end
 
-        if Globals.MuteOtherDJs and AutoDJ and AutoDJ.StartMuteOthers then
-            AutoDJ.StartMuteOthers()
+        if Globals.MuteOtherDJs then
+            if not AutoDJ then
+                AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+            end
+            if AutoDJ and AutoDJ.StartMuteOthers then
+                AutoDJ.StartMuteOthers()
+            end
         end
 
         if Globals.AutoNecro and not AutoNecroRunning then
