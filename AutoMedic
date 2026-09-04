@@ -375,31 +375,39 @@ local function toggleOne(medic, tower)
     end)
 end
 
--- Attach: only toggle if NOT already selected
+-- Attach: only toggle if NOT already selected (parallel)
 local function attachTargets(medic, targets)
     local attached = {}
     local selected = getSelectedUIDs(medic)
+    local pending = {}
+
     for _, t in ipairs(targets) do
         if IsAlive(t) then
             table.insert(attached, t)
             local uid = getTowerUID(t)
             if not uid or not selected[uid] then
-                toggleOne(medic, t)
+                table.insert(pending, t)
             end
         end
     end
+
+    for _, t in ipairs(pending) do
+        task.spawn(toggleOne, medic, t)
+    end
+
     return attached
 end
 
--- Detach: only toggle if STILL selected
+-- Detach: only toggle if STILL selected (parallel)
 local function detachTargets(medic, attached)
     if not attached or #attached == 0 or not IsAlive(medic) then return end
     local selected = getSelectedUIDs(medic)
+
     for _, t in ipairs(attached) do
         if IsAlive(t) then
             local uid = getTowerUID(t)
             if uid and selected[uid] then
-                toggleOne(medic, t)
+                task.spawn(toggleOne, medic, t)
             end
         end
     end
