@@ -581,7 +581,12 @@ if Globals.RandomDJ then
     if not AutoDJ then
         AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
     end
-    AutoDJ.Start()
+    if AutoDJ and not AutoDJ.IsRunning() then
+        AutoDJ.Start()
+    end
+    if AutoDJ and AutoDJ.StartMuteOthers then
+        AutoDJ.StartMuteOthers()
+    end
 end
 
 Globals.HideUsername = false -- [FEATURE 10] default false
@@ -5332,6 +5337,21 @@ task.spawn(function()
 
         if Globals.AutoDJ and not AutoDjRunning then
             StartAutoDjBooth()
+        end
+
+                if Globals.RandomDJ then
+            if not AutoDJ then
+                AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+            end
+            if AutoDJ and not AutoDJ.IsRunning() then
+                AutoDJ.Start()
+            end
+        elseif AutoDJ and AutoDJ.IsRunning() then
+            AutoDJ.Stop()
+        end
+
+        if Globals.MuteOtherDJs and AutoDJ and AutoDJ.StartMuteOthers then
+            AutoDJ.StartMuteOthers()
         end
 
         if Globals.AutoNecro and not AutoNecroRunning then
