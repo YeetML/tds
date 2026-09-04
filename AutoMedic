@@ -648,10 +648,9 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
             if started and baseline and ud and at then
                 WaitForUberEnd(attached, baseline, ud, at, saw)
             end
-            nextIdx += 1
             stopWatch()
-            -- wipe again (attached + any leftover)
             clearAllSelected(medic)
+            nextIdx += 1
         end
     end)
 end
