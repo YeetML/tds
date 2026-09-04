@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local PlayerUserId = LocalPlayer.UserId
+local Globals = getgenv()
 
 local RandomSongIDs = {
     76160569570885,
@@ -142,83 +143,110 @@ local AutoDJ = {
     _running = false,
     _thread = nil,
     _stopFlag = false,
+    _muteThread = nil,
 }
 
--- Internal: find the player's own DJ Booth tower
-local function FindOwnDJ()
-    local towersFolder = Workspace:FindFirstChild("Towers")
-    if not towersFolder then return nil end
-
-    local towerNames = {
-        "Default", "Neon Rave", "Neko", "Ghost", "Plushie",
-        "Masquerade", "Mako", "Garage Band", "Ducky", "Seal",
-        "Gingerbread"
-    }
-
-    for _, name in ipairs(towerNames) do
-        local tower = towersFolder:FindFirstChild(name)
-        if tower then
-            local owner = tower:FindFirstChild("Owner")
-            if owner and owner.Value == PlayerUserId then
-                return tower
-            end
-        end
-    end
-    return nil
+----------------------------------------------------------------
+-- TowerReplicator-based DJ finder (any skin)
+----------------------------------------------------------------
+local function getDJAudioPlayer(tower)
+    local hrp = tower:FindFirstChild("HumanoidRootPart")
+    return hrp and hrp:FindFirstChild("AudioPlayer")
 end
 
--- Internal: set a random song on a given tower
-local function SetRandomSong(tower)
-    local hrp = tower:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-    local audioPlayer = hrp:FindFirstChild("AudioPlayer")
+local function forEachDJ(callback)
+    local folder = Workspace:FindFirstChild("Towers")
+    if not folder then return end
+    for _, tower in ipairs(folder:GetChildren()) do
+        local rep = tower:FindFirstChild("TowerReplicator")
+        if rep and rep:GetAttribute("Name") == "DJ Booth" then
+            callback(tower, rep)
+        end
+    end
+end
+
+local function FindOwnDJ()
+    local found = nil
+    forEachDJ(function(tower, rep)
+        if rep:GetAttribute("OwnerId") == PlayerUserId then
+            found = tower
+        end
+    end)
+    return found
+end
+
+----------------------------------------------------------------
+-- Play song on YOUR DJ only
+----------------------------------------------------------------
+local function pickSongId()
+    local custom = Globals and Globals.DJCustomSongID
+    if custom ~= nil then
+        local cleaned = tostring(custom):gsub("%D", "")
+        if cleaned ~= "" then
+            return cleaned
+        end
+    end
+    return tostring(RandomSongIDs[math.random(1, #RandomSongIDs)])
+end
+
+local function SetSong(tower, songId)
+    local audioPlayer = getDJAudioPlayer(tower)
     if not audioPlayer then return false end
-
-    local randomId = RandomSongIDs[math.random(#RandomSongIDs)]
-    local fullId = "rbxassetid://" .. randomId
-
+    local fullId = "rbxassetid://" .. tostring(songId)
     local success = pcall(function()
         audioPlayer.AssetId = fullId
         audioPlayer:Play()
     end)
-
     if success then
-        print("[AutoDJ] Now playing: " .. randomId)
-        return true
+        print("[AutoDJ] Now playing: " .. tostring(songId))
     end
-    return false
+    return success
 end
 
--- Internal: play the next song and wait for it to finish
+local function MuteOtherDJsOnce()
+    forEachDJ(function(tower, rep)
+        if rep:GetAttribute("OwnerId") == PlayerUserId then return end
+        local ap = getDJAudioPlayer(tower)
+        if ap then
+            pcall(function()
+                ap:Stop()
+                ap:Destroy()
+            end)
+        end
+    end)
+end
+
+----------------------------------------------------------------
+-- Play loop
+----------------------------------------------------------------
 local function PlayNext()
     if AutoDJ._stopFlag then return end
 
     local tower = FindOwnDJ()
     if not tower then
-        -- No DJ tower, wait and retry
         task.wait(1)
         PlayNext()
         return
     end
 
-    if not SetRandomSong(tower) then
+    local songId = pickSongId()
+    if not SetSong(tower, songId) then
         task.wait(1)
         PlayNext()
         return
     end
 
-    local hrp = tower:FindFirstChild("HumanoidRootPart")
-    local audioPlayer = hrp and hrp:FindFirstChild("AudioPlayer")
+    local audioPlayer = getDJAudioPlayer(tower)
     if audioPlayer then
         local endedConn
         endedConn = audioPlayer.Ended:Connect(function()
-            endedConn:Disconnect()
+            if endedConn then endedConn:Disconnect() end
             if not AutoDJ._stopFlag then
                 PlayNext()
             end
         end)
 
-        -- Safety timer in case Ended never fires (max 180 seconds)
+        -- safety if Ended never fires
         task.wait(180)
         if endedConn and endedConn.Connected then
             endedConn:Disconnect()
@@ -229,14 +257,12 @@ local function PlayNext()
     end
 end
 
--- Main loop
 local function RunLoop()
     AutoDJ._running = true
     AutoDJ._stopFlag = false
 
     while AutoDJ._running and not AutoDJ._stopFlag do
         PlayNext()
-        -- Wait until either stopped or the next song is triggered via Ended
         while AutoDJ._running and not AutoDJ._stopFlag do
             task.wait(1)
         end
@@ -245,7 +271,9 @@ local function RunLoop()
     AutoDJ._running = false
 end
 
--- Public API
+----------------------------------------------------------------
+-- Public API (same as before)
+----------------------------------------------------------------
 function AutoDJ.Start()
     if AutoDJ._running then
         print("[AutoDJ] Already running.")
@@ -253,7 +281,7 @@ function AutoDJ.Start()
     end
     AutoDJ._stopFlag = false
     if AutoDJ._thread then
-        task.cancel(AutoDJ._thread)
+        pcall(task.cancel, AutoDJ._thread)
         AutoDJ._thread = nil
     end
     AutoDJ._thread = task.spawn(RunLoop)
@@ -268,7 +296,7 @@ function AutoDJ.Stop()
     AutoDJ._stopFlag = true
     AutoDJ._running = false
     if AutoDJ._thread then
-        task.cancel(AutoDJ._thread)
+        pcall(task.cancel, AutoDJ._thread)
         AutoDJ._thread = nil
     end
     print("[AutoDJ] Stopped.")
@@ -284,6 +312,23 @@ end
 
 function AutoDJ.IsRunning()
     return AutoDJ._running
+end
+
+-- optional: mute others while RandomDJ is on, or call from main
+function AutoDJ.StartMuteOthers()
+    if AutoDJ._muteThread then return end
+    AutoDJ._muteThread = task.spawn(function()
+        while true do
+            if Globals.MuteOtherDJs then
+                MuteOtherDJsOnce()
+            end
+            task.wait(0.5)
+        end
+    end)
+end
+
+function AutoDJ.MuteOthersOnce()
+    MuteOtherDJsOnce()
 end
 
 return AutoDJ
