@@ -4,57 +4,45 @@
     - Live Globals.MedicTarget / Globals.Towerslot
     - Patient wait on current Medic
     - Claim-aware + circular range filter
-    - Attach/detach only toggles when state is wrong
+    - clearAllSelected before attach + after uber (fixes stuck Medic claims)
 ]]
-
 local Players           = game:GetService("Players")
 local Workspace         = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService       = game:GetService("HttpService")
-
 local LocalPlayer    = Players.LocalPlayer
 local PlayerUserId   = LocalPlayer.UserId
 local PlayerName     = LocalPlayer.Name
 local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
 local RemoteFunction = ReplicatedStorage:FindFirstChild("RemoteFunction")
 local Globals        = getgenv()
-
 local AutoMedic = {}
-
 local activeLoops       = {}
 local activeChainThread = nil
-
 local MEDIC_ABILITY_ICON = "rbxassetid://231100685"
-local RANGE_SLACK        = 0.5 -- circle tolerance
-
+local RANGE_SLACK        = 0.5
 local CAPACITY_BY_LEVEL = {
     [0] = 1, [1] = 2, [2] = 3, [3] = 3, [4] = 4, [5] = 5
 }
-
 local MEDIC_UBER_DATA = {
     [3] = { DamageBuff = 20,   Duration = 7.5 },
     [4] = { DamageBuff = 27.5, Duration = 10  },
     [5] = { DamageBuff = 35,   Duration = 10  },
 }
-
 local EXCLUDED_TOWERS = {
     ["farm"] = true,
     ["dj booth"] = true,
     ["djbooth"] = true,
 }
-
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
-
 local function IsAlive(inst)
     return inst and inst.Parent ~= nil
 end
-
 local function GetReplicator(tower)
     return IsAlive(tower) and tower:FindFirstChild("TowerReplicator") or nil
 end
-
 local function getTimescaleMultiplier()
     local hotbar = PlayerGui:FindFirstChild("ReactUniversalHotbar")
     local frame  = hotbar and hotbar:FindFirstChild("Frame")
@@ -63,7 +51,6 @@ local function getTimescaleMultiplier()
     if ts:FindFirstChild("Lock") then return 1 end
     return 2
 end
-
 local function resolveTargetPlayer(targetInput)
     if type(targetInput) == "number" then
         return targetInput, nil
@@ -78,12 +65,10 @@ local function resolveTargetPlayer(targetInput)
     end
     return "universal", "universal"
 end
-
 local function getTowerUID(tower)
     local rep = GetReplicator(tower)
     return rep and rep:GetAttribute("UID") or nil
 end
-
 local function getTowerPosition(tower)
     local rep = GetReplicator(tower)
     if not rep then return nil end
@@ -96,14 +81,11 @@ local function getTowerPosition(tower)
     end
     return nil
 end
-
 local function getMedicRange(medic)
     local rep = GetReplicator(medic)
     if not rep then return 0 end
     return tonumber(rep:GetAttribute("Range")) or 0
 end
-
--- Circular (ground) range: sqrt(dx^2 + dz^2) <= Range + slack
 local function inMedicRange(medic, target, slack)
     slack = slack or RANGE_SLACK
     local a = getTowerPosition(medic)
@@ -115,7 +97,6 @@ local function inMedicRange(medic, target, slack)
     local limit = r + slack
     return (dx * dx + dz * dz) <= (limit * limit)
 end
-
 local function getSelectedUIDs(medic)
     local rep = GetReplicator(medic)
     if not rep then return {} end
@@ -136,11 +117,9 @@ local function getSelectedUIDs(medic)
     end
     return set
 end
-
 ----------------------------------------------------------------
 -- Tower discovery
 ----------------------------------------------------------------
-
 function AutoMedic.GetAllTowers()
     local towersFolder = Workspace:FindFirstChild("Towers")
     local allTowers = {}
@@ -165,7 +144,6 @@ function AutoMedic.GetAllTowers()
     end)
     return allTowers
 end
-
 local function getMyMedics()
     local all = AutoMedic.GetAllTowers()
     local mine = {}
@@ -178,7 +156,6 @@ local function getMyMedics()
     end
     return mine
 end
-
 local function getMedicCapacity(medic)
     if not IsAlive(medic) then return 0 end
     local rep = GetReplicator(medic)
@@ -186,13 +163,11 @@ local function getMedicCapacity(medic)
     local up = rep:GetAttribute("Upgrade") or 0
     return rep:GetAttribute("TowersCanSelect") or CAPACITY_BY_LEVEL[up] or 1
 end
-
 local function getUberData(medic)
     local rep = GetReplicator(medic)
     if not rep then return nil end
     return MEDIC_UBER_DATA[rep:GetAttribute("Upgrade") or 0]
 end
-
 local function getAllMedicClaims(excludeMedicUID)
     local towersFolder = Workspace:FindFirstChild("Towers")
     local claims = {}
@@ -213,20 +188,16 @@ local function getAllMedicClaims(excludeMedicUID)
     end
     return claims
 end
-
 ----------------------------------------------------------------
--- Targeting (range + claims + Towerslot)
+-- Targeting
 ----------------------------------------------------------------
-
 local function getSelfTargets(medic, towersToSelect, maxCapacity)
     local allTowers = AutoMedic.GetAllTowers()
     local targetTowers, used = {}, {}
-
     local function isOwnedBySelf(data)
         return (data.OwnerId and data.OwnerId == PlayerUserId)
             or (data.OwnerName and data.OwnerName == PlayerName)
     end
-
     for _, name in ipairs(towersToSelect or {}) do
         if #targetTowers >= maxCapacity then break end
         local nameLower = string.lower(name)
@@ -244,7 +215,6 @@ local function getSelfTargets(medic, towersToSelect, maxCapacity)
     end
     return targetTowers
 end
-
 local function getClaimAwareTargets(medic, targetPlayer, towersToSelect, maxCapacity, mode)
     local allTowers = AutoMedic.GetAllTowers()
     local targetId, targetName = resolveTargetPlayer(targetPlayer)
@@ -252,7 +222,6 @@ local function getClaimAwareTargets(medic, targetPlayer, towersToSelect, maxCapa
     local myMedicUID = getTowerUID(medic)
     local claimed = getAllMedicClaims(myMedicUID)
     local targetTowers, used = {}, {}
-
     local function isOwnedByTarget(data)
         if isUniversal then return true end
         if targetId and data.OwnerId and data.OwnerId == targetId then return true end
@@ -261,7 +230,6 @@ local function getClaimAwareTargets(medic, targetPlayer, towersToSelect, maxCapa
         end
         return false
     end
-
     local function eligible(data)
         if not data.Name or string.lower(data.Name) == "medic" then return false end
         if EXCLUDED_TOWERS[string.lower(data.Name or "")] then return false end
@@ -269,13 +237,11 @@ local function getClaimAwareTargets(medic, targetPlayer, towersToSelect, maxCapa
         if not inMedicRange(medic, data.Tower) then return false end
         return true
     end
-
     local function tryAdd(data, i)
         if #targetTowers >= maxCapacity then return end
         table.insert(targetTowers, data.Tower)
         used[i] = true
     end
-
     local function addMatching(ownerCondition)
         for _, name in ipairs(towersToSelect or {}) do
             if #targetTowers >= maxCapacity then break end
@@ -293,7 +259,6 @@ local function getClaimAwareTargets(medic, targetPlayer, towersToSelect, maxCapa
             end
         end
     end
-
     if mode == "self_first" then
         addMatching("self")
         if #targetTowers < maxCapacity then
@@ -302,40 +267,26 @@ local function getClaimAwareTargets(medic, targetPlayer, towersToSelect, maxCapa
     else
         addMatching(nil)
     end
-
-    if #targetTowers < maxCapacity then
-        local function fallbackAdd(ownerCondition)
+    -- Fallback only for Universal (fill capacity). Self / Self First stay Towerslot-only.
+    if #targetTowers < maxCapacity and mode ~= "self_first" and mode ~= "self" then
+        local function fallbackAdd()
             for i, data in ipairs(allTowers) do
                 if #targetTowers >= maxCapacity then break end
                 if used[i] then continue end
                 if not eligible(data) then continue end
-                local owned = isOwnedByTarget(data)
-                local ok = (ownerCondition == "self" and owned)
-                    or (ownerCondition == "other" and not owned)
-                    or (ownerCondition == nil)
-                if ok then tryAdd(data, i) end
+                tryAdd(data, i)
             end
         end
-        if mode == "self_first" then
-            fallbackAdd("self")
-            if #targetTowers < maxCapacity then
-                fallbackAdd("other")
-            end
-        else
-            fallbackAdd(nil)
-        end
+        fallbackAdd()
     end
-
     return targetTowers
 end
-
 local function getTargetTowersForMedic(medic, targetPlayer, towersToSelect, maxCapacity, mode)
     if mode == "self" then
         return getSelfTargets(medic, towersToSelect, maxCapacity)
     end
     return getClaimAwareTargets(medic, targetPlayer, towersToSelect, maxCapacity, mode)
 end
-
 local function getCurrentSettings()
     local target = "universal"
     local mode   = "universal"
@@ -350,11 +301,9 @@ local function getCurrentSettings()
     end
     return target, mode, towers
 end
-
 ----------------------------------------------------------------
--- Remote helpers (state-aware toggle)
+-- Remote helpers
 ----------------------------------------------------------------
-
 local function activateUbercharge(medic)
     if not RemoteFunction or not IsAlive(medic) then return false end
     return pcall(function()
@@ -365,7 +314,6 @@ local function activateUbercharge(medic)
         })
     end)
 end
-
 local function toggleOne(medic, tower)
     if not RemoteFunction or not IsAlive(medic) or not IsAlive(tower) then return end
     pcall(function()
@@ -375,13 +323,25 @@ local function toggleOne(medic, tower)
         )
     end)
 end
-
--- Attach: only toggle if NOT already selected (parallel)
+-- Wipe EVERYTHING currently selected on this medic (ghost + real)
+local function clearAllSelected(medic)
+    if not IsAlive(medic) then return end
+    local selected = getSelectedUIDs(medic)
+    if next(selected) == nil then return end
+    local folder = Workspace:FindFirstChild("Towers")
+    if not folder then return end
+    for _, tower in ipairs(folder:GetChildren()) do
+        local uid = getTowerUID(tower)
+        if uid and selected[uid] and IsAlive(tower) then
+            task.spawn(toggleOne, medic, tower)
+        end
+    end
+    task.wait(0.05)
+end
 local function attachTargets(medic, targets)
     local attached = {}
     local selected = getSelectedUIDs(medic)
     local pending = {}
-
     for _, t in ipairs(targets) do
         if IsAlive(t) then
             table.insert(attached, t)
@@ -391,19 +351,14 @@ local function attachTargets(medic, targets)
             end
         end
     end
-
     for _, t in ipairs(pending) do
         task.spawn(toggleOne, medic, t)
     end
-
     return attached
 end
-
--- Detach: only toggle if STILL selected (parallel)
 local function detachTargets(medic, attached)
     if not attached or #attached == 0 or not IsAlive(medic) then return end
     local selected = getSelectedUIDs(medic)
-
     for _, t in ipairs(attached) do
         if IsAlive(t) then
             local uid = getTowerUID(t)
@@ -413,13 +368,11 @@ local function detachTargets(medic, attached)
         end
     end
 end
-
 local function startReattachWatch(medic, attached)
     local rep = GetReplicator(medic)
     if not rep then
         return function() end
     end
-
     local desiredUIDs = {}
     for _, t in ipairs(attached) do
         local uid = getTowerUID(t)
@@ -430,7 +383,6 @@ local function startReattachWatch(medic, attached)
     if next(desiredUIDs) == nil then
         return function() end
     end
-
     local stopped = false
     local conn
     conn = rep:GetAttributeChangedSignal("TowersSelected"):Connect(function()
@@ -442,7 +394,6 @@ local function startReattachWatch(medic, attached)
             end
         end
     end)
-
     return function()
         stopped = true
         if conn then
@@ -451,11 +402,9 @@ local function startReattachWatch(medic, attached)
         end
     end
 end
-
 ----------------------------------------------------------------
--- Icon + DamageBuff + Uber lifecycle
+-- Icon + DamageBuff + Uber
 ----------------------------------------------------------------
-
 local function GetMedicAbilityContent()
     local gui = PlayerGui:FindFirstChild("ReactGameAbilities")
     local frame = gui and gui:FindFirstChild("Frame")
@@ -469,7 +418,6 @@ local function GetMedicAbilityContent()
     end
     return nil
 end
-
 local function IsMedicReady()
     local content = GetMedicAbilityContent()
     if not content then return true end
@@ -480,13 +428,11 @@ local function IsMedicReady()
     local value = tonumber(text)
     return value == nil or value <= 0
 end
-
 local function GetDamageBuff(tower)
     local rep = GetReplicator(tower)
     if not rep then return 0 end
     return tonumber(rep:GetAttribute("DamageBuff")) or 0
 end
-
 local function CaptureDamageBuffs(targets)
     local baseline = {}
     for _, t in ipairs(targets) do
@@ -496,7 +442,6 @@ local function CaptureDamageBuffs(targets)
     end
     return baseline
 end
-
 local function HasMedicDamageSignal(tower, baselineValue, expectedBuff)
     local current = GetDamageBuff(tower)
     if current <= baselineValue + 0.001 then return false end
@@ -504,7 +449,6 @@ local function HasMedicDamageSignal(tower, baselineValue, expectedBuff)
     if current - baselineValue >= expectedBuff - 0.001 then return true end
     return false
 end
-
 local function WaitForReady(medic)
     while IsAlive(medic) do
         if IsMedicReady() then
@@ -514,7 +458,6 @@ local function WaitForReady(medic)
     end
     return false
 end
-
 local function WaitForUberStart(medic, targets, baseline, uberData, timeout)
     local deadline = os.clock() + (timeout or 1.5)
     while os.clock() < deadline and IsAlive(medic) do
@@ -543,7 +486,6 @@ local function WaitForUberStart(medic, targets, baseline, uberData, timeout)
     end
     return not IsMedicReady(), false
 end
-
 local function WaitForUberEnd(targets, baseline, uberData, activationAt, sawDamageIncrease)
     local multiplier = getTimescaleMultiplier()
     local fallbackEnd = activationAt + (uberData.Duration / multiplier)
@@ -581,15 +523,12 @@ local function WaitForUberEnd(targets, baseline, uberData, activationAt, sawDama
         task.wait(0.02)
     end
 end
-
 local function TryStartUber(medic, targets)
     local uberData = getUberData(medic)
     if not uberData then
         return false, nil, nil, nil, false, function() end
     end
-
     local stopWatch = startReattachWatch(medic, targets)
-
     while IsAlive(medic) do
         if not WaitForReady(medic) then
             stopWatch()
@@ -604,15 +543,12 @@ local function TryStartUber(medic, targets)
         end
         task.wait(0.02)
     end
-
     stopWatch()
     return false, nil, nil, nil, false, function() end
 end
-
 ----------------------------------------------------------------
 -- Public: Function
 ----------------------------------------------------------------
-
 function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
     medicIndex = medicIndex or 1
     if not activeLoops[medicIndex] then
@@ -622,71 +558,51 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
         task.cancel(activeLoops[medicIndex].thread)
         activeLoops[medicIndex].thread = nil
     end
-
     local myMedics = getMyMedics()
     local selected = myMedics[medicIndex]
     if not selected then return false end
-
     if toggle == false then
-        if #activeLoops[medicIndex].lastTargets > 0 then
-            detachTargets(selected, activeLoops[medicIndex].lastTargets)
-            activeLoops[medicIndex].lastTargets = {}
-        end
+        clearAllSelected(selected)
+        activeLoops[medicIndex].lastTargets = {}
         return true
     end
-
     if not getUberData(selected) then return false end
-
     local thread = task.spawn(function()
         while true do
             if not IsAlive(selected) then
                 activeLoops[medicIndex].lastTargets = {}
                 break
             end
-
             local liveTarget, liveMode, liveTowers = getCurrentSettings()
             local capacity = getMedicCapacity(selected)
             local targets  = getTargetTowersForMedic(selected, liveTarget, liveTowers, capacity, liveMode)
-
             if #targets == 0 then
-                if #activeLoops[medicIndex].lastTargets > 0 then
-                    detachTargets(selected, activeLoops[medicIndex].lastTargets)
-                    activeLoops[medicIndex].lastTargets = {}
-                end
+                clearAllSelected(selected)
+                activeLoops[medicIndex].lastTargets = {}
                 task.wait(0.02)
                 continue
             end
-
-            if #activeLoops[medicIndex].lastTargets > 0 then
-                detachTargets(selected, activeLoops[medicIndex].lastTargets)
-                activeLoops[medicIndex].lastTargets = {}
-            end
-
+            clearAllSelected(selected)
             local attached = attachTargets(selected, targets)
             activeLoops[medicIndex].lastTargets = attached
-
             local started, baseline, uberData, at, saw, stopWatch = TryStartUber(selected, attached)
             if started and baseline and uberData and at then
                 WaitForUberEnd(attached, baseline, uberData, at, saw)
             else
                 task.wait(0.02)
             end
-
             stopWatch()
-            detachTargets(selected, attached)
+            clearAllSelected(selected)
             activeLoops[medicIndex].lastTargets = {}
             task.wait(0.02)
         end
     end)
-
     activeLoops[medicIndex].thread = thread
     return true
 end
-
 ----------------------------------------------------------------
 -- Public: Chain
 ----------------------------------------------------------------
-
 function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
     if activeChainThread then
         task.cancel(activeChainThread)
@@ -695,7 +611,6 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
     if toggle == false then
         return
     end
-
     activeChainThread = task.spawn(function()
         local nextIdx = 1
         while true do
@@ -706,44 +621,38 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
                     table.insert(usable, m)
                 end
             end
-
             if #usable == 0 then
                 task.wait(0.02)
                 continue
             end
-
             if nextIdx > #usable then
                 nextIdx = 1
             end
-
             local medic = usable[nextIdx]
             if not medic or not IsAlive(medic) then
                 nextIdx += 1
                 task.wait(0.02)
                 continue
             end
-
             local liveTarget, liveMode, liveTowers = getCurrentSettings()
             local capacity = getMedicCapacity(medic)
             local targets  = getTargetTowersForMedic(medic, liveTarget, liveTowers, capacity, liveMode)
-
             if #targets == 0 then
                 task.wait(0.05)
                 continue
             end
-
+            -- wipe ghosts so capacity is free and claims clear
+            clearAllSelected(medic)
             local attached = attachTargets(medic, targets)
             local started, baseline, ud, at, saw, stopWatch = TryStartUber(medic, attached)
-
             if started and baseline and ud and at then
                 WaitForUberEnd(attached, baseline, ud, at, saw)
             end
-
             nextIdx += 1
             stopWatch()
-            detachTargets(medic, attached)
+            -- wipe again (attached + any leftover)
+            clearAllSelected(medic)
         end
     end)
 end
-
 return AutoMedic
