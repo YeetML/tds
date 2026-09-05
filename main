@@ -2628,44 +2628,125 @@ local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) d
 
     Strategies:Section({Title = "Auto Trials"})
 
+-- Hardcoded trial script URLs (copied from the external module)
+local trialScripts = {
+    ["Speedy Enemies"]        = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Speedy.lua",
+    ["Glass"]                 = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Glass.lua",
+    ["Quarantine"]            = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Quarantine.lua",
+    ["Fog"]                   = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Fog.lua",
+    ["Limitation"]            = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Limitation.lua",
+    ["Flying"]                = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Flying.lua",
+    ["Jailed"]                = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Jailed.lua",
+    ["Exploding Enemies"]     = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Exploading.lua",
+    ["Inflation"]             = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Inflation.lua",
+    ["Committed"]             = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Committed.lua",  -- if available
+    ["Hidden Enemies"]        = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Hidden.lua",
+    ["Hidden"]                = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Hidden.lua",
+    ["Broke"]                 = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/StratsFunc/Broke.lua",
+    ["Healthy Enemies"]       = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Healthy.lua"
+}
+
+-- Helper: get current trial from replicators (safe)
+local function getCurrentTrial()
+    local stateRep = game:GetService("ReplicatedStorage"):FindFirstChild("StateReplicators")
+    if stateRep then
+        local gameStateRep = stateRep:FindFirstChild("GameStateReplicator")
+        if gameStateRep then
+            local trial = gameStateRep:GetAttribute("GlobalTrial")
+            if trial and trial ~= "" then return trial end
+        end
+        local trialsRep = stateRep:FindFirstChild("TrialsStateReplicator")
+        if trialsRep then
+            local trial = trialsRep:GetAttribute("GlobalTrial")
+            if trial and trial ~= "" then return trial end
+        end
+    end
+    return nil
+end
+
+-- Load the external module (but we'll override its critical functions)
 local AutoTrialsModule
 local success, result = pcall(function()
     return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials"))()
 end)
-
 if success and type(result) == "table" then
     AutoTrialsModule = result
 
-    -- 🔧 SAFE OVERRIDE: bypass the module's internal functions (which use filtergc)
+    -- Override GetInfo (safe, no filtergc)
     AutoTrialsModule.GetInfo = function()
-        local stateRep = game:GetService("ReplicatedStorage"):FindFirstChild("StateReplicators")
-        if stateRep then
-            -- Check GameStateReplicator first (most common)
-            local gameStateRep = stateRep:FindFirstChild("GameStateReplicator")
-            if gameStateRep then
-                local globalTrial = gameStateRep:GetAttribute("GlobalTrial")
-                if globalTrial and globalTrial ~= "" then
-                    return globalTrial, "See game", true, {}
-                end
-            end
-            -- Also check TrialsStateReplicator
-            local trialsRep = stateRep:FindFirstChild("TrialsStateReplicator")
-            if trialsRep then
-                local globalTrial = trialsRep:GetAttribute("GlobalTrial")
-                if globalTrial and globalTrial ~= "" then
-                    return globalTrial, "See game", true, {}
-                end
-            end
+        local trial = getCurrentTrial()
+        if trial then
+            return trial, "See game", true, {}
         end
         return "No Active Trial", "None required", true, {}
     end
+
+    -- Override Run (safe, no filtergc, uses our own logic)
+    AutoTrialsModule.Run = function()
+        local trialName = getCurrentTrial()
+        if not trialName then
+            warn("[AutoTrials] No active trial found.")
+            return
+        end
+
+        if GameState == "LOBBY" then
+            -- Save trial name for later
+            if writefile and makefolder then
+                pcall(makefolder, "GlobalConfigs")
+                pcall(writefile, "GlobalConfigs/trialscript.txt", trialName)
+            end
+            -- Start trial match using TDS
+            if TDS and TDS.Mode then
+                TDS:Mode("Trial")
+                Window:Notify({Title = "AutoTrials", Desc = "Joined trial for " .. trialName, Time = 3})
+            else
+                warn("[AutoTrials] TDS:Mode not available.")
+            end
+            return
+        end
+
+        if GameState == "GAME" then
+            -- Read saved trial name (or fallback to current)
+            local savedTrial = nil
+            if isfile then
+                pcall(function()
+                    savedTrial = readfile("GlobalConfigs/trialscript.txt")
+                end)
+            end
+            local targetTrial = savedTrial or trialName
+            local scriptUrl = trialScripts[targetTrial]
+            if not scriptUrl then
+                warn("[AutoTrials] No script found for trial: " .. targetTrial)
+                return
+            end
+            -- Load and execute the strategy
+            local ok, err = pcall(function()
+                local chunk = game:HttpGet(scriptUrl)
+                local fn = loadstring(chunk)
+                if fn then fn() end
+            end)
+            if ok then
+                Window:Notify({Title = "AutoTrials", Desc = "Running strategy for " .. targetTrial, Time = 3})
+            else
+                warn("[AutoTrials] Error executing script: " .. tostring(err))
+            end
+        end
+    end
 else
+    -- Fallback if module fails to load
     AutoTrialsModule = {
-        GetInfo = function() return "Unknown", "None", false, {} end,
-        Run = function() end
+        GetInfo = function()
+            local trial = getCurrentTrial()
+            if trial then return trial, "See game", true, {} end
+            return "No Active Trial", "None required", true, {}
+        end,
+        Run = function()
+            warn("[AutoTrials] Fallback Run not implemented.")
+        end
     }
 end
--- Create labels with temporary placeholders
+
+-- Create the UI labels (they will be updated dynamically)
 local Trial = Strategies:Label({
     Title = "Current Trial: Loading...",
     Desc = "Required: Loading..."
@@ -2676,12 +2757,11 @@ local ReqMet = Strategies:Label({
     Desc = ""
 })
 
--- Function to update the labels
+-- Update function for labels
 local function updateTrialLabels()
     local trialName, trialTowers, isPassed, missing = "Unknown", "None", false, {}
     pcall(function()
         trialName, trialTowers, isPassed, missing = AutoTrialsModule.GetInfo()
-        print("[Debug] Trial:", trialName, "Towers:", trialTowers)
     end)
     pcall(function()
         Trial:SetTitle("Current Trial: " .. tostring(trialName))
@@ -2694,21 +2774,8 @@ local function updateTrialLabels()
     end)
 end
 
--- Run update immediately (may still be empty, but will retry)
+-- Update immediately and poll every 3 seconds
 updateTrialLabels()
-
--- Listen for trial changes (if the replicator appears later)
-task.spawn(function()
-    local rep = game:GetService("ReplicatedStorage"):FindFirstChild("StateReplicators")
-    if rep then
-        local trialRep = rep:FindFirstChild("TrialsStateReplicator")
-        if trialRep then
-            trialRep:GetAttributeChangedSignal("GlobalTrial"):Connect(updateTrialLabels)
-        end
-    end
-end)
-
--- Also poll every 3 seconds as a fallback
 task.spawn(function()
     while true do
         updateTrialLabels()
@@ -2716,44 +2783,37 @@ task.spawn(function()
     end
 end)
 
+-- Listen for attribute changes
+task.spawn(function()
+    local rep = game:GetService("ReplicatedStorage"):FindFirstChild("StateReplicators")
+    if rep then
+        local function onTrialChange()
+            updateTrialLabels()
+        end
+        local gameStateRep = rep:FindFirstChild("GameStateReplicator")
+        if gameStateRep then
+            gameStateRep:GetAttributeChangedSignal("GlobalTrial"):Connect(onTrialChange)
+        end
+        local trialsRep = rep:FindFirstChild("TrialsStateReplicator")
+        if trialsRep then
+            trialsRep:GetAttributeChangedSignal("GlobalTrial"):Connect(onTrialChange)
+        end
+    end
+end)
+
+-- The toggle that calls AutoTrialsModule.Run()
 Strategies:Toggle({
     Title = "Run Auto Trials",
-    Desc = "Starts the current trial if requirements are met",
+    Desc = "Starts the current trial and runs the strategy (no verification).",
     Value = Globals.AutoTrials,
     Callback = function(v)
         SetSetting("AutoTrials", v)
         if not v then return end
-
         task.spawn(function()
-            local ok, module = pcall(function()
-                return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials"))()
-            end)
-            if not ok or type(module) ~= "table" then return end
-
-            local name, towers, passed, miss = "Unknown", "None", false, {}
-            pcall(function()
-                name, towers, passed, miss = module.GetInfo()
-            end)
-
-            pcall(function()
-                Trial:SetTitle("Current Trial: " .. tostring(name))
-                Trial:SetDesc("Required: " .. tostring(towers))
-            end)
-
-            if passed then
-                pcall(function()
-                    ReqMet:SetTitle("Requirements: Met ✓")
-                    ReqMet:SetDesc("All requirements satisfied.")
-                end)
-                if type(module.Run) == "function" then
-                    pcall(module.Run)
-                end
+            if type(AutoTrialsModule.Run) == "function" then
+                AutoTrialsModule.Run()
             else
-                local missText = (type(miss) == "table" and #miss > 0) and table.concat(miss, ", ") or "Unknown"
-                pcall(function()
-                    ReqMet:SetTitle("Requirements: Missing")
-                    ReqMet:SetDesc(missText)
-                end)
+                warn("[AutoTrials] Run function not available.")
             end
         end)
     end
