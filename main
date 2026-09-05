@@ -288,6 +288,7 @@ local DefaultSettings = {
     AutoRedeemCodes = false,
     MuteOtherDJs = false,
     RandomDJ = false,
+    AutoTrials = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -2625,138 +2626,71 @@ local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) d
         end
     })
 
---[[
-    Strategies:Toggle({
-        Title = "Fallen Mode",
-        Desc = "Skill tree: Not needed\n\nTowers:\nGolden Scout,\nBrawler,\nMercenary Base,\nElectroshocker,\nEngineer",
-        Value = Globals.Fallen,
-        Callback = function(v)
-            SetSetting("Fallen", v)
+local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) do
+    Strategies:Section({Title = "Auto Trials"})
 
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Fallen.lua"
-                    local content = game:HttpGet(url)
+    local success, AutoTrialsModule = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials"))()
+    end)
 
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
+    if not success or type(AutoTrialsModule) ~= "table" then
+        AutoTrialsModule = {
+            GetInfo = function() return "Unknown", "None", false, {} end,
+            Run = function() end
+        }
+    end
 
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
-        end
+    local trialName, trialTowers, isPassed, missing = AutoTrialsModule.GetInfo()
+
+    local Trial = Strategies:Label({
+        Title = "Current Trial: " .. tostring(trialName),
+        Desc = "Required Towers/Items: " .. tostring(trialTowers)
+    })
+
+    local missingText = (type(missing) == "table" and #missing > 0) and table.concat(missing, ", ") or "None"
+
+    local ReqMet = Strategies:Label({
+        Title = isPassed and "Met!" or "Missing Towers",
+        Desc = isPassed and "All requirements satisfied." or missingText
     })
 
     Strategies:Toggle({
-        Title = "Intermediate Mode",
-        Desc = "Skill tree: Not needed\n\nTowers:\nShotgunner,\nCrook Boss",
-        Value = Globals.Intermediate,
+        Title = "Run",
+        Desc = "Enables auto trials dynamically based on requirements.",
+        Value = Globals.AutoTrials,
         Callback = function(v)
-            SetSetting("Intermediate", v)
+            SetSetting("AutoTrials", v)
+            if not v then return end
 
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Intermediate.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
+            task.spawn(function()
+                local successLoad, module = pcall(function()
+                    return loadstring(game:HttpGet("https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/NewFunc/AutoTrials.lua"))()
                 end)
-            end
+
+                if not successLoad or type(module) ~= "table" then return end
+
+                local name, towers, passed, miss = module.GetInfo()
+
+                Trial:SetTitle("Current Trial: " .. tostring(name))
+                Trial:SetDesc("Required Towers/Items: " .. tostring(towers))
+
+                if passed then
+                    ReqMet:SetTitle("Met!")
+                    ReqMet:SetDesc("All requirements satisfied.")
+                else
+                    local missText = (type(miss) == "table" and #miss > 0) and table.concat(miss, ", ") or tostring(miss)
+                    ReqMet:SetTitle("Missing Towers")
+                    ReqMet:SetDesc(missText)
+                    return
+                end
+
+                if type(module.Run) == "function" then
+                    module.Run()
+                end
+            end)
         end
     })
-
-    Strategies:Toggle({
-        Title = "Casual Mode",
-        Desc = "Skill tree: Not needed\n\nTowers:\nShotgunner",
-        Value = Globals.Casual,
-        Callback = function(v)
-            SetSetting("Casual", v)
-
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Casual.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
-        end
-    })
-
-    Strategies:Toggle({
-        Title = "Easy Mode",
-        Desc = "Skill tree: Not needed\n\nTowers:\nNormal Scout",
-        Value = Globals.Easy,
-        Callback = function(v)
-            SetSetting("Easy", v)
-
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Easy.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
-        end
-    })
-
-    Strategies:Section({Title = "Other Strategies"})
-    Strategies:Toggle({
-        Title = "Hardcore Mode",
-        Desc = "Towers:\nFarm,\nGolden Scout,\nDJ Booth,\nCommander,\nElectroshocker,\nRanger,\nFreezer,\nGolden Minigunner",
-        Value = Globals.Hardcore,
-        Callback = function(v)
-            SetSetting("Hardcore", v)
-
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Hardcore.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
-        end
-    })
-]]
+end
 end
 
 Window:Line()
