@@ -2774,7 +2774,33 @@ local function GetOwnedTowers()
                                     if string.find(scroller.Name, "scrolling") then
                                         for _, frame in ipairs(scroller:GetChildren()) do
                                             if frame:IsA("Frame") and frame.Name ~= "UIListLayout" then
-                                                table.insert(towers, frame.Name)
+                                                local owned = false
+                                                local main = frame:FindFirstChild("main")
+                                                if main then
+                                                    local topThing = main:FindFirstChild("topThing")
+                                                    if topThing then
+                                                        if not topThing.Visible then
+                                                            owned = true
+                                                        else
+                                                            local icon = topThing:FindFirstChild("icon")
+                                                            if icon and icon:IsA("ImageLabel") then
+                                                                local image = icon.Image
+                                                                if image ~= "rbxassetid://8418293221" then
+                                                                    owned = true
+                                                                end
+                                                            else
+                                                                owned = true
+                                                            end
+                                                        end
+                                                    else
+                                                        owned = true
+                                                    end
+                                                else
+                                                    owned = true
+                                                end
+                                                if owned then
+                                                    table.insert(towers, frame.Name)
+                                                end
                                             end
                                         end
                                     end
