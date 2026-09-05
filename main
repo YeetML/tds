@@ -2693,23 +2693,12 @@ end
 
 Window:Line()
 
--- Safe Logger (CreateLogger does not exist in the UI library)
-local LoggerTab = Window:Tab({Title = "Logger", Icon = "terminal"}) do
-    LoggerTab:Label({
-        Title = "STRATEGY LOGGER",
-        Desc = "Logger is currently using console output (print)."
+Logger = Window:Tab({Title = "Logger", Icon = "terminal"}) do
+    Logger = Logger:CreateLogger({
+        Title = "STRATEGY LOGGER:",
+        Size = UDim2.new(0, 330, 0, 300)
     })
 end
-
--- Fake Logger object so the rest of the script doesn't error
-Logger = {
-    Log = function(_, msg)
-        print("[Logger]", msg)
-    end,
-    Clear = function()
-        print("[Logger] Cleared")
-    end
-}
 
 Window:Line()
 
