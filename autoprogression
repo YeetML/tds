@@ -221,7 +221,18 @@ local function OwnsTower(towerName)
                                             if main then
                                                 local topThing = main:FindFirstChild("topThing")
                                                 if topThing then
-                                                    return not topThing.Visible
+                                                    if not topThing.Visible then
+                                                        return true
+                                                    end
+                                                    local icon = topThing:FindFirstChild("icon")
+                                                    if icon and icon:IsA("ImageLabel") then
+                                                        local image = icon.Image
+                                                        if image == "rbxassetid://8418293221" then
+                                                            return false
+                                                        end
+                                                        return true
+                                                    end
+                                                    return true
                                                 end
                                             end
                                         end
