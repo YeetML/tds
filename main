@@ -2628,7 +2628,6 @@ local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) d
 
     Strategies:Section({Title = "Auto Trials"})
 
--- Hardcoded trial script URLs (copied from the external module)
 local trialScripts = {
     ["Speedy Enemies"]        = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Speedy.lua",
     ["Glass"]                 = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Glass.lua",
@@ -2639,14 +2638,42 @@ local trialScripts = {
     ["Jailed"]                = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Jailed.lua",
     ["Exploding Enemies"]     = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Exploading.lua",
     ["Inflation"]             = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Inflation.lua",
-    ["Committed"]             = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Committed.lua",  -- if available
+    ["Committed"]             = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Committed.lua",
     ["Hidden Enemies"]        = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Hidden.lua",
     ["Hidden"]                = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Hidden.lua",
     ["Broke"]                 = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/StratsFunc/Broke.lua",
     ["Healthy Enemies"]       = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Healthy.lua"
 }
 
--- Helper: get current trial from replicators (safe)
+local trialConfigs = {
+    ["Speedy Enemies"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "Trapper"}, SkillTree = {} },
+    ["Glass"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "Trapper"}, SkillTree = {} },
+    ["Quarantine"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
+    ["Fog"] = { Level = 175, Towers = {"Trapper", "Hacker", "Gatling Gun", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
+    ["Limitation"] = { Level = 175, Towers = {"Trapper", "Hacker", "Gatling Gun", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
+    ["Flying"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
+    ["Jailed"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "Military Base"}, SkillTree = {} },
+    ["Exploding Enemies"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
+    ["Inflation"] = { Level = 175, Towers = {"Ace Pilot", "Trapper", "Gatling Gun", "DJ Booth", "Medic"}, SkillTree = {} },
+    ["Committed"] = { Level = 175, Towers = {"Placeholder"}, SkillTree = {} },
+    ["Hidden"] = { Level = 175, Towers = {"Gatling Gun", "Hacker", "Mercenary Base", "Trapper", "DJ Booth"}, SkillTree = {} },
+    ["Broke"] = { Level = 175, Towers = {"Gatling Gun", "Militant", "Medic", "Trapper", "DJ Booth"}, SkillTree = {} },
+    ["Healthy Enemies"] = {
+        Level = 175,
+        Towers = {"Ace Pilot", "Mercenary Base", "DJ Booth", "Gatling Gun", "Medic"},
+        SkillTree = {
+            ["Bigger Budget"] = 10,
+            ["Fortify"] = 10,
+            ["Stonks"] = 10,
+            ["Over-Heal"] = 10,
+            ["Bandages"] = 10,
+            ["Accelerator"] = 10,
+            ["Enhanced Optics"] = 10,
+            ["Resourcefulness"] = 10,
+        }
+    }
+}
+
 local function getCurrentTrial()
     local stateRep = game:GetService("ReplicatedStorage"):FindFirstChild("StateReplicators")
     if stateRep then
@@ -2662,91 +2689,57 @@ local function getCurrentTrial()
         end
     end
     return nil
-end
+}
 
--- Load the external module (but we'll override its critical functions)
-local AutoTrialsModule
-local success, result = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials"))()
-end)
-if success and type(result) == "table" then
-    AutoTrialsModule = result
-
-    -- Override GetInfo (safe, no filtergc)
-    AutoTrialsModule.GetInfo = function()
-        local trial = getCurrentTrial()
-        if trial then
-            return trial, "See game", true, {}
-        end
-        return "No Active Trial", "None required", true, {}
-    end
-
-    -- Override Run (safe, no filtergc, uses our own logic)
-    AutoTrialsModule.Run = function()
-        local trialName = getCurrentTrial()
-        if not trialName then
-            warn("[AutoTrials] No active trial found.")
-            return
-        end
-
-        if GameState == "LOBBY" then
-            -- Save trial name for later
-            if writefile and makefolder then
-                pcall(makefolder, "GlobalConfigs")
-                pcall(writefile, "GlobalConfigs/trialscript.txt", trialName)
-            end
-            -- Start trial match using TDS
-            if TDS and TDS.Mode then
-                TDS:Mode("Trial")
-                Window:Notify({Title = "AutoTrials", Desc = "Joined trial for " .. trialName, Time = 3})
-            else
-                warn("[AutoTrials] TDS:Mode not available.")
-            end
-            return
-        end
-
-        if GameState == "GAME" then
-            -- Read saved trial name (or fallback to current)
-            local savedTrial = nil
-            if isfile then
-                pcall(function()
-                    savedTrial = readfile("GlobalConfigs/trialscript.txt")
-                end)
-            end
-            local targetTrial = savedTrial or trialName
-            local scriptUrl = trialScripts[targetTrial]
-            if not scriptUrl then
-                warn("[AutoTrials] No script found for trial: " .. targetTrial)
-                return
-            end
-            -- Load and execute the strategy
-            local ok, err = pcall(function()
-                local chunk = game:HttpGet(scriptUrl)
-                local fn = loadstring(chunk)
-                if fn then fn() end
-            end)
-            if ok then
-                Window:Notify({Title = "AutoTrials", Desc = "Running strategy for " .. targetTrial, Time = 3})
-            else
-                warn("[AutoTrials] Error executing script: " .. tostring(err))
+local function getSkillLevels()
+    local skills = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("SurfaceGui") and obj.Name == "TileSurfaceGui" then
+            local frame = obj:FindFirstChild("Frame")
+            if frame then
+                local skillName = frame:FindFirstChild("SkillName")
+                local skillLevel = frame:FindFirstChild("SkillLevel")
+                if skillName and skillLevel then
+                    local name = skillName.Text
+                    local levelText = skillLevel.Text
+                    local current = 0
+                    if levelText:find("MAX") then
+                        local maxMatch = levelText:match("%[(%d+)%]")
+                        if maxMatch then current = tonumber(maxMatch) or 0 end
+                    else
+                        local parts = {}
+                        for part in levelText:gmatch("[^/]+") do
+                            table.insert(parts, part)
+                        end
+                        if #parts == 2 then
+                            current = tonumber(parts[1]) or 0
+                        end
+                    end
+                    skills[name] = current
+                end
             end
         end
     end
-else
-    -- Fallback if module fails to load
-    AutoTrialsModule = {
-        GetInfo = function()
-            local trial = getCurrentTrial()
-            if trial then return trial, "See game", true, {} end
-            return "No Active Trial", "None required", true, {}
-        end,
-        Run = function()
-            warn("[AutoTrials] Fallback Run not implemented.")
-        end
-    }
+    return skills
 end
 
--- Create the UI labels (they will be updated dynamically)
+local function checkSkillRequirements(trialName)
+    local config = trialConfigs[trialName]
+    if not config or not config.SkillTree or next(config.SkillTree) == nil then
+        return true, {}
+    end
+
+    local skills = getSkillLevels()
+    local missing = {}
+    for skillName, requiredLevel in pairs(config.SkillTree) do
+        local current = skills[skillName] or 0
+        if current < requiredLevel then
+            table.insert(missing, string.format("%s (Required: %d, Current: %d)", skillName, requiredLevel, current))
+        end
+    end
+    return #missing == 0, missing
+end
+
 local Trial = Strategies:Label({
     Title = "Current Trial: Loading...",
     Desc = "Required: Loading..."
@@ -2757,24 +2750,16 @@ local ReqMet = Strategies:Label({
     Desc = ""
 })
 
--- Update function for labels
 local function updateTrialLabels()
-    local trialName, trialTowers, isPassed, missing = "Unknown", "None", false, {}
-    pcall(function()
-        trialName, trialTowers, isPassed, missing = AutoTrialsModule.GetInfo()
-    end)
+    local trialName = getCurrentTrial() or "No Active Trial"
     pcall(function()
         Trial:SetTitle("Current Trial: " .. tostring(trialName))
-        Trial:SetDesc("Required: " .. tostring(trialTowers))
-    end)
-    local missingText = (type(missing) == "table" and #missing > 0) and table.concat(missing, ", ") or "None"
-    pcall(function()
-        ReqMet:SetTitle(isPassed and "Requirements: Met ✓" or "Requirements: Missing")
-        ReqMet:SetDesc(isPassed and "All requirements satisfied." or missingText)
+        Trial:SetDesc(trialName ~= "No Active Trial" and "See game for requirements" or "None required")
+        ReqMet:SetTitle(trialName ~= "No Active Trial" and "Requirements: Met ✓" or "Requirements: N/A")
+        ReqMet:SetDesc(trialName ~= "No Active Trial" and "Trial is active." or "No trial currently available.")
     end)
 end
 
--- Update immediately and poll every 3 seconds
 updateTrialLabels()
 task.spawn(function()
     while true do
@@ -2783,13 +2768,10 @@ task.spawn(function()
     end
 end)
 
--- Listen for attribute changes
 task.spawn(function()
     local rep = game:GetService("ReplicatedStorage"):FindFirstChild("StateReplicators")
     if rep then
-        local function onTrialChange()
-            updateTrialLabels()
-        end
+        local function onTrialChange() updateTrialLabels() end
         local gameStateRep = rep:FindFirstChild("GameStateReplicator")
         if gameStateRep then
             gameStateRep:GetAttributeChangedSignal("GlobalTrial"):Connect(onTrialChange)
@@ -2801,19 +2783,64 @@ task.spawn(function()
     end
 end)
 
--- The toggle that calls AutoTrialsModule.Run()
 Strategies:Toggle({
     Title = "Run Auto Trials",
-    Desc = "Starts the current trial and runs the strategy (no verification).",
+    Desc = "Checks skills and starts the trial.",
     Value = Globals.AutoTrials,
     Callback = function(v)
         SetSetting("AutoTrials", v)
         if not v then return end
+
         task.spawn(function()
-            if type(AutoTrialsModule.Run) == "function" then
-                AutoTrialsModule.Run()
-            else
-                warn("[AutoTrials] Run function not available.")
+            local trialName = getCurrentTrial()
+            if not trialName then
+                Window:Notify({Title = "AutoTrials", Desc = "No active trial found.", Time = 3, Type = "error"})
+                return
+            end
+
+            local passed, missing = checkSkillRequirements(trialName)
+            if not passed then
+                local msg = "Missing skills:\n" .. table.concat(missing, "\n")
+                Window:Notify({Title = "AutoTrials", Desc = msg, Time = 10, Type = "error"})
+                return
+            end
+
+            if GameState == "LOBBY" then
+                if writefile and makefolder then
+                    pcall(makefolder, "GlobalConfigs")
+                    pcall(writefile, "GlobalConfigs/trialscript.txt", trialName)
+                end
+                if TDS and TDS.Mode then
+                    TDS:Mode("Trial")
+                    Window:Notify({Title = "AutoTrials", Desc = "Joined trial for " .. trialName, Time = 3})
+                end
+                return
+            end
+
+            if GameState == "GAME" then
+                local savedTrial = nil
+                if isfile then
+                    pcall(function()
+                        savedTrial = readfile("GlobalConfigs/trialscript.txt")
+                    end)
+                end
+                local targetTrial = savedTrial or trialName
+                local scriptUrl = trialScripts[targetTrial]
+                if not scriptUrl then
+                    Window:Notify({Title = "AutoTrials", Desc = "No strategy for " .. targetTrial, Time = 3, Type = "error"})
+                    return
+                end
+                local ok, err = pcall(function()
+                    local chunk = game:HttpGet(scriptUrl)
+                    local fn = loadstring(chunk)
+                    if fn then fn() end
+                end)
+                if ok then
+                    Window:Notify({Title = "AutoTrials", Desc = "Running strategy for " .. targetTrial, Time = 3})
+                else
+                    warn("[AutoTrials] Error: " .. tostring(err))
+                    Window:Notify({Title = "AutoTrials", Desc = "Failed to load strategy.", Time = 3, Type = "error"})
+                end
             end
         end)
     end
