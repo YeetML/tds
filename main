@@ -1,6 +1,5 @@
 local Globals = getgenv()
 
--- [FEATURE 1] AutoProgSettings lock system
 _G.AutoProgSettings = _G.AutoProgSettings or {}
 
 if shared.TDSTable then
