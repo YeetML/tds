@@ -2737,6 +2737,87 @@ local function checkSkillRequirements(trialName)
     return #missing == 0, missing
 end
 
+local function OpenInventory()
+    local network = game:GetService("ReplicatedStorage"):FindFirstChild("Network")
+    if not network then return false end
+    local inventory = network:FindFirstChild("Inventory")
+    if not inventory then return false end
+    local openRemote = inventory:FindFirstChild("URE:OpenInventory")
+    if not openRemote then return false end
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if pg and pg:FindFirstChild("ReactUniversalInventoryView") then
+        return true
+    end
+    openRemote:FireServer()
+    task.wait(2)
+    return true
+end
+
+local function GetOwnedTowers()
+    local towers = {}
+    OpenInventory()
+    for attempt = 1, 15 do
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        if pg then
+            local inv = pg:FindFirstChild("ReactUniversalInventoryView")
+            if inv then
+                local holder = inv:FindFirstChild("Holder")
+                if holder then
+                    local windowFrame = holder:FindFirstChild("windowFrame")
+                    if windowFrame then
+                        local towersFrame = windowFrame:FindFirstChild("towersInventoryFrame")
+                        if towersFrame then
+                            local towerContainer = towersFrame:FindFirstChild("towerContainer")
+                            if towerContainer then
+                                task.wait(0.5)
+                                for _, scroller in ipairs(towerContainer:GetChildren()) do
+                                    if string.find(scroller.Name, "scrolling") then
+                                        for _, frame in ipairs(scroller:GetChildren()) do
+                                            if frame:IsA("Frame") and frame.Name ~= "UIListLayout" then
+                                                table.insert(towers, frame.Name)
+                                            end
+                                        end
+                                    end
+                                end
+                                return towers
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.5)
+    end
+    warn("[AutoTrials] Timeout waiting for inventory UI – tower check may be incomplete.")
+    return towers
+end
+
+local function checkTowerRequirements(trialName)
+    local config = trialConfigs[trialName]
+    if not config or not config.Towers or #config.Towers == 0 then
+        return true, {}
+    end
+
+    local owned = GetOwnedTowers()
+    local missing = {}
+    for _, req in ipairs(config.Towers) do
+        if req == "Placeholder" then
+            continue
+        end
+        local found = false
+        for _, o in ipairs(owned) do
+            if o == req then
+                found = true
+                break
+            end
+        end
+        if not found then
+            table.insert(missing, req)
+        end
+    end
+    return #missing == 0, missing
+end
+
 local Trial = Strategies:Label({
     Title = "Current Trial: Loading...",
     Desc = "Required: Loading..."
@@ -2782,7 +2863,7 @@ end)
 
 Strategies:Toggle({
     Title = "Run Auto Trials",
-    Desc = "Checks skills and starts the trial.",
+    Desc = "Checks skills & towers, then starts the trial.",
     Value = Globals.AutoTrials,
     Callback = function(v)
         SetSetting("AutoTrials", v)
@@ -2795,9 +2876,16 @@ Strategies:Toggle({
                 return
             end
 
-            local passed, missing = checkSkillRequirements(trialName)
-            if not passed then
-                local msg = "Missing skills:\n" .. table.concat(missing, "\n")
+            local skillPass, skillMissing = checkSkillRequirements(trialName)
+            if not skillPass then
+                local msg = "Missing skills:\n" .. table.concat(skillMissing, "\n")
+                Window:Notify({Title = "AutoTrials", Desc = msg, Time = 10, Type = "error"})
+                return
+            end
+
+            local towerPass, towerMissing = checkTowerRequirements(trialName)
+            if not towerPass then
+                local msg = "Missing towers:\n" .. table.concat(towerMissing, "\n")
                 Window:Notify({Title = "AutoTrials", Desc = msg, Time = 10, Type = "error"})
                 return
             end
