@@ -2689,7 +2689,7 @@ local function getCurrentTrial()
         end
     end
     return nil
-}
+end
 
 local function getSkillLevels()
     local skills = {}
