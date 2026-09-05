@@ -2663,7 +2663,7 @@ local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) d
 
             task.spawn(function()
                 local successLoad, module = pcall(function()
-                    return loadstring(game:HttpGet("https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/NewFunc/AutoTrials.lua"))()
+                    return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials"))()
                 end)
 
                 if not successLoad or type(module) ~= "table" then return end
