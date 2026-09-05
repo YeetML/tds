@@ -2626,7 +2626,6 @@ local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) d
         end
     })
 
-local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) do
     Strategies:Section({Title = "Auto Trials"})
 
     local success, AutoTrialsModule = pcall(function()
@@ -2690,7 +2689,6 @@ local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) d
             end)
         end
     })
-end
 end
 
 Window:Line()
