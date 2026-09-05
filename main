@@ -2642,23 +2642,55 @@ else
     }
 end
 
--- Safely get info
-local trialName, trialTowers, isPassed, missing = "Unknown", "None", false, {}
-pcall(function()
-    trialName, trialTowers, isPassed, missing = AutoTrialsModule.GetInfo()
-end)
-
+-- Create labels with temporary placeholders
 local Trial = Strategies:Label({
-    Title = "Current Trial: " .. tostring(trialName),
-    Desc = "Required: " .. tostring(trialTowers)
+    Title = "Current Trial: Loading...",
+    Desc = "Required: Loading..."
 })
-
-local missingText = (type(missing) == "table" and #missing > 0) and table.concat(missing, ", ") or "None"
 
 local ReqMet = Strategies:Label({
-    Title = isPassed and "Requirements: Met ✓" or "Requirements: Missing",
-    Desc = isPassed and "All requirements satisfied." or missingText
+    Title = "Requirements: Checking...",
+    Desc = ""
 })
+
+-- Function to update the labels
+local function updateTrialLabels()
+    local trialName, trialTowers, isPassed, missing = "Unknown", "None", false, {}
+    pcall(function()
+        trialName, trialTowers, isPassed, missing = AutoTrialsModule.GetInfo()
+    end)
+    pcall(function()
+        Trial:SetTitle("Current Trial: " .. tostring(trialName))
+        Trial:SetDesc("Required: " .. tostring(trialTowers))
+    end)
+    local missingText = (type(missing) == "table" and #missing > 0) and table.concat(missing, ", ") or "None"
+    pcall(function()
+        ReqMet:SetTitle(isPassed and "Requirements: Met ✓" or "Requirements: Missing")
+        ReqMet:SetDesc(isPassed and "All requirements satisfied." or missingText)
+    end)
+end
+
+-- Run update immediately (may still be empty, but will retry)
+updateTrialLabels()
+
+-- Listen for trial changes (if the replicator appears later)
+task.spawn(function()
+    local rep = game:GetService("ReplicatedStorage"):FindFirstChild("StateReplicators")
+    if rep then
+        local trialRep = rep:FindFirstChild("TrialsStateReplicator")
+        if trialRep then
+            trialRep:GetAttributeChangedSignal("GlobalTrial"):Connect(updateTrialLabels)
+        end
+    end
+end)
+
+-- Also poll every 3 seconds as a fallback
+task.spawn(function()
+    while true do
+        updateTrialLabels()
+        task.wait(3)
+    end
+end)
 
 Strategies:Toggle({
     Title = "Run Auto Trials",
