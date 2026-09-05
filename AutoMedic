@@ -5,6 +5,17 @@
     - Patient wait on current Medic
     - Claim-aware + circular range filter
     - clearAllSelected before attach + after uber (fixes stuck Medic claims)
+
+    CHANGES in this version:
+    - toggleOne/attachTargets/clearAllSelected/detachTargets rewritten to
+      fire toggles as one concurrent batch (still instant), then verify
+      once and retry ONLY the specific UIDs the server's concurrent-write
+      race dropped, instead of firing-and-forgetting and silently losing
+      targets when capacity > 1.
+    - AutoMedic.Chain toggle-off (and restart) now force-runs cleanup
+      (stopWatch + clearAllSelected) on whatever medic/watch was active
+      when it was cancelled, instead of leaving a stuck selection and a
+      leaked TowersSelected-changed connection running forever.
 ]]
 local Players           = game:GetService("Players")
 local Workspace         = game:GetService("Workspace")
@@ -19,6 +30,8 @@ local Globals        = getgenv()
 local AutoMedic = {}
 local activeLoops       = {}
 local activeChainThread = nil
+local activeChainMedic     = nil -- medic currently mid-cycle in Chain, if any
+local activeChainStopWatch = nil -- its reattach-watch disconnector, if any
 local MEDIC_ABILITY_ICON = "rbxassetid://231100685"
 local RANGE_SLACK        = 0.5
 local CAPACITY_BY_LEVEL = {
@@ -34,6 +47,10 @@ local EXCLUDED_TOWERS = {
     ["dj booth"] = true,
     ["djbooth"] = true,
 }
+-- Batch-toggle tuning
+local BATCH_POLL_INTERVAL = 0.03
+local BATCH_POLL_TIMEOUT  = 0.35
+local MAX_BATCH_ROUNDS    = 4
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
@@ -314,60 +331,132 @@ local function activateUbercharge(medic)
         })
     end)
 end
-local function toggleOne(medic, tower)
+
+-- Fire-and-forget single toggle. No waiting here — this is what keeps
+-- batches "instant." Confirmation/retry happens in runToggleBatch.
+local function fireToggle(medic, tower)
     if not RemoteFunction or not IsAlive(medic) or not IsAlive(tower) then return end
-    pcall(function()
-        RemoteFunction:InvokeServer(
-            "Troops", "TowerServerEvent", "ToggleSelectedTower",
-            medic, tower
-        )
+    task.spawn(function()
+        pcall(function()
+            RemoteFunction:InvokeServer(
+                "Troops", "TowerServerEvent", "ToggleSelectedTower",
+                medic, tower
+            )
+        end)
     end)
 end
--- Wipe EVERYTHING currently selected on this medic (ghost + real)
+
+-- Kept so startReattachWatch (below) can keep calling toggleOne(medic, tower)
+-- directly for single-target re-nudges without needing the batch machinery.
+local function toggleOne(medic, tower)
+    fireToggle(medic, tower)
+end
+
+-- Waits until every UID in wantMap ({[uid] = true/false}) matches its
+-- desired selected-state, or timeout elapses.
+local function waitForBatch(medic, wantMap, timeout)
+    local deadline = os.clock() + timeout
+    while os.clock() < deadline do
+        if not IsAlive(medic) then return false end
+        local sel = getSelectedUIDs(medic)
+        local allMatch = true
+        for uid, want in pairs(wantMap) do
+            if (sel[uid] and true or false) ~= want then
+                allMatch = false
+                break
+            end
+        end
+        if allMatch then return true end
+        task.wait(BATCH_POLL_INTERVAL)
+    end
+    return false
+end
+
+-- Fires every {tower, want} pair concurrently, verifies once, and only
+-- re-fires the stragglers on subsequent rounds instead of re-firing
+-- the whole batch or waiting on each item one at a time.
+local function runToggleBatch(medic, items) -- items: { {tower=t, want=bool}, ... }
+    if #items == 0 or not IsAlive(medic) then return end
+
+    local pending = items
+    for round = 1, MAX_BATCH_ROUNDS do
+        local wantMap = {}
+        for _, item in ipairs(pending) do
+            local uid = getTowerUID(item.tower)
+            if uid then wantMap[uid] = item.want end
+            fireToggle(medic, item.tower)
+        end
+
+        if next(wantMap) == nil then return end
+
+        local ok = waitForBatch(medic, wantMap, BATCH_POLL_TIMEOUT)
+        if ok or not IsAlive(medic) then return end
+
+        local sel = getSelectedUIDs(medic)
+        local stillPending = {}
+        for _, item in ipairs(pending) do
+            if IsAlive(item.tower) then
+                local uid = getTowerUID(item.tower)
+                if uid and (sel[uid] and true or false) ~= item.want then
+                    table.insert(stillPending, item)
+                end
+            end
+        end
+        pending = stillPending
+        if #pending == 0 then return end
+    end
+    -- Any remaining stragglers here get picked back up by
+    -- startReattachWatch for the rest of the active Uber window (attach
+    -- case), or simply left as-is (clear/detach case, rare).
+end
+
+-- Wipe EVERYTHING currently selected on this medic — fired as one
+-- concurrent batch, retried only on stragglers.
 local function clearAllSelected(medic)
     if not IsAlive(medic) then return end
     local selected = getSelectedUIDs(medic)
     if next(selected) == nil then return end
     local folder = Workspace:FindFirstChild("Towers")
     if not folder then return end
+
+    local items = {}
     for _, tower in ipairs(folder:GetChildren()) do
         local uid = getTowerUID(tower)
         if uid and selected[uid] and IsAlive(tower) then
-            task.spawn(toggleOne, medic, tower)
+            table.insert(items, { tower = tower, want = false })
         end
     end
-    task.wait(0.05)
+    runToggleBatch(medic, items)
 end
+
 local function attachTargets(medic, targets)
     local attached = {}
     local selected = getSelectedUIDs(medic)
-    local pending = {}
+    local items = {}
     for _, t in ipairs(targets) do
         if IsAlive(t) then
             table.insert(attached, t)
             local uid = getTowerUID(t)
             if not uid or not selected[uid] then
-                table.insert(pending, t)
+                table.insert(items, { tower = t, want = true })
             end
         end
     end
-    for _, t in ipairs(pending) do
-        task.spawn(toggleOne, medic, t)
-    end
+    runToggleBatch(medic, items)
     return attached
 end
+
 local function detachTargets(medic, attached)
     if not attached or #attached == 0 or not IsAlive(medic) then return end
-    local selected = getSelectedUIDs(medic)
+    local items = {}
     for _, t in ipairs(attached) do
         if IsAlive(t) then
-            local uid = getTowerUID(t)
-            if uid and selected[uid] then
-                task.spawn(toggleOne, medic, t)
-            end
+            table.insert(items, { tower = t, want = false })
         end
     end
+    runToggleBatch(medic, items)
 end
+
 local function startReattachWatch(medic, attached)
     local rep = GetReplicator(medic)
     if not rep then
@@ -603,11 +692,27 @@ end
 ----------------------------------------------------------------
 -- Public: Chain
 ----------------------------------------------------------------
+-- Force-runs cleanup for whatever medic/watch was active when the
+-- chain thread gets cancelled (toggle off, or a fresh restart while
+-- one was already running). This is what task.cancel alone can't do,
+-- since it kills the coroutine before it reaches its own cleanup code.
+local function chainCleanup()
+    if activeChainStopWatch then
+        pcall(activeChainStopWatch)
+        activeChainStopWatch = nil
+    end
+    if activeChainMedic then
+        clearAllSelected(activeChainMedic)
+        activeChainMedic = nil
+    end
+end
+
 function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
     if activeChainThread then
         task.cancel(activeChainThread)
         activeChainThread = nil
     end
+    chainCleanup()
     if toggle == false then
         return
     end
@@ -644,12 +749,16 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
             -- wipe ghosts so capacity is free and claims clear
             clearAllSelected(medic)
             local attached = attachTargets(medic, targets)
+            activeChainMedic = medic
             local started, baseline, ud, at, saw, stopWatch = TryStartUber(medic, attached)
+            activeChainStopWatch = stopWatch
             if started and baseline and ud and at then
                 WaitForUberEnd(attached, baseline, ud, at, saw)
             end
-            stopWatch()
+            if stopWatch then pcall(stopWatch) end
+            activeChainStopWatch = nil
             clearAllSelected(medic)
+            activeChainMedic = nil
             nextIdx += 1
         end
     end)
