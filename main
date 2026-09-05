@@ -203,8 +203,6 @@ local AutoBountyRunning = false
 local AutoRedeemRunning = false
 local CodesRedeemed = false
 local AutoDJ = nil
-
--- [FEATURE 5] Auto Upgrade variables
 local AutoUpgradeSelectedRunning = false
 local AutoUpgradeAllRunning = false
 
