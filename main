@@ -2897,7 +2897,6 @@ Strategies:Toggle({
                 end
                 RemoteFunc:InvokeServer("Multiplayer", "v2:start", { count = 1, mode = "Trials" })
                 Window:Notify({Title = "AutoTrials", Desc = "Joined trial for " .. trialName, Time = 3})
-                end
                 return
             end
 
