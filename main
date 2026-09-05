@@ -2626,20 +2626,20 @@ local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) d
     Strategies:Section({Title = "Auto Trials"})
 
 local trialScripts = {
-    ["Speedy Enemies"]        = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Speedy.lua",
-    ["Glass"]                 = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Glass.lua",
-    ["Quarantine"]            = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Quarantine.lua",
-    ["Fog"]                   = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Fog.lua",
-    ["Limitation"]            = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Limitation.lua",
-    ["Flying"]                = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Flying.lua",
-    ["Jailed"]                = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Jailed.lua",
-    ["Exploding Enemies"]     = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Exploading.lua",
-    ["Inflation"]             = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Inflation.lua",
+    ["Speedy Enemies"]        = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Speedy.lua",
+    ["Glass"]                 = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Glass.lua",
+    ["Quarantine"]            = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Quarantine.lua",
+    ["Fog"]                   = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Fog.lua",
+    ["Limitation"]            = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Limitation.lua",
+    ["Flying"]                = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Flying.lua",
+    ["Jailed"]                = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Jailed.lua",
+    ["Exploding Enemies"]     = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Exploding.lua",
+    ["Inflation"]             = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Inflation.lua",
     ["Committed"]             = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Committed.lua",
-    ["Hidden Enemies"]        = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Hidden.lua",
-    ["Hidden"]                = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Hidden.lua",
-    ["Broke"]                 = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/StratsFunc/Broke.lua",
-    ["Healthy Enemies"]       = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Healthy.lua"
+    ["Hidden Enemies"]        = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Hidden.lua",
+    ["Hidden"]                = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Hidden.lua",
+    ["Broke"]                 = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Broke.lua",
+    ["Healthy Enemies"]       = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Healthy.lua"
 }
 
 local trialConfigs = {
