@@ -2636,45 +2636,24 @@ end)
 if success and type(result) == "table" then
     AutoTrialsModule = result
 
-    -- 🔧 PATCH: Override GetInfo to also check GameStateReplicator
-    local originalGetInfo = AutoTrialsModule.GetInfo
+    -- 🔧 SAFE OVERRIDE: bypass the module's internal functions (which use filtergc)
     AutoTrialsModule.GetInfo = function()
-        -- First try the original (which checks TrialsStateReplicator)
-        local trialName, trialTowers, isPassed, missing = originalGetInfo()
-        if trialName ~= "No Active Trial" then
-            return trialName, trialTowers, isPassed, missing
-        end
-
-        -- Fallback: check GameStateReplicator for GlobalTrial
         local stateRep = game:GetService("ReplicatedStorage"):FindFirstChild("StateReplicators")
         if stateRep then
+            -- Check GameStateReplicator first (most common)
             local gameStateRep = stateRep:FindFirstChild("GameStateReplicator")
             if gameStateRep then
                 local globalTrial = gameStateRep:GetAttribute("GlobalTrial")
                 if globalTrial and globalTrial ~= "" then
-                    -- We need to match it to a config key, use normalizeString
-                    local function normalizeString(str)
-                        if not str then return "" end
-                        return string.lower(string.gsub(str, "%s+", ""))
-                    end
-                    local normalized = normalizeString(globalTrial)
-                    for configName, _ in pairs(trialConfigs) do
-                        if normalizeString(configName) == normalized then
-                            local config = trialConfigs[configName]
-                            local towersList = {}
-                            if config.Towers then
-                                for _, t in ipairs(config.Towers) do table.insert(towersList, t) end
-                            end
-                            if config.Golden then
-                                for _, g in ipairs(config.Golden) do table.insert(towersList, "Golden " .. g) end
-                            end
-                            local desc = (#towersList > 0) and table.concat(towersList, ", ") or "None"
-                            local isPassed, missing = verifyTrialRequirements(configName)
-                            return configName, desc, isPassed, missing
-                        end
-                    end
-                    -- If no config match, return the raw trial name
-                    return globalTrial, "No configuration found", true, {}
+                    return globalTrial, "See game", true, {}
+                end
+            end
+            -- Also check TrialsStateReplicator
+            local trialsRep = stateRep:FindFirstChild("TrialsStateReplicator")
+            if trialsRep then
+                local globalTrial = trialsRep:GetAttribute("GlobalTrial")
+                if globalTrial and globalTrial ~= "" then
+                    return globalTrial, "See game", true, {}
                 end
             end
         end
