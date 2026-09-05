@@ -2628,67 +2628,80 @@ local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) d
 
     Strategies:Section({Title = "Auto Trials"})
 
-    local success, AutoTrialsModule = pcall(function()
-        return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials"))()
-    end)
+local AutoTrialsModule
+local success, result = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials"))()
+end)
 
-    if not success or type(AutoTrialsModule) ~= "table" then
-        AutoTrialsModule = {
-            GetInfo = function() return "Unknown", "None", false, {} end,
-            Run = function() end
-        }
-    end
+if success and type(result) == "table" then
+    AutoTrialsModule = result
+else
+    AutoTrialsModule = {
+        GetInfo = function() return "Unknown", "None", false, {} end,
+        Run = function() end
+    }
+end
 
-    local trialName, trialTowers, isPassed, missing = AutoTrialsModule.GetInfo()
+-- Safely get info
+local trialName, trialTowers, isPassed, missing = "Unknown", "None", false, {}
+pcall(function()
+    trialName, trialTowers, isPassed, missing = AutoTrialsModule.GetInfo()
+end)
 
-    local Trial = Strategies:Label({
-        Title = "Current Trial: " .. tostring(trialName),
-        Desc = "Required Towers/Items: " .. tostring(trialTowers)
-    })
+local Trial = Strategies:Label({
+    Title = "Current Trial: " .. tostring(trialName),
+    Desc = "Required: " .. tostring(trialTowers)
+})
 
-    local missingText = (type(missing) == "table" and #missing > 0) and table.concat(missing, ", ") or "None"
+local missingText = (type(missing) == "table" and #missing > 0) and table.concat(missing, ", ") or "None"
 
-    local ReqMet = Strategies:Label({
-        Title = isPassed and "Met!" or "Missing Towers",
-        Desc = isPassed and "All requirements satisfied." or missingText
-    })
+local ReqMet = Strategies:Label({
+    Title = isPassed and "Requirements: Met ✓" or "Requirements: Missing",
+    Desc = isPassed and "All requirements satisfied." or missingText
+})
 
-    Strategies:Toggle({
-        Title = "Run",
-        Desc = "Enables auto trials dynamically based on requirements.",
-        Value = Globals.AutoTrials,
-        Callback = function(v)
-            SetSetting("AutoTrials", v)
-            if not v then return end
+Strategies:Toggle({
+    Title = "Run Auto Trials",
+    Desc = "Starts the current trial if requirements are met",
+    Value = Globals.AutoTrials,
+    Callback = function(v)
+        SetSetting("AutoTrials", v)
+        if not v then return end
 
-            task.spawn(function()
-                local successLoad, module = pcall(function()
-                    return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials"))()
-                end)
-
-                if not successLoad or type(module) ~= "table" then return end
-
-                local name, towers, passed, miss = module.GetInfo()
-
-                Trial:SetTitle("Current Trial: " .. tostring(name))
-                Trial:SetDesc("Required Towers/Items: " .. tostring(towers))
-
-                if passed then
-                    ReqMet:SetTitle("Met!")
-                    ReqMet:SetDesc("All requirements satisfied.")
-                else
-                    local missText = (type(miss) == "table" and #miss > 0) and table.concat(miss, ", ") or tostring(miss)
-                    ReqMet:SetTitle("Missing Towers")
-                    ReqMet:SetDesc(missText)
-                    return
-                end
-
-                if type(module.Run) == "function" then
-                    module.Run()
-                end
+        task.spawn(function()
+            local ok, module = pcall(function()
+                return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials"))()
             end)
-        end
-    })
+            if not ok or type(module) ~= "table" then return end
+
+            local name, towers, passed, miss = "Unknown", "None", false, {}
+            pcall(function()
+                name, towers, passed, miss = module.GetInfo()
+            end)
+
+            pcall(function()
+                Trial:SetTitle("Current Trial: " .. tostring(name))
+                Trial:SetDesc("Required: " .. tostring(towers))
+            end)
+
+            if passed then
+                pcall(function()
+                    ReqMet:SetTitle("Requirements: Met ✓")
+                    ReqMet:SetDesc("All requirements satisfied.")
+                end)
+                if type(module.Run) == "function" then
+                    pcall(module.Run)
+                end
+            else
+                local missText = (type(miss) == "table" and #miss > 0) and table.concat(miss, ", ") or "Unknown"
+                pcall(function()
+                    ReqMet:SetTitle("Requirements: Missing")
+                    ReqMet:SetDesc(missText)
+                end)
+            end
+        end)
+    end
+})
 end
 
 Window:Line()
