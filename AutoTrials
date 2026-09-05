@@ -3,7 +3,7 @@ local ReplicatedStorage = ReplicatedStorage or game:GetService("ReplicatedStorag
 local LocalPlayer = Players.LocalPlayer
 
 local success, result = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/NewFunc/PlayerDataHandler.lua"))()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/PlayerDataHandler"))()
 end)
 
 if not success then
