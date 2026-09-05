@@ -2895,9 +2895,8 @@ Strategies:Toggle({
                     pcall(makefolder, "GlobalConfigs")
                     pcall(writefile, "GlobalConfigs/trialscript.txt", trialName)
                 end
-                local RemoteFunc = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
-    RemoteFunc:InvokeServer("Multiplayer", "v2:start", { count = 1, mode = "Trials" })
-                    Window:Notify({Title = "AutoTrials", Desc = "Joined trial for " .. trialName, Time = 3})
+                RemoteFunc:InvokeServer("Multiplayer", "v2:start", { count = 1, mode = "Trials" })
+                Window:Notify({Title = "AutoTrials", Desc = "Joined trial for " .. trialName, Time = 3})
                 end
                 return
             end
