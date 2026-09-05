@@ -145,11 +145,28 @@ local function normalizeString(str)
 end
 
 local function getCurrentTrialName()
-    local stateReplicators = ReplicatedStorage:FindFirstChild("StateReplicators")
-    local trialsReplicator = stateReplicators and stateReplicators:FindFirstChild("TrialsStateReplicator")
+    local stateReplicators = game:GetService("ReplicatedStorage"):FindFirstChild("StateReplicators")
+    if not stateReplicators then return nil end
+
+    local trialsReplicator = stateReplicators:FindFirstChild("TrialsStateReplicator")
+        or stateReplicators:FindFirstChild("TrialsStateReplicators")
+
     if trialsReplicator then
-        return trialsReplicator:GetAttribute("GlobalTrial")
+        local trial = trialsReplicator:GetAttribute("GlobalTrial")
+        if trial and trial ~= "" then
+            return trial
+        end
     end
+
+    -- Extra fallback
+    local gameState = stateReplicators:FindFirstChild("GameStateReplicator")
+    if gameState then
+        local trial = gameState:GetAttribute("GlobalTrial")
+        if trial and trial ~= "" then
+            return trial
+        end
+    end
+
     return nil
 end
 
