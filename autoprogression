@@ -966,6 +966,7 @@ RunYeetEasy = function()
     end
     runningEasy = false
 end
+end
 
 local runningFrost = false
 local function RunFrostStrategy()
