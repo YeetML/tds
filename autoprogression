@@ -908,44 +908,62 @@ local function RunYeetEasy()
         SetStatus("No Easy maps – teleporting to lobby")
         SmartTeleportToLobby()
     else
-        local chosen = nil
-        for _, strategy in ipairs(EasyStrategies) do
-            local reqs = EasyTowerRequirements[strategy.name] or {}
-            local feasible = true
-            for _, req in ipairs(reqs) do
-                local towerName = req[1]
-                local cost = req[2] or 0
-                if not OwnsTower(towerName) then
-                    local coins = GetStat("Coins")
-                    if coins < cost then
-                        feasible = false
-                        break
-                    end
+    -- In lobby: prefer strategies that require towers we can afford to buy
+    local chosen = nil
+    local fallback = nil
+
+    for _, strategy in ipairs(EasyStrategies) do
+        local reqs = EasyTowerRequirements[strategy.name] or {}
+        local feasible = true
+        local needsBuying = false
+        local canAfford = true
+
+        for _, req in ipairs(reqs) do
+            local towerName = req[1]
+            local cost = req[2] or 0
+            if not OwnsTower(towerName) then
+                needsBuying = true
+                local coins = GetStat("Coins")
+                if coins < cost then
+                    canAfford = false
+                    feasible = false
+                    break
                 end
-            end
-            if feasible then
-                chosen = strategy
-                break
             end
         end
 
-        if chosen then
-            local reqs = EasyTowerRequirements[chosen.name] or {}
-            if #reqs > 0 then
-                AutoBuyTowers(reqs)
+        if feasible then
+            if needsBuying then
+                -- This strategy requires towers we can afford – pick it immediately
+                chosen = strategy
+                break
+            else
+                -- Fully owned, keep as fallback
+                fallback = strategy
             end
-            ApplyStrategySettings(chosen)
-            task.wait(0.3)
-            print("[AutoProgression] In lobby, selected Easy: " .. chosen.name)
-            SetStatus("In lobby – loading Easy: " .. chosen.name)
-            loadstring(game:HttpGet(chosen.url))()
-            StartPostMatchLobbyWatcher()
-        else
-            SetStatus("Cannot afford any Easy towers – returning to lobby")
-            SmartTeleportToLobby()
         end
-        runningEasy = false
     end
+
+    if not chosen then
+        chosen = fallback  -- if no strategy needs buying, use the first fully owned one
+    end
+
+    if chosen then
+        local reqs = EasyTowerRequirements[chosen.name] or {}
+        if #reqs > 0 then
+            AutoBuyTowers(reqs)
+        end
+        ApplyStrategySettings(chosen)
+        task.wait(0.3)
+        print("[AutoProgression] In lobby, selected Easy: " .. chosen.name)
+        SetStatus("In lobby – loading Easy: " .. chosen.name)
+        loadstring(game:HttpGet(chosen.url))()
+        StartPostMatchLobbyWatcher()
+    else
+        SetStatus("Cannot afford any Easy towers – returning to lobby")
+        SmartTeleportToLobby()
+    end
+    runningEasy = false
 end
 
 local runningFrost = false
