@@ -207,6 +207,7 @@ local AutoDJ = nil
 local AutoUpgradeSelectedRunning = false
 local AutoUpgradeAllRunning = false
 local AutoFreezerRunning = false
+local AutoSaboteurRunning = false
 
 local MaxPathDistance = 300 
 local MilMarker = nil
@@ -289,6 +290,7 @@ local DefaultSettings = {
     RandomDJ = false,
     AutoTrials = false,
     AutoFreezer = false,
+    AutoSaboteur = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -1671,6 +1673,15 @@ towerDropdown:SetValue(Globals.Towerslot)
     Value = Globals.AutoFreezer,
     Callback = function(v)
         SetSetting("AutoFreezer", v)
+    end
+})
+
+Automation:Toggle({
+    Title = "Auto Saboteur Toxins",
+    Desc = "Uses Aggressive Toxins on the first enemy in range",
+    Value = Globals.AutoSaboteur,
+    Callback = function(v)
+        SetSetting("AutoSaboteur", v)
     end
 })
 
@@ -5225,6 +5236,97 @@ local function StartAutoFreezer()
     end)
 end
 
+local function StartAutoSaboteur()
+    if AutoSaboteurRunning or not Globals.AutoSaboteur then return end
+    AutoSaboteurRunning = true
+
+    task.spawn(function()
+        print("🔁 Saboteur loop started")
+        while Globals.AutoSaboteur do
+            local towersFolder = workspace:FindFirstChild("Towers")
+            local npcsFolder = workspace:FindFirstChild("NPCs")
+            if not towersFolder or not npcsFolder then
+                task.wait(0.5)       
+                continue
+            end
+
+            local saboteurs = {}
+            for _, tower in ipairs(towersFolder:GetChildren()) do
+                local rep = tower:FindFirstChild("TowerReplicator")
+                if rep then
+                    local name = rep:GetAttribute("Name")
+                    local ownerId = rep:GetAttribute("OwnerId")
+                    local upgrade = rep:GetAttribute("Upgrade") or 0
+                    if name == "Saboteur" and ownerId == LocalPlayer.UserId and upgrade >= 3 then
+                        table.insert(saboteurs, tower)
+                    end
+                end
+            end
+
+            if #saboteurs == 0 then
+                task.wait(0.5)
+                continue
+            end
+
+            local npcPositions = {}
+            for _, npc in ipairs(npcsFolder:GetChildren()) do
+                local hrp = npc:FindFirstChild("HumanoidRootPart")
+                local pos = hrp and hrp.Position
+                if not pos then
+                    local part = npc:FindFirstChildWhichIsA("BasePart")
+                    if part then pos = part.Position end
+                end
+                if pos then table.insert(npcPositions, pos) end
+            end
+
+            if #npcPositions == 0 then
+                task.wait(0.5)
+                continue
+            end
+
+            for _, tower in ipairs(saboteurs) do
+                local rep = tower:FindFirstChild("TowerReplicator")
+                local towerPos = rep and rep:GetAttribute("Position")
+                if typeof(towerPos) ~= "Vector3" then
+                    local hrp = tower:FindFirstChild("HumanoidRootPart")
+                    towerPos = hrp and hrp.Position
+                    if not towerPos then
+                        local part = tower:FindFirstChildWhichIsA("BasePart")
+                        if part then towerPos = part.Position end
+                    end
+                end
+                if not towerPos then continue end
+
+                local range = rep and (rep:GetAttribute("Range") or rep:GetAttribute("TowerRange") or 16.5) or 16.5
+                range = tonumber(range) or 16.5
+
+                local targetPos = nil
+                for _, pos in ipairs(npcPositions) do
+                    local dx = towerPos.X - pos.X
+                    local dz = towerPos.Z - pos.Z
+                    if math.sqrt(dx*dx + dz*dz) <= range then
+                        targetPos = pos
+                        break
+                    end
+                end
+
+                if targetPos then
+                    pcall(function()
+                        RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
+                            Troop = tower,
+                            Name = "Aggressive Toxins",  
+                            Data = { position = targetPos }
+                        })
+                    end)
+                end
+            end
+
+            task.wait(0.5) 
+        end
+        AutoSaboteurRunning = false
+    end)
+end
+
 local AutoMedicLib = nil
 local AutoBountyLib = nil
 
@@ -5646,6 +5748,10 @@ task.spawn(function()
 
         if Globals.AutoFreezer and not AutoFreezerRunning then
     StartAutoFreezer()
+end
+
+if Globals.AutoSaboteur and not AutoSaboteurRunning then
+    StartAutoSaboteur()
 end
 
         if Globals.AutoMercenary and not AutoMercenaryBaseRunning then
