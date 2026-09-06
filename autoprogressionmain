@@ -32,4 +32,14 @@ task.wait(0.1)
 
 -- Load autoprogression script with fallback
 local autoScript = FetchScript("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/autoprogression")
-loadstring(autoScript)()
+local autoChunk, compileError = loadstring(autoScript)
+
+if not autoChunk then
+    error("AutoProgression compile error: " .. tostring(compileError))
+end
+
+local success, runtimeError = pcall(autoChunk)
+
+if not success then
+    error("AutoProgression runtime error: " .. tostring(runtimeError))
+end
