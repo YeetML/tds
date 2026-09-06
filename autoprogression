@@ -400,6 +400,7 @@ local FrostStrategies = {
     { name = "frost4", mapName = "Retro Crossroads", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost4", autoPremium = false, autoSkip = false, autoRejoin = true, autoReady = true },
     { name = "frost5", mapName = "Dusty Bridges", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost5", autoPremium = false, autoSkip = false, autoRejoin = true, autoReady = true },
 }
+local RunYeetEasy
 
 local function RunHardcoreUnevo()
     if getgenv().HcUnevoActive then
@@ -834,7 +835,7 @@ local function RunBootCamp()
 end
 
 local runningEasy = false
-local function RunYeetEasy()
+RunYeetEasy = function()
     if runningEasy then return end
     runningEasy = true
     getgenv().TimeScaleEnabled = false
