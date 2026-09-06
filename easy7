@@ -1,0 +1,119 @@
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+
+TDS:Loadout("Militant", "None", "None", "None", "None")
+TDS:Mode("Easy")
+TDS:GameInfo("Simplicity", {})
+
+TDS:Ready()
+
+-- [ Wave 1 ] --
+TDS:Place("Militant", -18.14789581298828, 1.0000003576278687, -1.9135332107543945)
+
+-- [ Wave 2 ] --
+TDS:Place("Militant", -18.182090759277344, 0.9999834895133972, -4.938117027282715)
+
+-- [ Wave 3 ] --
+TDS:Place("Militant", -18.094154357910156, 0.9999865889549255, -7.998865127563477)
+
+-- [ Wave 4 ] --
+TDS:Place("Militant", -15.075032234191895, 0.9999901652336121, -9.40794563293457)
+
+-- [ Wave 5 ] --
+TDS:Upgrade(4)
+TDS:Place("Militant", -11.993136405944824, 0.9999834895133972, -9.203740119934082)
+
+-- [ Wave 6 ] --
+TDS:Place("Militant", -24.38925552368164, 1.000001072883606, -6.268101692199707)
+TDS:Place("Militant", -17.864444732666016, 0.9999915957450867, -11.285192489624023)
+
+-- [ Wave 7 ] --
+TDS:Place("Militant", -14.766838073730469, 0.9999942183494568, -12.757168769836426)
+TDS:Place("Militant", -11.53056526184082, 0.9999838471412659, -12.382169723510742)
+TDS:Upgrade(1)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+TDS:Upgrade(5)
+
+-- [ Wave 8 ] --
+TDS:Upgrade(6)
+TDS:Upgrade(1)
+TDS:Upgrade(2)
+
+-- [ Wave 9 ] --
+TDS:Upgrade(7)
+
+-- [ Wave 10 ] --
+TDS:Upgrade(3)
+TDS:Upgrade(4)
+TDS:Upgrade(8)
+
+-- [ Wave 11 ] --
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+TDS:Upgrade(9)
+TDS:Upgrade(7)
+TDS:Upgrade(8)
+
+-- [ Wave 12 ] --
+TDS:Upgrade(9)
+
+-- [ Wave 13 ] --
+TDS:Upgrade(1)
+TDS:Place("Militant", -19.937728881835938, 1.000002384185791, -13.864471435546875)
+
+-- [ Wave 14 ] --
+TDS:Place("Militant", -26.924091339111328, 0.9999822378158569, -9.35093879699707)
+TDS:Upgrade(2)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+TDS:VoteSkip(14)
+
+-- [ Wave 15 ] --
+TDS:Upgrade(3)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+
+-- [ Wave 16 ] --
+TDS:Upgrade(4)
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+
+-- [ Wave 17 ] --
+TDS:Upgrade(7)
+
+-- [ Wave 18 ] --
+TDS:Upgrade(8)
+TDS:Upgrade(9)
+TDS:Upgrade(10)
+
+-- [ Wave 19 ] --
+TDS:Upgrade(11)
+
+-- [ Wave 20 ] --
+TDS:Upgrade(1)
+TDS:Place("Militant", -27.212621688842773, 1.000002145767212, -12.814525604248047)
+TDS:Place("Militant", -17.340328216552734, 1.0000027418136597, -15.949941635131836)
+TDS:Upgrade(12)
+TDS:Upgrade(13)
+TDS:Upgrade(12)
+TDS:Upgrade(13)
+TDS:Upgrade(10)
+TDS:Upgrade(13)
+TDS:Upgrade(12)
+TDS:Upgrade(2)
+TDS:Upgrade(11)
+TDS:Place("Militant", -24.50037956237793, 1.0000005960464478, -3.202951431274414)
+TDS:Upgrade(3)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+
+TDS:Upgrade(4)
+TDS:Upgrade(5)
+TDS:Upgrade(14)
+TDS:Upgrade(6)
+TDS:Upgrade(7)
+TDS:Upgrade(13)
+TDS:Upgrade(12)
+TDS:Upgrade(8)
+TDS:Upgrade(9)
