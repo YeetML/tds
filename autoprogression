@@ -29,6 +29,7 @@ _G.AutoProgSettings = _G.AutoProgSettings or {
     ForceFrost = false,
     ForceHardcoreUnevo = false,
     ForceHardcoreEvo = false,
+    ForceBootCamp = false,   -- new
     __locked = false,
 }
 
@@ -453,6 +454,402 @@ local function RunHardcoreEvo()
     end
 end
 
+-- ============================================================
+--  NEW: BOOT CAMP AUTOMATION (merged from bootcamp script)
+-- ============================================================
+local BootCampRunning = false
+local function RunBootCamp()
+    if BootCampRunning then
+        print("[BootCamp] Already running, skipping.")
+        return
+    end
+
+    -- First, check if we are in a Boot Camp match
+    local stateReplicators = ReplicatedStorage:FindFirstChild("StateReplicators")
+    if not stateReplicators then
+        print("[BootCamp] StateReplicators not found – teleporting to lobby.")
+        SmartTeleportToLobby()
+        return
+    end
+
+    local rep = stateReplicators:FindFirstChild("GameStateReplicator")
+    if not rep then
+        print("[BootCamp] GameStateReplicator not found – teleporting to lobby.")
+        SmartTeleportToLobby()
+        return
+    end
+
+    local difficultyTimeout = os.clock() + 20
+    while rep:GetAttribute("Difficulty") == nil and os.clock() < difficultyTimeout do
+        task.wait(0.1)
+    end
+
+    local difficulty = rep:GetAttribute("Difficulty")
+    if difficulty ~= "Chapter0Mission1" then
+        print("[BootCamp] Not Boot Camp. Difficulty:", difficulty)
+        SetStatus("Not Boot Camp – returning to lobby")
+        SmartTeleportToLobby()
+        return
+    end
+
+    print("[BootCamp] Boot Camp detected – starting automation.")
+    SetStatus("Running Boot Camp...")
+
+    BootCampRunning = true
+
+    -- Load modules
+    local NetworkMod = require(ReplicatedStorage.Shared.Modules.Network)
+    local GameStateMod = require(ReplicatedStorage.Shared.Modules.GameState)
+
+    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+    local rf = ReplicatedStorage:WaitForChild("RemoteFunction")
+
+    -- Constants
+    local LOBBY_PLACE_ID = 3260590327
+    local SCOUT_POSITION = Vector3.new(43.76766967773437500,-18.74999046325683594,-11.34976959228515625)
+    local SNIPER_POSITION = Vector3.new(48.01165008544921875, -13.72033500671386719, 14.51969814300537109)
+
+    -- Helper functions (copied from bootcamp script)
+    local function log(...) end  -- silent
+
+    local function TeleportToLobbyOnce()
+        if game.PlaceId == LOBBY_PLACE_ID then return true end
+        local ok, err = pcall(function()
+            TeleportService:Teleport(LOBBY_PLACE_ID, LocalPlayer)
+        end)
+        if not ok then warn("[BootCamp] Teleport failed:", err) end
+        return ok
+    end
+
+    local function getDialogParts()
+        local dialog = PlayerGui:FindFirstChild("ReactOverridesDialog")
+        local frame = dialog and dialog:FindFirstChild("Frame")
+        local content = frame and frame:FindFirstChild("content")
+        local textLabel = content and content:FindFirstChild("dialogRichText")
+        return content, textLabel
+    end
+
+    local function normalizeDialogText(text)
+        text = tostring(text or "")
+        text = text:gsub("<.->", "")
+        text = text:gsub("%s+", " ")
+        text = text:lower()
+        return text
+    end
+
+    local BLOCKED_DIALOGUES = {
+        ["start by placing a scout."] = true,
+        ["select the sniper tower."] = true
+    }
+
+    local function pressDialogContent(content)
+        if not content then return false end
+        local ok = pcall(function()
+            local connections = getconnections(content.InputBegan)
+            local listener = connections and connections[1] and connections[1].Function
+            if not listener then return end
+            local manager = getupvalues(listener)[1]
+            if type(manager) ~= "table" or type(manager._listeners) ~= "table" then return end
+            for _, callback in pairs(manager._listeners) do
+                if type(callback) == "function" then
+                    for _, constant in ipairs(getconstants(callback)) do
+                        if constant == "MouseButton1" then
+                            callback(content, {
+                                UserInputType = Enum.UserInputType.MouseButton1
+                            })
+                            return
+                        end
+                    end
+                end
+            end
+        end)
+        return ok
+    end
+
+    -- Dialog auto-press loop
+    task.spawn(function()
+        local lastText = ""
+        local lastPressedAt = 0
+        while rep.Parent and rep:GetAttribute("GameOver") ~= true do
+            local content, textLabel = getDialogParts()
+            if content and textLabel then
+                local current = normalizeDialogText(textLabel.Text)
+                if current ~= "" then
+                    if BLOCKED_DIALOGUES[current] then
+                        lastText = current
+                    else
+                        local changed = current ~= lastText
+                        local retryReady = os.clock() - lastPressedAt >= 0.75
+                        if changed or retryReady then
+                            log("Auto pressing dialogue:", textLabel.Text)
+                            pressDialogContent(content)
+                            lastText = current
+                            lastPressedAt = os.clock()
+                        end
+                    end
+                end
+            end
+            task.wait(0.1)
+        end
+    end)
+
+    -- Auto-ready for tutorial
+    task.spawn(function()
+        while rep.Parent and rep:GetAttribute("GameOver") ~= true do
+            local readyPrompt = false
+            pcall(function()
+                readyPrompt = GameStateMod.Replicator:Get("TutorialReadyPrompt") == true
+            end)
+            if readyPrompt then
+                pcall(function()
+                    NetworkMod.Channel("TutorialReady"):FireServer("Ready")
+                end)
+            end
+            task.wait(0.25)
+        end
+    end)
+
+    -- Vote skip for Ready/Skip prompts
+    task.spawn(function()
+        local voteRep = stateReplicators:FindFirstChild("VoteReplicator", 10)
+        if not voteRep then return end
+        while rep.Parent and rep:GetAttribute("GameOver") ~= true do
+            local enabled = voteRep:GetAttribute("Enabled")
+            local title = voteRep:GetAttribute("Title")
+            if enabled == true and (title == "Ready?" or title == "Skip?") then
+                pcall(function()
+                    rf:InvokeServer("Voting", "Skip")
+                end)
+            end
+            task.wait(0.35)
+        end
+    end)
+
+    -- Helper functions for placement/upgrade
+    local function checkSuccess(data)
+        if data == true then return true end
+        if type(data) == "table" and data.Success == true then return true end
+        local ok, isModel = pcall(function() return data and data:IsA("Model") end)
+        if ok and isModel then return true end
+        return type(data) == "userdata"
+    end
+
+    local function getTowerNear(position, towerName)
+        local towers = workspace:FindFirstChild("Towers")
+        if not towers then return nil end
+        local closestTower, closestDistance = nil, math.huge
+        for _, tower in ipairs(towers:GetChildren()) do
+            local ok, towerPos = pcall(function() return tower:GetPivot().Position end)
+            if ok then
+                local distance = (towerPos - position).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestTower = tower
+                end
+            end
+        end
+        if closestTower and closestDistance <= 4 then
+            log("Detected placed tower:", closestTower.Name, "distance:", closestDistance)
+            return closestTower
+        end
+        return nil
+    end
+
+    local function pressHotbar(slot)
+        local ok, err = pcall(function()
+            NetworkMod.Channel("Hotbar"):FireServer("Click", slot)
+        end)
+        if not ok then warn("[BootCamp] Hotbar " .. slot .. " failed:", err) end
+        return ok
+    end
+
+    local function placeUntilExists(towerName, position, hotbarSlot)
+        log("Trying placement:", towerName, position)
+        while rep.Parent and rep:GetAttribute("GameOver") ~= true do
+            local existing = getTowerNear(position, towerName)
+            if existing then
+                log("Placement confirmed:", towerName)
+                return existing
+            end
+            if hotbarSlot then pressHotbar(hotbarSlot) end
+            pcall(function()
+                rf:InvokeServer("Troops", "Place", {
+                    Rotation = CFrame.new(),
+                    Position = position
+                }, towerName)
+            end)
+            task.wait(0.2)
+            existing = getTowerNear(position, towerName)
+            if existing then
+                log("Placement confirmed:", towerName)
+                return existing
+            end
+            task.wait(0.1)
+        end
+        return nil
+    end
+
+    local function upgradeUntilSuccess(tower, path)
+        if not tower then return false end
+        while tower.Parent and rep.Parent and rep:GetAttribute("GameOver") ~= true do
+            local ok, result = pcall(function()
+                return rf:InvokeServer("Troops", "Upgrade", "Set", {
+                    Troop = tower,
+                    Path = path or 1
+                })
+            end)
+            if ok and checkSuccess(result) then return true end
+            task.wait(0.25)
+        end
+        return false
+    end
+
+    local function getDialogTextLabel()
+        local dialog = PlayerGui:FindFirstChild("ReactOverridesDialog")
+        local frame = dialog and dialog:FindFirstChild("Frame")
+        local content = frame and frame:FindFirstChild("content")
+        return content and content:FindFirstChild("dialogRichText") or nil
+    end
+
+    local function normalizeText(text)
+        text = tostring(text or "")
+        text = text:gsub("<.->", "")
+        text = text:gsub("%s+", " ")
+        text = text:lower()
+        return text
+    end
+
+    local function waitForDialogText(expectedText, timeoutSeconds)
+        local wanted = normalizeText(expectedText)
+        local deadline = os.clock() + (timeoutSeconds or 60)
+        log("Waiting for dialog:", expectedText)
+        while os.clock() < deadline do
+            if rep:GetAttribute("GameOver") == true then return false end
+            local label = getDialogTextLabel()
+            if label then
+                local current = normalizeText(label.Text)
+                if current == wanted or current:find(wanted, 1, true) then
+                    log("Dialog detected:", label.Text)
+                    return true
+                end
+            end
+            task.wait(0.05)
+        end
+        warn("[BootCamp] Timed out waiting for dialog:", expectedText)
+        return false
+    end
+
+    -- 5-minute stuck protection
+    task.spawn(function()
+        task.wait(5 * 60)
+        if rep and rep.Parent and rep:GetAttribute("GameOver") ~= true then
+            warn("[BootCamp] Stuck for 5 minutes – returning to lobby.")
+            TeleportToLobbyOnce()
+        end
+    end)
+
+    -- ===== Main Boot Camp sequence =====
+    if not waitForDialogText("Start by placing a scout.", 90) then
+        BootCampRunning = false
+        return
+    end
+    log("Scout selection dialog detected")
+    pcall(function()
+        NetworkMod.Channel("TutorialFlow"):FireServer("PromptShown", "ScoutSelectionPromptShown")
+    end)
+    task.wait(0.15)
+    pressHotbar(1)
+    task.wait(0.15)
+
+    local scout = placeUntilExists("Scout", SCOUT_POSITION, 1)
+    if not scout then
+        warn("[BootCamp] Scout placement failed.")
+        BootCampRunning = false
+        return
+    end
+
+    if not waitForDialogText("Select the sniper tower.", 90) then
+        BootCampRunning = false
+        return
+    end
+    log("Sniper selection dialog detected")
+    pcall(function()
+        NetworkMod.Channel("TutorialFlow"):FireServer("PromptShown", "SniperSelectionPromptShown")
+    end)
+    task.wait(0.15)
+    pressHotbar(2)
+    task.wait(0.15)
+
+    local sniper = placeUntilExists("Sniper", SNIPER_POSITION, 2)
+    if not sniper then
+        warn("[BootCamp] Sniper placement failed.")
+        BootCampRunning = false
+        return
+    end
+
+    log("Scout + Sniper placed. Starting upgrades...")
+
+    -- Wait for Scout upgrade prompt
+    local scoutUpgradeDeadline = os.clock() + 45
+    while os.clock() < scoutUpgradeDeadline do
+        if rep:GetAttribute("AllowedUpgradeTower") == "Scout"
+            and rep:GetAttribute("AllowedUpgradeType") == "Upgrade" then
+            break
+        end
+        if rep:GetAttribute("GameOver") == true then
+            BootCampRunning = false
+            return
+        end
+        task.wait(0.1)
+    end
+    pcall(function()
+        NetworkMod.Channel("TutorialFlow"):FireServer("PromptShown", "ScoutUpgradePromptShown")
+    end)
+    task.wait(0.3)
+    upgradeUntilSuccess(scout, 1)
+    upgradeUntilSuccess(scout, 1)
+
+    -- Wait for Sniper upgrade prompt
+    local sniperUpgradeDeadline = os.clock() + 45
+    while os.clock() < sniperUpgradeDeadline do
+        if rep:GetAttribute("AllowedUpgradeTower") == "Sniper"
+            and rep:GetAttribute("AllowedUpgradeType") == "Upgrade" then
+            break
+        end
+        if rep:GetAttribute("GameOver") == true then
+            BootCampRunning = false
+            return
+        end
+        task.wait(0.1)
+    end
+    pcall(function()
+        NetworkMod.Channel("TutorialFlow"):FireServer("PromptShown", "SniperUpgradePromptShown")
+    end)
+    task.wait(0.3)
+    upgradeUntilSuccess(sniper, 1)
+    upgradeUntilSuccess(sniper, 1)
+
+    log("Boot Camp setup complete.")
+
+    -- ===== After match ends: return to lobby once, no requeue =====
+    task.spawn(function()
+        repeat
+            task.wait(0.1)
+        until not rep.Parent or rep:GetAttribute("GameOver") == true
+
+        if not rep.Parent then
+            BootCampRunning = false
+            return
+        end
+
+        task.wait(3)  -- let rewards screen appear
+        log("Boot Camp finished. Returning to lobby once.")
+        TeleportToLobbyOnce()
+        BootCampRunning = false
+        SetStatus("Boot Camp completed – returned to lobby")
+    end)
+end
+
 -- ===== STRATEGY RUNNERS =====
 local runningEasy = false
 local runningFrost = false
@@ -576,8 +973,14 @@ local function RunAutoProgression()
     local forceFrost = _G.AutoProgSettings.ForceFrost or false
     local forceHcUnevo = _G.AutoProgSettings.ForceHardcoreUnevo or false
     local forceHcEvo = _G.AutoProgSettings.ForceHardcoreEvo or false
+    local forceBootCamp = _G.AutoProgSettings.ForceBootCamp or false
 
-    if forceEasy then
+    if forceBootCamp then
+        SetStatus("Force mode: Boot Camp")
+        RunBootCamp()
+        AutoProgressionRunning = false
+        return
+    elseif forceEasy then
         SetStatus("Force mode: Easy")
         RunYeetEasy()
         AutoProgressionRunning = false
@@ -755,8 +1158,8 @@ local function CreateUI()
     gui.ResetOnSpawn = false
     gui.Parent = CoreGui
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 300, 0, 380)
-    frame.Position = UDim2.new(0.5, -150, 0.7, -190)
+    frame.Size = UDim2.new(0, 300, 0, 420)  -- increased height for Boot Camp button
+    frame.Position = UDim2.new(0.5, -150, 0.7, -210)
     frame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
     frame.BorderSizePixel = 0
     frame.Parent = gui
@@ -876,6 +1279,8 @@ local function CreateUI()
     local frostBtn = CreateModeToggle(234, "Frost", "ForceFrost")
     local hcUnevoBtn = CreateModeToggle(260, "HC Unevo", "ForceHardcoreUnevo")
     local hcEvoBtn = CreateModeToggle(286, "HC Evo", "ForceHardcoreEvo")
+    local bootCampBtn = CreateModeToggle(312, "Boot Camp", "ForceBootCamp")  -- new
+
     local function updateModeButton(btn, settingKey)
         if _G.AutoProgSettings[settingKey] then
             btn.Text = btn.Text:gsub(": OFF", ": ON")
@@ -885,6 +1290,7 @@ local function CreateUI()
             btn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
         end
     end
+
     local function saveSettings()
         if writefile then
             local saveData = {
@@ -893,15 +1299,18 @@ local function CreateUI()
                 ForceFrost = _G.AutoProgSettings.ForceFrost,
                 ForceHardcoreUnevo = _G.AutoProgSettings.ForceHardcoreUnevo,
                 ForceHardcoreEvo = _G.AutoProgSettings.ForceHardcoreEvo,
+                ForceBootCamp = _G.AutoProgSettings.ForceBootCamp,
             }
             writefile(SETTINGS_FILE, HttpService:JSONEncode(saveData))
         end
     end
+
     local function updateMainUI()
         local anyForceOn = _G.AutoProgSettings.ForceEasy or
                            _G.AutoProgSettings.ForceFrost or
                            _G.AutoProgSettings.ForceHardcoreUnevo or
-                           _G.AutoProgSettings.ForceHardcoreEvo
+                           _G.AutoProgSettings.ForceHardcoreEvo or
+                           _G.AutoProgSettings.ForceBootCamp
         local isRunning = AutoProgressionEnabled or anyForceOn
         if isRunning then
             toggle.Text = "ON"
@@ -924,10 +1333,11 @@ local function CreateUI()
             statusDisplay.Text = "Status: Stopped"
         end
     end
+
     local function toggleMode(settingKey, btn)
         getgenv().HcEvoActive = false
         getgenv().HcUnevoActive = false
-        local forceKeys = {"ForceEasy", "ForceFrost", "ForceHardcoreUnevo", "ForceHardcoreEvo"}
+        local forceKeys = {"ForceEasy", "ForceFrost", "ForceHardcoreUnevo", "ForceHardcoreEvo", "ForceBootCamp"}
         for _, key in ipairs(forceKeys) do
             if key ~= settingKey then
                 _G.AutoProgSettings[key] = false
@@ -938,6 +1348,7 @@ local function CreateUI()
         updateModeButton(frostBtn, "ForceFrost")
         updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
         updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
+        updateModeButton(bootCampBtn, "ForceBootCamp")
         if _G.AutoProgSettings[settingKey] then
             AutoProgressionEnabled = true
             _G.AutoProgSettings.AutoProgressionEnabled = true
@@ -949,6 +1360,7 @@ local function CreateUI()
             saveSettings()
         end
     end
+
     toggle.MouseButton1Click:Connect(function()
         AutoProgressionEnabled = not AutoProgressionEnabled
         _G.AutoProgSettings.AutoProgressionEnabled = AutoProgressionEnabled
@@ -957,12 +1369,14 @@ local function CreateUI()
             _G.AutoProgSettings.ForceFrost = false
             _G.AutoProgSettings.ForceHardcoreUnevo = false
             _G.AutoProgSettings.ForceHardcoreEvo = false
+            _G.AutoProgSettings.ForceBootCamp = false
             getgenv().HcEvoActive = false
             getgenv().HcUnevoActive = false
             updateModeButton(easyBtn, "ForceEasy")
             updateModeButton(frostBtn, "ForceFrost")
             updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
             updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
+            updateModeButton(bootCampBtn, "ForceBootCamp")
             SetStatus("Stopped")
         else
             SetStatus("Starting...")
@@ -975,10 +1389,13 @@ local function CreateUI()
             _G.AutoProgSettings.__locked = false
         end
     end)
+
     easyBtn.MouseButton1Click:Connect(function() toggleMode("ForceEasy", easyBtn) end)
     frostBtn.MouseButton1Click:Connect(function() toggleMode("ForceFrost", frostBtn) end)
     hcUnevoBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreUnevo", hcUnevoBtn) end)
     hcEvoBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreEvo", hcEvoBtn) end)
+    bootCampBtn.MouseButton1Click:Connect(function() toggleMode("ForceBootCamp", bootCampBtn) end)
+
     if isfile and isfile(SETTINGS_FILE) then
         local success, data = pcall(function()
             return HttpService:JSONDecode(readfile(SETTINGS_FILE))
@@ -989,6 +1406,7 @@ local function CreateUI()
             end
         end
     end
+
     _G.AutoProgSettings.AutoUpgradeSelected = false
     _G.AutoProgSettings.AutoUpgradeAll = false
     getgenv().AutoUpgradeSelected = false
@@ -997,7 +1415,8 @@ local function CreateUI()
     local anyForceOn = _G.AutoProgSettings.ForceEasy or
                        _G.AutoProgSettings.ForceFrost or
                        _G.AutoProgSettings.ForceHardcoreUnevo or
-                       _G.AutoProgSettings.ForceHardcoreEvo
+                       _G.AutoProgSettings.ForceHardcoreEvo or
+                       _G.AutoProgSettings.ForceBootCamp
     if anyForceOn then
         AutoProgressionEnabled = true
         _G.AutoProgSettings.AutoProgressionEnabled = true
@@ -1007,9 +1426,11 @@ local function CreateUI()
     updateModeButton(frostBtn, "ForceFrost")
     updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
     updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
+    updateModeButton(bootCampBtn, "ForceBootCamp")
     if AutoProgressionEnabled then
         task.spawn(RunAutoProgression)
     end
+
     -- Dragging
     local dragging = false
     local dragInput, dragStart, startPos
@@ -1035,6 +1456,7 @@ local function CreateUI()
                                        startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
+
     -- Update stats every second
     task.spawn(function()
         while task.wait(1) do
@@ -1046,6 +1468,7 @@ local function CreateUI()
             gemsDisplay.Text = "Gems: " .. tostring(gems)
         end
     end)
+
     return {
         title = title,
         status = statusDisplay,
@@ -1057,6 +1480,7 @@ local function CreateUI()
         frostBtn = frostBtn,
         hcUnevoBtn = hcUnevoBtn,
         hcEvoBtn = hcEvoBtn,
+        bootCampBtn = bootCampBtn,
     }
 end
 
@@ -1066,7 +1490,8 @@ task.spawn(function()
         local anyForceOn = _G.AutoProgSettings.ForceEasy or
                            _G.AutoProgSettings.ForceFrost or
                            _G.AutoProgSettings.ForceHardcoreUnevo or
-                           _G.AutoProgSettings.ForceHardcoreEvo
+                           _G.AutoProgSettings.ForceHardcoreEvo or
+                           _G.AutoProgSettings.ForceBootCamp
         if (AutoProgressionEnabled or anyForceOn) and not CoreGui:FindFirstChild("AutoProgressionUI") then
             print("[AutoProgression] UI was destroyed, recreating...")
             local newUI = CreateUI()
@@ -1083,6 +1508,7 @@ getgenv().RunYeetEasy = RunYeetEasy
 getgenv().RunAutoProgression = RunAutoProgression
 getgenv().RunHardcoreUnevo = RunHardcoreUnevo
 getgenv().RunHardcoreEvo = RunHardcoreEvo
+getgenv().RunBootCamp = RunBootCamp
 
 task.spawn(function()
     task.wait(1)
