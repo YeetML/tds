@@ -3214,6 +3214,23 @@ local function CheckResOk(data)
     return false
 end
 
+local function IsTrial()
+    local stateRep = ReplicatedStorage:FindFirstChild("StateReplicators")
+    if stateRep then
+        local gameStateRep = stateRep:FindFirstChild("GameStateReplicator")
+        if gameStateRep then
+            local trial = gameStateRep:GetAttribute("GlobalTrial")
+            if trial and trial ~= "" then return true end
+        end
+        local trialsRep = stateRep:FindFirstChild("TrialsStateReplicator")
+        if trialsRep then
+            local trial = trialsRep:GetAttribute("GlobalTrial")
+            if trial and trial ~= "" then return true end
+        end
+    end
+    return false
+end
+
 -- // scrap ui for match data
 local function GetAllRewards()
     local results = {
@@ -4829,6 +4846,29 @@ function StartBackToLobby()
             local isGameOver = gameStateReplicator:GetAttribute("GameOver") == true
             if isGameOver then
                 local health = gameStateReplicator:GetAttribute("Health") or 0
+                local isTrial = IsTrial()
+                if isTrial then
+                    if health > 0 then
+                        local rematchRemote = ReplicatedStorage:FindFirstChild("Network")
+                            and ReplicatedStorage.Network:FindFirstChild("GameManager")
+                            and ReplicatedStorage.Network.GameManager:FindFirstChild("RE:Rematch")
+                        if rematchRemote then
+                            rematchRemote:FireServer()
+                            Logger:Log("Trial win - Rematching...")
+                            task.wait(2)
+                        else
+                            Logger:Log("Rematch remote not found, falling back to rejoin.")
+                            pcall(HandlePostMatch)
+                            break
+                        end
+                        task.wait(1)
+                        continue
+                    else
+                        Logger:Log("Trial loss - Forcing rejoin to lobby...")
+                        pcall(HandlePostMatch)
+                        break
+                    end
+                end
                 if health > 0 then
                     if Globals.AutoRejoin then
                         if isfile("ADS_LastStrat.lua") then
