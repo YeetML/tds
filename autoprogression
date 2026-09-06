@@ -252,10 +252,25 @@ local function OwnsTower(towerName)
     return false
 end
 
--- ===== AUTO BUY TOWERS =====
 local function AutoBuyTowers(towerList)
     print("[AutoProgression] Checking towers to buy...")
     SetStatus("Checking towers to buy...")
+
+    if not OwnsTower("Demoman") then
+        local coins = GetStat("Coins")
+        if coins >= 200 then
+            print("[AutoProgression] Priority: Buying Demoman (200 Coins)")
+            SetStatus("Priority: Buying Demoman")
+            BuyTower("Demoman")
+            task.wait(0.5)   
+        else
+            print("[AutoProgression] Priority: Not enough Coins for Demoman (need 200, have " .. coins .. ")")
+            SetStatus("Not enough Coins for Demoman")
+        end
+    else
+        print("[AutoProgression] Already own Demoman")
+    end
+
     local function parseTowerData(data)
         local name = data[1]
         local requiredCoins = 0
@@ -280,10 +295,12 @@ local function AutoBuyTowers(towerList)
         end
         return name, requiredCoins, requiredGems
     end
+
     for _, towerData in ipairs(towerList) do
         local towerName, needCoins, needGems = parseTowerData(towerData)
         local hasCoins = GetStat("Coins") >= needCoins
         local hasGems  = GetStat("Gems")  >= needGems
+
         if not OwnsTower(towerName) then
             if not hasCoins then
                 print("[AutoProgression] Not enough Coins for " .. towerName)
@@ -295,6 +312,7 @@ local function AutoBuyTowers(towerList)
                 SetStatus("Not enough Gems for " .. towerName)
                 return "Gems"
             end
+
             local msg = ("[AutoProgression] Buying %s"):format(towerName)
             if needCoins > 0 and needGems > 0 then
                 msg = msg .. (" (need %d Coins + %d Gems)"):format(needCoins, needGems)
@@ -312,6 +330,7 @@ local function AutoBuyTowers(towerList)
             SetStatus("Already own " .. towerName)
         end
     end
+
     return "OK"
 end
 
