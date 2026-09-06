@@ -5,8 +5,8 @@ TDS:Mode("Trial")
 TDS:Place("Militant", 10.119881629943848, 3.599987745285034, 16.501535415649414)
 
 -- [ Wave 1 ] --
-TDS:Upgrade(1)
 TDS:Ready()
+TDS:Upgrade(1)
 -- [ Wave 2 ] --
 TDS:Place("Militant", 11.500614166259766, 3.5999789237976074, 19.186674118041992)
 
