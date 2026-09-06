@@ -141,7 +141,7 @@ end
 local function GetTowerLevel(towerName)
     local expTable = waitForCache("TowerExp") or {}
     local exp = expTable[towerName] or 0
-    local level = TowerExpUtil.getLevel({ TowerExp = expTable }, towerName)
+    local level = TowerExpUtil.getLevel(towerName, exp)
     return level, exp
 end
 
