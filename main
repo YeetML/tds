@@ -206,6 +206,7 @@ local CodesRedeemed = false
 local AutoDJ = nil
 local AutoUpgradeSelectedRunning = false
 local AutoUpgradeAllRunning = false
+local AutoFreezerRunning = false
 
 local MaxPathDistance = 300 
 local MilMarker = nil
@@ -287,6 +288,7 @@ local DefaultSettings = {
     MuteOtherDJs = false,
     RandomDJ = false,
     AutoTrials = false,
+    AutoFreezer = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -1662,6 +1664,15 @@ towerDropdown:SetValue(Globals.Towerslot)
             SetSetting("AutoBounty", v)
         end
     })
+
+    Automation:Toggle({
+    Title = "Auto Freezer",
+    Desc = "Activates Frost Grenade on level 4+ Freezers when they have a target.",
+    Value = Globals.AutoFreezer,
+    Callback = function(v)
+        SetSetting("AutoFreezer", v)
+    end
+})
 
     Automation:Textbox({
         Title = "DJ Custom Music",
@@ -5175,7 +5186,45 @@ local function StartAutoNecro()
     end)
 end
 
---== Auto Medic + Auto Bounty
+local function StartAutoFreezer()
+    if AutoFreezerRunning or not Globals.AutoFreezer then return end
+    AutoFreezerRunning = true
+
+    task.spawn(function()
+        local ownerId = LocalPlayer.UserId
+        local abilityName = "Frost Grenade" 
+
+        while Globals.AutoFreezer do
+            local towersFolder = workspace:FindFirstChild("Towers")
+            if towersFolder then
+                for _, tower in ipairs(towersFolder:GetChildren()) do
+                    local rep = tower:FindFirstChild("TowerReplicator")
+                    if rep then
+                        local name = rep:GetAttribute("Name")
+                        local upgrade = rep:GetAttribute("Upgrade") or 0
+                        local owner = rep:GetAttribute("OwnerId")
+                        if name == "Freezer" and owner == ownerId and upgrade >= 4 then
+                            local target = tower:FindFirstChild("Target")
+                            if target and target.Value and target.Value ~= "" and target.Value ~= "None" then
+                                pcall(function()
+                                    RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
+                                        Troop = tower,
+                                        Name = abilityName,
+                                        Data = {}
+                                    })
+                                end)
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(0.5)
+        end
+
+        AutoFreezerRunning = false
+    end)
+end
+
 local AutoMedicLib = nil
 local AutoBountyLib = nil
 
@@ -5594,6 +5643,10 @@ task.spawn(function()
         if Globals.AutoNecro and not AutoNecroRunning then
             StartAutoNecro()
         end
+
+        if Globals.AutoFreezer and not AutoFreezerRunning then
+    StartAutoFreezer()
+end
 
         if Globals.AutoMercenary and not AutoMercenaryBaseRunning then
             StartAutoMercenary()
