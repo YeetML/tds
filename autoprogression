@@ -968,12 +968,25 @@ local function RunAutoProgression()
     AutoProgressionRunning = true
     task.wait(0.5)
 
-    -- Check force toggles
+    -- ===== AUTO-DETECT BOOT CAMP =====
+    local stateRep = ReplicatedStorage:FindFirstChild("StateReplicators")
+    if stateRep then
+        local gameStateRep = stateRep:FindFirstChild("GameStateReplicator")
+        if gameStateRep and gameStateRep:GetAttribute("Difficulty") == "Chapter0Mission1" then
+            print("[AutoProgression] Auto-detected Boot Camp match. Running Boot Camp automation...")
+            SetStatus("Boot Camp detected – running...")
+            RunBootCamp()
+            AutoProgressionRunning = false
+            return
+        end
+    end
+
+    -- Check force toggles (if any are enabled)
     local forceEasy = _G.AutoProgSettings.ForceEasy or false
     local forceFrost = _G.AutoProgSettings.ForceFrost or false
     local forceHcUnevo = _G.AutoProgSettings.ForceHardcoreUnevo or false
     local forceHcEvo = _G.AutoProgSettings.ForceHardcoreEvo or false
-    local forceBootCamp = _G.AutoProgSettings.ForceBootCamp or false
+    local forceBootCamp = _G.AutoProgSettings.ForceBootCamp or false   -- keep it if you still want manual override
 
     if forceBootCamp then
         SetStatus("Force mode: Boot Camp")
