@@ -1,4 +1,4 @@
-getgenv().AutoReady = false
+
 TDS:Loadout("DJ Booth", "Gatling Gun", "Medic", "Ace Pilot", "Trapper")
 TDS:Mode("Trial")
 TDS:Ready()
