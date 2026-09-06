@@ -203,18 +203,33 @@ local PostMatchWatcherRunning = false
 local function StartPostMatchLobbyWatcher()
     if PostMatchWatcherRunning then return end
     PostMatchWatcherRunning = true
+
     task.spawn(function()
+        local stateRep = ReplicatedStorage:FindFirstChild("StateReplicators")
+        local gameStateRep = stateRep and stateRep:FindFirstChild("GameStateReplicator")
+
         while true do
-            local status = GetMatchStatus()
+            local status = GetMatchStatus()  -- UI-based, still works if UI is present
             if status then
-                print("[AutoProgression] Match ended (status: " .. status .. "). Teleporting to lobby...")
+                print("[AutoProgression] Match ended (UI status: " .. status .. "). Teleporting...")
                 SetStatus("Match ended – returning to lobby")
                 task.wait(2)
                 SmartTeleportToLobby()
                 break
             end
+
+            -- Fallback: check the replicator's GameOver attribute
+            if gameStateRep and gameStateRep:GetAttribute("GameOver") == true then
+                print("[AutoProgression] Match ended (GameOver detected). Teleporting...")
+                SetStatus("Match ended – returning to lobby")
+                task.wait(2)
+                SmartTeleportToLobby()
+                break
+            end
+
             task.wait(1)
         end
+
         PostMatchWatcherRunning = false
     end)
 end
