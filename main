@@ -1,4 +1,4 @@
-local Globals = getgenv()
+local Globals = (getgenv and getgenv()) or shared or _G or {}
 
 _G.AutoProgSettings = _G.AutoProgSettings or {}
 
