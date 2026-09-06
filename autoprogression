@@ -4,6 +4,9 @@ local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local TeleportService = game:GetService("TeleportService")
+local Cache = require(ReplicatedStorage.Client.Modules.Cache)
+local TowerExpUtil = require(ReplicatedStorage.Shared.Modules.TowerExpUtil)
+
 local Globals = getgenv().Globals or _G.Globals
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
@@ -12,7 +15,6 @@ local platform = UserInputService:GetPlatform()
 local IsMobile = (platform == Enum.Platform.IOS or platform == Enum.Platform.Android)
 local SETTINGS_FILE = "AutoProgression.json"
 
--- ===== cross-script guards =====
 getgenv().HcEvoActive = getgenv().HcEvoActive or false
 getgenv().HcUnevoActive = getgenv().HcUnevoActive or false
 getgenv().AutoUpgradeSelected = false
@@ -22,18 +24,16 @@ if Globals then
     Globals.AutoUpgradeAll = false
 end
 
--- Default settings
 _G.AutoProgSettings = _G.AutoProgSettings or {
     AutoProgressionEnabled = false,
     ForceEasy = false,
     ForceFrost = false,
     ForceHardcoreUnevo = false,
     ForceHardcoreEvo = false,
-    ForceBootCamp = false,   -- new
+    ForceBootCamp = false,
     __locked = false,
 }
 
--- ===== UI STATUS UPDATE =====
 local function SetStatus(text)
     local ui = getgenv().AutoProgressionUI
     if ui and ui.status then
@@ -44,15 +44,14 @@ local function SetStatus(text)
 end
 getgenv().SetStatus = SetStatus
 
--- ===== APPLY STRATEGY SETTINGS =====
 local function ApplyStrategySettings(strategy)
     local MainGlobals = getgenv().Globals or _G.Globals
     local settings = {
         AutoSkip            = (strategy.autoSkip ~= nil) and strategy.autoSkip or false,
         AutoPremium         = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
         AutoReady           = (strategy.autoReady ~= nil) and strategy.autoReady or false,
-        AutoRejoin          = false,   -- NEVER rejoin the same match
-        AutoRestart         = false,   -- NEVER auto-restart
+        AutoRejoin          = false,
+        AutoRestart         = false,
         AutoUpgradeSelected = false,
         AutoUpgradeAll      = false,
     }
@@ -69,7 +68,6 @@ local function ApplyStrategySettings(strategy)
     end
 end
 
--- ===== BUY TOWER =====
 local function BuyTower(towerName)
     SetStatus("Buying " .. towerName .. "...")
     print("Buying " .. towerName)
@@ -102,7 +100,6 @@ local function BuyTower(towerName)
     return false
 end
 
--- ===== GET STAT =====
 local function GetStat(name)
     local obj = LocalPlayer:FindFirstChild(name)
     if obj and obj.Value ~= nil then return tonumber(obj.Value) or 0 end
@@ -114,7 +111,54 @@ local function GetStat(name)
     return 0
 end
 
--- ===== SMART TELEPORT TO LOBBY =====
+local function waitForCache(key, timeoutSec)
+    timeoutSec = timeoutSec or 5
+    local c = Cache(key)
+    local value = c:GetValue()
+    if not value then
+        c:Download()
+        local start = os.clock()
+        while not c:GetValue() and os.clock() - start < timeoutSec do
+            task.wait(0.1)
+        end
+        value = c:GetValue()
+    end
+    return value or {}
+end
+
+local function GetOwnedTowersFromCache()
+    local troops = waitForCache("Inventory.Troops") or {}
+    local owned = {}
+    for name in pairs(troops) do owned[name] = true end
+    return owned
+end
+
+local function OwnsTowerCache(towerName)
+    local owned = GetOwnedTowersFromCache()
+    return owned[towerName] == true
+end
+
+local function GetTowerLevel(towerName)
+    local expTable = waitForCache("TowerExp") or {}
+    local exp = expTable[towerName] or 0
+    local level = TowerExpUtil.getLevel({ TowerExp = expTable }, towerName)
+    return level, exp
+end
+
+local function IsTowerMaxLevel(towerName)
+    local level = GetTowerLevel(towerName)
+    return level == 20
+end
+
+getgenv().GetOwnedTowersFromCache = GetOwnedTowersFromCache
+getgenv().GetTowerLevel = GetTowerLevel
+getgenv().IsTowerMaxLevel = IsTowerMaxLevel
+
+local function OwnsTower(towerName)
+    SetStatus("Checking ownership: " .. towerName)
+    return OwnsTowerCache(towerName)
+end
+
 local function SmartTeleportToLobby()
     SetStatus("Teleporting to lobby...")
     local lobbyId = 3260590327
@@ -130,7 +174,6 @@ local function SmartTeleportToLobby()
     end)
 end
 
--- ===== UI‑BASED MATCH STATUS (from HardcoreScout) =====
 local function GetMatchStatus()
     local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not PlayerGui then return nil end
@@ -160,14 +203,13 @@ local PostMatchWatcherRunning = false
 local function StartPostMatchLobbyWatcher()
     if PostMatchWatcherRunning then return end
     PostMatchWatcherRunning = true
-
     task.spawn(function()
         while true do
             local status = GetMatchStatus()
             if status then
                 print("[AutoProgression] Match ended (status: " .. status .. "). Teleporting to lobby...")
                 SetStatus("Match ended – returning to lobby")
-                task.wait(2)  -- let rewards screen settle
+                task.wait(2)
                 SmartTeleportToLobby()
                 break
             end
@@ -175,81 +217,6 @@ local function StartPostMatchLobbyWatcher()
         end
         PostMatchWatcherRunning = false
     end)
-end
-
--- ===== OPEN INVENTORY VIA REMOTE =====
-local function OpenInventory()
-    task.wait(2)
-    local network = ReplicatedStorage:FindFirstChild("Network")
-    if not network then return false end
-    local inventory = network:FindFirstChild("Inventory")
-    if not inventory then return false end
-    local openRemote = inventory:FindFirstChild("URE:OpenInventory")
-    if not openRemote then return false end
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if playerGui and playerGui:FindFirstChild("ReactUniversalInventoryView") then
-        return true
-    end
-    openRemote:FireServer()
-    task.wait(1.5)
-    return true
-end
-
--- ===== OWN TOWER CHECK =====
-local function OwnsTower(towerName)
-    SetStatus("Checking ownership: " .. towerName)
-    OpenInventory()
-    local maxAttempts = 15
-    for attempt = 1, maxAttempts do
-        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-        if playerGui then
-            local inventoryView = playerGui:FindFirstChild("ReactUniversalInventoryView")
-            if inventoryView then
-                local holder = inventoryView:FindFirstChild("Holder")
-                if holder then
-                    local windowFrame = holder:FindFirstChild("windowFrame")
-                    if windowFrame then
-                        local towersFrame = windowFrame:FindFirstChild("towersInventoryFrame")
-                        if towersFrame then
-                            local towerContainer = towersFrame:FindFirstChild("towerContainer")
-                            if towerContainer then
-                                task.wait(2)
-                                for _, child in ipairs(towerContainer:GetChildren()) do
-                                    if string.find(child.Name, "scrolling") then
-                                        local towerFrame = child:FindFirstChild(towerName)
-                                        if towerFrame then
-                                            local main = towerFrame:FindFirstChild("main")
-                                            if main then
-                                                local topThing = main:FindFirstChild("topThing")
-                                                if topThing then
-                                                    if not topThing.Visible then
-                                                        return true
-                                                    end
-                                                    local icon = topThing:FindFirstChild("icon")
-                                                    if icon and icon:IsA("ImageLabel") then
-                                                        local image = icon.Image
-                                                        if image == "rbxassetid://8418293221" then
-                                                            return false
-                                                        end
-                                                        return true
-                                                    end
-                                                    return true
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                                return false
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        task.wait(0.5)
-    end
-    warn("[AutoProgression] Timeout waiting for inventory UI – assuming tower NOT owned.")
-    return false
 end
 
 local function AutoBuyTowers(towerList)
@@ -262,7 +229,7 @@ local function AutoBuyTowers(towerList)
             print("[AutoProgression] Priority: Buying Demoman (200 Coins)")
             SetStatus("Priority: Buying Demoman")
             BuyTower("Demoman")
-            task.wait(0.5)   
+            task.wait(0.5)
         else
             print("[AutoProgression] Priority: Not enough Coins for Demoman (need 200, have " .. coins .. ")")
             SetStatus("Not enough Coins for Demoman")
@@ -334,7 +301,6 @@ local function AutoBuyTowers(towerList)
     return "OK"
 end
 
--- ===== LOBBY / MAP CHECKS =====
 local function IsInLobby()
     local placeId = game.PlaceId
     if placeId == 3260590327 then return true end
@@ -403,7 +369,6 @@ local function VetoMap()
     return true
 end
 
--- ===== STRATEGY LISTS =====
 local EasyStrategies = {
     { name = "easy1", mapName = "Crossroads", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy1", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
     { name = "easy2", mapName = "Gilded Path", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy2", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
@@ -416,9 +381,8 @@ local EasyStrategies = {
     { name = "easy9", mapName = "Wrecked Battlefield II", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy9", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
 }
 
--- ===== TOWER REQUIREMENTS FOR EASY STRATEGIES =====
 local EasyTowerRequirements = {
-    easy1 = {},                                    -- Scout is free
+    easy1 = {},
     easy2 = {{"Soldier", 350}, {"Shotgunner", 850}},
     easy3 = {{"Militant", 800}},
     easy4 = {{"Militant", 800}},
@@ -437,7 +401,6 @@ local FrostStrategies = {
     { name = "frost5", mapName = "Dusty Bridges", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost5", autoPremium = false, autoSkip = false, autoRejoin = true, autoReady = true },
 }
 
--- ===== HARDCORE UNEVO / EVO HELPERS (UNTOUCHED) =====
 local function RunHardcoreUnevo()
     if getgenv().HcUnevoActive then
         print("[AutoProgression] Hardcore UNEVO already running, skipping duplicate load.")
@@ -490,9 +453,6 @@ local function RunHardcoreEvo()
     end
 end
 
--- ============================================================
---  NEW: BOOT CAMP AUTOMATION (merged from bootcamp script)
--- ============================================================
 local BootCampRunning = false
 local function RunBootCamp()
     if BootCampRunning then
@@ -500,7 +460,6 @@ local function RunBootCamp()
         return
     end
 
-    -- First, check if we are in a Boot Camp match
     local stateReplicators = ReplicatedStorage:FindFirstChild("StateReplicators")
     if not stateReplicators then
         print("[BootCamp] StateReplicators not found – teleporting to lobby.")
@@ -533,20 +492,17 @@ local function RunBootCamp()
 
     BootCampRunning = true
 
-    -- Load modules
     local NetworkMod = require(ReplicatedStorage.Shared.Modules.Network)
     local GameStateMod = require(ReplicatedStorage.Shared.Modules.GameState)
 
     local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
     local rf = ReplicatedStorage:WaitForChild("RemoteFunction")
 
-    -- Constants
     local LOBBY_PLACE_ID = 3260590327
     local SCOUT_POSITION = Vector3.new(43.76766967773437500,-18.74999046325683594,-11.34976959228515625)
     local SNIPER_POSITION = Vector3.new(48.01165008544921875, -13.72033500671386719, 14.51969814300537109)
 
-    -- Helper functions (copied from bootcamp script)
-    local function log(...) end  -- silent
+    local function log(...) end
 
     local function TeleportToLobbyOnce()
         if game.PlaceId == LOBBY_PLACE_ID then return true end
@@ -602,7 +558,6 @@ local function RunBootCamp()
         return ok
     end
 
-    -- Dialog auto-press loop
     task.spawn(function()
         local lastText = ""
         local lastPressedAt = 0
@@ -629,7 +584,6 @@ local function RunBootCamp()
         end
     end)
 
-    -- Auto-ready for tutorial
     task.spawn(function()
         while rep.Parent and rep:GetAttribute("GameOver") ~= true do
             local readyPrompt = false
@@ -645,7 +599,6 @@ local function RunBootCamp()
         end
     end)
 
-    -- Vote skip for Ready/Skip prompts
     task.spawn(function()
         local voteRep = stateReplicators:FindFirstChild("VoteReplicator", 10)
         if not voteRep then return end
@@ -661,7 +614,6 @@ local function RunBootCamp()
         end
     end)
 
-    -- Helper functions for placement/upgrade
     local function checkSuccess(data)
         if data == true then return true end
         if type(data) == "table" and data.Success == true then return true end
@@ -775,7 +727,6 @@ local function RunBootCamp()
         return false
     end
 
-    -- 5-minute stuck protection
     task.spawn(function()
         task.wait(5 * 60)
         if rep and rep.Parent and rep:GetAttribute("GameOver") ~= true then
@@ -784,7 +735,6 @@ local function RunBootCamp()
         end
     end)
 
-    -- ===== Main Boot Camp sequence =====
     if not waitForDialogText("Start by placing a scout.", 90) then
         BootCampRunning = false
         return
@@ -825,7 +775,6 @@ local function RunBootCamp()
 
     log("Scout + Sniper placed. Starting upgrades...")
 
-    -- Wait for Scout upgrade prompt
     local scoutUpgradeDeadline = os.clock() + 45
     while os.clock() < scoutUpgradeDeadline do
         if rep:GetAttribute("AllowedUpgradeTower") == "Scout"
@@ -845,7 +794,6 @@ local function RunBootCamp()
     upgradeUntilSuccess(scout, 1)
     upgradeUntilSuccess(scout, 1)
 
-    -- Wait for Sniper upgrade prompt
     local sniperUpgradeDeadline = os.clock() + 45
     while os.clock() < sniperUpgradeDeadline do
         if rep:GetAttribute("AllowedUpgradeTower") == "Sniper"
@@ -867,7 +815,6 @@ local function RunBootCamp()
 
     log("Boot Camp setup complete.")
 
-    -- ===== After match ends: return to lobby once, no requeue =====
     task.spawn(function()
         repeat
             task.wait(0.1)
@@ -878,7 +825,7 @@ local function RunBootCamp()
             return
         end
 
-        task.wait(3)  -- let rewards screen appear
+        task.wait(3)
         log("Boot Camp finished. Returning to lobby once.")
         TeleportToLobbyOnce()
         BootCampRunning = false
@@ -886,7 +833,6 @@ local function RunBootCamp()
     end)
 end
 
--- ===== UPDATED EASY STRATEGY RUNNER =====
 local runningEasy = false
 local function RunYeetEasy()
     if runningEasy then return end
@@ -899,7 +845,6 @@ local function RunYeetEasy()
             local availableMaps = GetAvailableMaps()
             local feasibleStrategies = {}
 
-            -- Gather strategies whose map is available AND tower requirements can be met
             for _, strategy in ipairs(EasyStrategies) do
                 if availableMaps[strategy.mapName] then
                     local reqs = EasyTowerRequirements[strategy.name] or {}
@@ -908,7 +853,6 @@ local function RunYeetEasy()
                     for _, req in ipairs(reqs) do
                         local towerName = req[1]
                         local cost = req[2] or 0
-                        -- Check ownership
                         if not OwnsTower(towerName) then
                             local coins = GetStat("Coins")
                             if coins < cost then
@@ -928,12 +872,9 @@ local function RunYeetEasy()
                 local chosen = feasibleStrategies[math.random(1, #feasibleStrategies)]
                 local reqs = EasyTowerRequirements[chosen.name] or {}
 
-                -- Buy missing towers (if any)
                 if #reqs > 0 then
-                    local buyResult = AutoBuyTowers(reqs)   -- reqs is already in {towerName, cost} format
+                    local buyResult = AutoBuyTowers(reqs)
                     if buyResult ~= "OK" then
-                        -- In theory this shouldn't happen because we already checked feasibility,
-                        -- but if it does, skip this strategy and try another
                         print("[AutoProgression] Failed to buy towers for " .. chosen.name .. ", skipping.")
                         continue
                     end
@@ -949,7 +890,6 @@ local function RunYeetEasy()
                 return
             end
 
-            -- No feasible maps → try to veto
             local vetoInfo = GetVetoInfo()
             if not vetoInfo then
                 print("[AutoProgression] Could not read veto text – assuming no vetoes.")
@@ -964,14 +904,10 @@ local function RunYeetEasy()
             end
         end
 
-        -- If we exit the loop, no suitable map was found
         print("[AutoProgression] No feasible Easy maps available. Returning to lobby...")
         SetStatus("No Easy maps – teleporting to lobby")
         SmartTeleportToLobby()
     else
-        -- In lobby, we don't have a map selection screen.
-        -- We'll just pick a strategy that we can afford (assume all maps might appear).
-        -- For simplicity, we pick the first feasible strategy from the list.
         local chosen = nil
         for _, strategy in ipairs(EasyStrategies) do
             local reqs = EasyTowerRequirements[strategy.name] or {}
@@ -1066,7 +1002,6 @@ local function RunFrostStrategy()
     runningFrost = false
 end
 
--- ===== MAIN AUTO PROGRESSION LOGIC (with force overrides) =====
 local AutoProgressionRunning = false
 local AutoProgressionEnabled = false
 
@@ -1075,7 +1010,6 @@ local function RunAutoProgression()
     AutoProgressionRunning = true
     task.wait(0.5)
 
-    -- ===== AUTO-DETECT BOOT CAMP =====
     local stateRep = ReplicatedStorage:FindFirstChild("StateReplicators")
     if stateRep then
         local gameStateRep = stateRep:FindFirstChild("GameStateReplicator")
@@ -1088,7 +1022,6 @@ local function RunAutoProgression()
         end
     end
 
-    -- Check force toggles (if any are enabled)
     local forceEasy = _G.AutoProgSettings.ForceEasy or false
     local forceFrost = _G.AutoProgSettings.ForceFrost or false
     local forceHcUnevo = _G.AutoProgSettings.ForceHardcoreUnevo or false
@@ -1146,7 +1079,6 @@ local function RunAutoProgression()
         return
     end
 
-    -- No force – use level‑based logic
     local level = GetStat("Level")
     local currentDifficulty = (ReplicatedStorage:FindFirstChild("State") and ReplicatedStorage.State:FindFirstChild("Difficulty")) and ReplicatedStorage.State.Difficulty.Value or nil
 
@@ -1208,7 +1140,6 @@ local function RunAutoProgression()
     AutoProgressionRunning = false
 end
 
--- ===== CODE REDEEMER (from Beebom) =====
 local function fetchCodesFromBeebom()
     local httpRequest = syn and syn.request or http and http.request or request
     if not httpRequest then
@@ -1269,7 +1200,6 @@ local function redeemCodesFromBeebom()
     SetStatus("Code redemption complete")
 end
 
--- ===== UI CREATION =====
 local function CreateUI()
     local oldGui = CoreGui:FindFirstChild("AutoProgressionUI")
     if oldGui then oldGui:Destroy() end
@@ -1278,7 +1208,7 @@ local function CreateUI()
     gui.ResetOnSpawn = false
     gui.Parent = CoreGui
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 300, 0, 420)  -- increased height for Boot Camp button
+    frame.Size = UDim2.new(0, 300, 0, 420)
     frame.Position = UDim2.new(0.5, -150, 0.7, -210)
     frame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
     frame.BorderSizePixel = 0
@@ -1288,7 +1218,6 @@ local function CreateUI()
     stroke.Color = Color3.fromRGB(60, 60, 80)
     stroke.Thickness = 2
     stroke.Parent = frame
-    -- Header
     local header = Instance.new("Frame")
     header.Size = UDim2.new(1, -24, 0, 38)
     header.Position = UDim2.new(0, 12, 0, 12)
@@ -1315,7 +1244,6 @@ local function CreateUI()
     titleConstraint.MaxTextSize = 22
     titleConstraint.MinTextSize = 15
     titleConstraint.Parent = title
-    -- Stats display
     local levelDisplay = Instance.new("TextLabel")
     levelDisplay.Size = UDim2.new(1, 0, 0, 20)
     levelDisplay.Position = UDim2.new(0, 0, 0, 58)
@@ -1360,7 +1288,6 @@ local function CreateUI()
         statusDisplay.Text = "Status: " .. _G._pendingStatus
         _G._pendingStatus = nil
     end
-    -- Main toggle
     local toggle = Instance.new("TextButton")
     toggle.Size = UDim2.new(0, 90, 0, 30)
     toggle.Position = UDim2.new(0.5, -45, 0, 148)
@@ -1371,7 +1298,6 @@ local function CreateUI()
     toggle.Font = Enum.Font.GothamBold
     toggle.Parent = frame
     Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 10)
-    -- Mode override toggles
     local modeLabel = Instance.new("TextLabel")
     modeLabel.Size = UDim2.new(1, -20, 0, 18)
     modeLabel.Position = UDim2.new(0, 10, 0, 186)
@@ -1551,7 +1477,6 @@ local function CreateUI()
         task.spawn(RunAutoProgression)
     end
 
-    -- Dragging
     local dragging = false
     local dragInput, dragStart, startPos
     frame.InputBegan:Connect(function(input)
@@ -1577,7 +1502,6 @@ local function CreateUI()
         end
     end)
 
-    -- Update stats every second
     task.spawn(function()
         while task.wait(1) do
             local level = GetStat("Level")
@@ -1604,7 +1528,6 @@ local function CreateUI()
     }
 end
 
--- ===== UI RECOVERY LOOP =====
 task.spawn(function()
     while task.wait(5) do
         local anyForceOn = _G.AutoProgSettings.ForceEasy or
@@ -1620,7 +1543,6 @@ task.spawn(function()
     end
 end)
 
--- Create UI and expose globals
 local ui = CreateUI()
 getgenv().AutoProgressionUI = ui
 getgenv().BuyTower = BuyTower
