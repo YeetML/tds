@@ -1,7 +1,5 @@
-local Globals = (getgenv and getgenv()) or shared or _G or {}
-
+local Globals = getgenv()
 _G.AutoProgSettings = _G.AutoProgSettings or {}
-
 if shared.TDSTable then
     return shared.TDSTable
 end
