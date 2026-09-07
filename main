@@ -4838,7 +4838,7 @@ function StartBackToLobby()
             return
         end
 
-        while Globals.AutoRejoin or Globals.AutoRestart do
+        while true do
             local isGameOver = gameStateReplicator:GetAttribute("GameOver") == true
             if isGameOver then
                 local health = gameStateReplicator:GetAttribute("Health") or 0
