@@ -5193,7 +5193,6 @@ local function StartAutoSaboteur()
     AutoSaboteurRunning = true
 
     task.spawn(function()
-        print("🔁 Saboteur loop started")
         while Globals.AutoSaboteur do
             local towersFolder = workspace:FindFirstChild("Towers")
             local npcsFolder = workspace:FindFirstChild("NPCs")
