@@ -120,6 +120,49 @@ local StartBackToLobby
 local platform = UserInputService:GetPlatform()
 local IsMobile = (platform == Enum.Platform.IOS or platform == Enum.Platform.Android)
 
+-- ===== FALLBACKS FOR MISSING EXECUTOR FUNCTIONS =====
+if not math.lerp then
+    math.lerp = function(a, b, t) return a + (b - a) * t end
+end
+
+local _getupvalues = getupvalues
+local _setupvalue = setupvalue
+if not _getupvalues or not _setupvalue then
+    getupvalues = function() return {} end
+    setupvalue = function() end
+    warn("getupvalues/setupvalue not supported – Tower Snapper will be disabled")
+end
+
+if not isfile then isfile = function() return false end end
+if not writefile then writefile = function() end end
+if not readfile then readfile = function() return "" end end
+if not delfile then delfile = function() end end
+
+local function SafeHttpGet(url)
+    local ok, res = pcall(game.HttpGet, game, url)
+    if ok and res and res ~= "" then
+        return res
+    end
+    return nil
+end
+
+local function LoadModule(url, fallbackUrl)
+    local code = SafeHttpGet(url)
+    if code then
+        local fn = loadstring(code)
+        if fn then return fn() end
+    end
+    if fallbackUrl then
+        code = SafeHttpGet(fallbackUrl)
+        if code then
+            local fn = loadstring(code)
+            if fn then return fn() end
+        end
+    end
+    return nil
+end
+-- =====================================================
+
 task.spawn(function()
     LocalPlayer.Idled:Connect(function()
         VirtualUser:CaptureController()
@@ -701,6 +744,10 @@ local function HookPlacementSystem()
             return OrigAdd(Name, Signal, Callback)
         end
     end)
+    if not Success then
+        warn("HookPlacementSystem failed: " .. tostring(Err))
+        TowerSnapper.Enabled = false  -- disable snapper to prevent further errors
+    end
 end
 
 local function GetDJRangeBuffPercent(UpgradeLevel, TrackName)
@@ -896,7 +943,7 @@ RunService.RenderStepped:Connect(function(DeltaTime)
 end)
 
 if GameState == "GAME" then
-    HookPlacementSystem()
+    pcall(HookPlacementSystem)  -- safe call
 end
 
 local function CoerceTimeScaleValue(val, fallback)
@@ -2014,7 +2061,12 @@ task.spawn(function()
     Towers.ChildAdded:Connect(AutoSetDJSong)
 end)
 
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources"))()
+-- ===== UI LOADING WITH FALLBACK =====
+local Library = LoadModule(
+    "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources",
+    "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Sources/UI.lua"
+)
+if not Library then error("UI library could not be loaded. Check your internet or executor.") end
 
 Window = Library:Window({
     Title = "Aether Hub",
@@ -3339,15 +3391,23 @@ end
 
 Window:Line()
 
-local RecorderInit = loadstring(game:HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Sources/Recorder.lua"))()
-RecorderInit({
-    Window = Window,
-    ReplicatedStorage = ReplicatedStorage,
-    LocalPlayer = LocalPlayer,
-    HttpService = HttpService,
-    GameState = GameState,
-    workspace = workspace
-})
+-- ===== RECORDER LOADING WITH FALLBACK =====
+local RecorderInit = LoadModule(
+    "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Sources/Recorder.lua",
+    nil  -- no fallback needed, this one works
+)
+if RecorderInit then
+    RecorderInit({
+        Window = Window,
+        ReplicatedStorage = ReplicatedStorage,
+        LocalPlayer = LocalPlayer,
+        HttpService = HttpService,
+        GameState = GameState,
+        workspace = workspace
+    })
+else
+    warn("Recorder module failed to load – skipping.")
+end
 
 Window:Line()
 
