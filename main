@@ -5590,6 +5590,7 @@ local function StartAutoDjBooth()
 
     task.spawn(function()
         while Globals.AutoDJ do
+            local DJ = nil
             local TowersFolder = workspace:FindFirstChild("Towers")
 
             if TowersFolder then
