@@ -174,6 +174,20 @@ if not SendRequest then
     return 
 end
 
+local function HttpGet(url)
+    local response = SendRequest({
+        Url = url,
+        Method = "GET",
+        Headers = {
+            ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+    })
+    if response and response.StatusCode == 200 and response.Body then
+        return response.Body
+    end
+    error("Failed to fetch " .. url .. " (status: " .. tostring(response and response.StatusCode or "unknown") .. ")")
+end
+
 local BackToLobbyRunning = false
 local AutoPickupsRunning = false
 local AutoSkipRunning = false
@@ -1745,7 +1759,7 @@ function TDS:Addons()
     IsCurrentlyLoading = true
 
     local url = "https://api.jnkie.com/api/v1/luascripts/public/57fe397f76043ce06afad24f07528c9f93e97730930242f57134d0b60a2d250b/download"
-    local success, code = pcall(game.HttpGet, game, url)
+    local success, code = pcall(HttpGet, url)
     if not success or not code then
         IsCurrentlyLoading = false
         return false
@@ -1930,8 +1944,8 @@ local function StartEasyMode()
 
         while Globals.Easy and content == nil do
             local success, res = pcall(function() 
-                return game:HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Easy.lua") 
-            end)
+    return HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Easy.lua") 
+end)
 
             if success and type(res) == "string" then
                 content = res
@@ -2014,7 +2028,7 @@ task.spawn(function()
     Towers.ChildAdded:Connect(AutoSetDJSong)
 end)
 
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources"))()
+local Library = loadstring(HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources"))()
 
 Window = Library:Window({
     Title = "Aether Hub",
@@ -2278,7 +2292,7 @@ Automation:Toggle({
 
         if v then
             if not AutoDJ then
-                AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+                AutoDJ = loadstring(HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
             end
             AutoDJ.Start()
         else
@@ -3300,7 +3314,7 @@ Strategies:Toggle({
 
         if not AutoTrialsLib then
             local success, result = pcall(function()
-                return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials"))()
+                return loadstring(HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials"))()
             end)
             if not success or not result then
                 Window:Notify({
@@ -3339,7 +3353,7 @@ end
 
 Window:Line()
 
-local RecorderInit = loadstring(game:HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Sources/Recorder.lua"))()
+local RecorderInit = loadstring(HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Sources/Recorder.lua"))()
 RecorderInit({
     Window = Window,
     ReplicatedStorage = ReplicatedStorage,
@@ -4894,7 +4908,7 @@ local function StartAutoGatling()
                 GatlingExecuted = true 
                 task.spawn(function()
                     pcall(function()
-                        loadstring(game:HttpGet("https://raw.githubusercontent.com/avtryxz/autogutlin/refs/heads/main/autogutlin.lua"))()
+                        loadstring(HttpGet("https://raw.githubusercontent.com/avtryxz/autogutlin/refs/heads/main/autogutlin.lua"))()
                     end)
                 end)
             end
@@ -4917,7 +4931,7 @@ local function StartGatlify()
                         IsCurrentlyLoading = true
                         GatlifyExecuted = true 
                         pcall(function()
-                            loadstring(game:HttpGet("https://raw.githubusercontent.com/avtryxz/Gatlify/refs/heads/main/Gatlify.lua"))()
+                            loadstring(HttpGet("https://raw.githubusercontent.com/avtryxz/Gatlify/refs/heads/main/Gatlify.lua"))()
                         end)
                         IsCurrentlyLoading = false
                         LastLoadTime = os.clock()
@@ -5546,7 +5560,7 @@ local function StartAutoFreezer()
     if AutoFreezerRunning then return end
     if not AutoFreezerLib then
         local success, loaded = pcall(function()
-            return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoFreezer"))()
+            return loadstring(HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoFreezer"))()
         end)
         if not success or not loaded then
             warn("[AutoFreezer] Failed to load module.")
@@ -5572,7 +5586,7 @@ local function StartAutoSaboteur()
     if AutoSaboteurRunning then return end
     if not AutoSaboteurLib then
         local success, loaded = pcall(function()
-            return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoSaboteur"))()
+            return loadstring(HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoSaboteur"))()
         end)
         if not success or not loaded then
             warn("[AutoSaboteur] Failed to load module.")
@@ -5645,7 +5659,7 @@ local function StartMedicChain()
         if not AutoMedicLib then
             local success, loadedLib = pcall(function()
                 local url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoMedic"
-                return loadstring(game:HttpGet(url))()
+return loadstring(HttpGet(url))()
             end)
 
             if success and loadedLib then
@@ -5712,7 +5726,7 @@ local function StartBountyChain()
         if not AutoBountyLib then
             local success, loadedLib = pcall(function()
                 local url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoBounty"
-                return loadstring(game:HttpGet(url))()
+return loadstring(HttpGet(url))()
             end)
 
             if success and loadedLib then
