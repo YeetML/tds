@@ -2939,11 +2939,35 @@ Strategies:Toggle({
                     end)
                 end
                 local targetTrial = savedTrial or trialName
-                local scriptUrl = trialScripts[targetTrial]
-                if not scriptUrl then
-                    Window:Notify({Title = "AutoTrials", Desc = "No strategy for " .. targetTrial, Time = 3, Type = "error"})
-                    return
-                end
+
+-- Normalise common trial names
+local trialMap = {
+    ["SpeedyEnemies"] = "Speedy Enemies",
+    ["Speedy Enemies"] = "Speedy Enemies",
+    ["Glass"] = "Glass",
+    ["Quarantine"] = "Quarantine",
+    ["Fog"] = "Fog",
+    ["Limitation"] = "Limitation",
+    ["Flying"] = "Flying",
+    ["Jailed"] = "Jailed",
+    ["ExplodingEnemies"] = "Exploding Enemies",
+    ["Exploding Enemies"] = "Exploding Enemies",
+    ["Inflation"] = "Inflation",
+    ["Committed"] = "Committed",
+    ["Hidden"] = "Hidden",
+    ["HiddenEnemies"] = "Hidden Enemies",
+    ["Hidden Enemies"] = "Hidden Enemies",
+    ["Broke"] = "Broke",
+    ["Healthy"] = "Healthy Enemies",
+    ["HealthyEnemies"] = "Healthy Enemies",
+    ["Healthy Enemies"] = "Healthy Enemies",
+}
+local mapped = trialMap[targetTrial] or targetTrial
+local scriptUrl = trialScripts[mapped]
+if not scriptUrl then
+    Window:Notify({Title = "AutoTrials", Desc = "No strategy for " .. targetTrial, Time = 3, Type = "error"})
+    return
+end
                 local ok, err = pcall(function()
                     local chunk = game:HttpGet(scriptUrl)
                     local fn = loadstring(chunk)
