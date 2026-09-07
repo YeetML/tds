@@ -50,8 +50,8 @@ local function ApplyStrategySettings(strategy)
         AutoSkip            = (strategy.autoSkip ~= nil) and strategy.autoSkip or false,
         AutoPremium         = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
         AutoReady           = (strategy.autoReady ~= nil) and strategy.autoReady or false,
-        AutoRejoin          = false,
-        AutoRestart         = false,
+        AutoRejoin          = true,   -- Enable main script's watcher
+        AutoRestart         = false,  -- We only need rejoin, not restart
         AutoUpgradeSelected = false,
         AutoUpgradeAll      = false,
     }
@@ -159,80 +159,7 @@ local function OwnsTower(towerName)
     return OwnsTowerCache(towerName)
 end
 
-local function SmartTeleportToLobby()
-    SetStatus("Teleporting to lobby...")
-    local lobbyId = 3260590327
-    pcall(function()
-        if not IsMobile and getgenv().PrivateCode and getgenv().PrivateCode ~= "" then
-            game:GetService("ExperienceService"):LaunchExperience({
-                placeId = lobbyId,
-                linkCode = getgenv().PrivateCode
-            })
-        else
-            TeleportService:Teleport(lobbyId)
-        end
-    end)
-end
-
-local function GetMatchStatus()
-    local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not PlayerGui then return nil end
-    local uiRoot = PlayerGui:FindFirstChild("ReactGameNewRewards")
-    if not uiRoot then return nil end
-    local mainFrame = uiRoot:FindFirstChild("Frame")
-    if not mainFrame or not mainFrame.Visible then return nil end
-    local gameOver = mainFrame:FindFirstChild("gameOver")
-    if not gameOver or not gameOver.Visible then return nil end
-    local rewardsScreen = gameOver:FindFirstChild("RewardsScreen")
-    if not rewardsScreen or not rewardsScreen.Visible then return nil end
-    local topBanner = rewardsScreen:FindFirstChild("RewardBanner")
-    if not topBanner then return nil end
-    local label = topBanner:FindFirstChild("textLabel") or topBanner:FindFirstChildOfClass("TextLabel")
-    if not label then return nil end
-    local txt = label.Text:upper()
-    if txt == "" then return nil end
-    if txt:find("TRIUMPH") or txt:find("VICTORY") or txt:find("WIN") then
-        return "WIN"
-    elseif txt:find("LOST") or txt:find("DEFEAT") or txt:find("FAIL") then
-        return "LOSS"
-    end
-    return nil
-end
-
-local PostMatchWatcherRunning = false
-local function StartPostMatchLobbyWatcher()
-    if PostMatchWatcherRunning then return end
-    PostMatchWatcherRunning = true
-
-    task.spawn(function()
-        local stateRep = ReplicatedStorage:FindFirstChild("StateReplicators")
-        local gameStateRep = stateRep and stateRep:FindFirstChild("GameStateReplicator")
-
-        while true do
-            local status = GetMatchStatus()  -- UI-based, still works if UI is present
-            if status then
-                print("[AutoProgression] Match ended (UI status: " .. status .. "). Teleporting...")
-                SetStatus("Match ended – returning to lobby")
-                task.wait(2)
-                SmartTeleportToLobby()
-                break
-            end
-
-            -- Fallback: check the replicator's GameOver attribute
-            if gameStateRep and gameStateRep:GetAttribute("GameOver") == true then
-                print("[AutoProgression] Match ended (GameOver detected). Teleporting...")
-                SetStatus("Match ended – returning to lobby")
-                task.wait(2)
-                SmartTeleportToLobby()
-                break
-            end
-
-            task.wait(1)
-        end
-
-        PostMatchWatcherRunning = false
-    end)
-end
+--[[ OLD TELEPORT AND WATCHER FUNCTIONS ARE REMOVED. ALL TELEPORTS NOW USE getgenv().SmartTeleportToLobby() ]]
 
 local function AutoBuyTowers(towerList)
     print("[AutoProgression] Checking towers to buy...")
@@ -386,7 +313,7 @@ end
 
 local EasyStrategies = {
     { name = "easy1", mapName = "Crossroads", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy1", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
-    { name = "easy2", mapName = "Gilded Path", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy2", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
+    --{ name = "easy2", mapName = "Gilded Path", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy2", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
     { name = "easy3", mapName = "Dead Ahead", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy3", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
     { name = "easy4", mapName = "Lay By", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy4", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
     --{ name = "easy5", mapName = "Mason Arch", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy5", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
@@ -398,7 +325,7 @@ local EasyStrategies = {
 
 local EasyTowerRequirements = {
     easy1 = {},
-    easy2 = {{"Soldier", 350}, {"Shotgunner", 850}},
+    --easy2 = {{"Soldier", 350}, {"Shotgunner", 850}},
     easy3 = {{"Militant", 800}},
     easy4 = {{"Militant", 800}},
     --easy5 = {{"Militant", 800}, {"Shotgunner", 850}},
@@ -479,14 +406,14 @@ local function RunBootCamp()
     local stateReplicators = ReplicatedStorage:FindFirstChild("StateReplicators")
     if not stateReplicators then
         print("[BootCamp] StateReplicators not found – teleporting to lobby.")
-        SmartTeleportToLobby()
+        getgenv().SmartTeleportToLobby()
         return
     end
 
     local rep = stateReplicators:FindFirstChild("GameStateReplicator")
     if not rep then
         print("[BootCamp] GameStateReplicator not found – teleporting to lobby.")
-        SmartTeleportToLobby()
+        getgenv().SmartTeleportToLobby()
         return
     end
 
@@ -499,7 +426,7 @@ local function RunBootCamp()
     if difficulty ~= "Chapter0Mission1" then
         print("[BootCamp] Not Boot Camp. Difficulty:", difficulty)
         SetStatus("Not Boot Camp – returning to lobby")
-        SmartTeleportToLobby()
+        getgenv().SmartTeleportToLobby()
         return
     end
 
@@ -522,6 +449,13 @@ local function RunBootCamp()
 
     local function TeleportToLobbyOnce()
         if game.PlaceId == LOBBY_PLACE_ID then return true end
+        -- Use main script's teleport
+        local mainTeleport = getgenv().SmartTeleportToLobby
+        if type(mainTeleport) == "function" then
+            pcall(mainTeleport)
+            return true
+        end
+        -- fallback
         local ok, err = pcall(function()
             TeleportService:Teleport(LOBBY_PLACE_ID, LocalPlayer)
         end)
@@ -901,7 +835,7 @@ RunYeetEasy = function()
                 print("[AutoProgression] Selected Easy: " .. chosen.name .. " on " .. chosen.mapName)
                 SetStatus("Loading Easy: " .. chosen.name .. " on " .. chosen.mapName)
                 loadstring(game:HttpGet(chosen.url))()
-                StartPostMatchLobbyWatcher()
+                -- No teleport here – main script watcher will handle it
                 runningEasy = false
                 return
             end
@@ -922,65 +856,63 @@ RunYeetEasy = function()
 
         print("[AutoProgression] No feasible Easy maps available. Returning to lobby...")
         SetStatus("No Easy maps – teleporting to lobby")
-        SmartTeleportToLobby()
+        getgenv().SmartTeleportToLobby()
     else
-    -- In lobby: prefer strategies that require towers we can afford to buy
-    local chosen = nil
-    local fallback = nil
+        -- In lobby: prefer strategies that require towers we can afford to buy
+        local chosen = nil
+        local fallback = nil
 
-    for _, strategy in ipairs(EasyStrategies) do
-        local reqs = EasyTowerRequirements[strategy.name] or {}
-        local feasible = true
-        local needsBuying = false
-        local canAfford = true
+        for _, strategy in ipairs(EasyStrategies) do
+            local reqs = EasyTowerRequirements[strategy.name] or {}
+            local feasible = true
+            local needsBuying = false
+            local canAfford = true
 
-        for _, req in ipairs(reqs) do
-            local towerName = req[1]
-            local cost = req[2] or 0
-            if not OwnsTower(towerName) then
-                needsBuying = true
-                local coins = GetStat("Coins")
-                if coins < cost then
-                    canAfford = false
-                    feasible = false
+            for _, req in ipairs(reqs) do
+                local towerName = req[1]
+                local cost = req[2] or 0
+                if not OwnsTower(towerName) then
+                    needsBuying = true
+                    local coins = GetStat("Coins")
+                    if coins < cost then
+                        canAfford = false
+                        feasible = false
+                        break
+                    end
+                end
+            end
+
+            if feasible then
+                if needsBuying then
+                    chosen = strategy
                     break
+                else
+                    fallback = strategy
                 end
             end
         end
 
-        if feasible then
-            if needsBuying then
-                -- This strategy requires towers we can afford – pick it immediately
-                chosen = strategy
-                break
-            else
-                -- Fully owned, keep as fallback
-                fallback = strategy
+        if not chosen then
+            chosen = fallback
+        end
+
+        if chosen then
+            local reqs = EasyTowerRequirements[chosen.name] or {}
+            if #reqs > 0 then
+                AutoBuyTowers(reqs)
             end
+            ApplyStrategySettings(chosen)
+            task.wait(0.3)
+            print("[AutoProgression] In lobby, selected Easy: " .. chosen.name)
+            SetStatus("In lobby – loading Easy: " .. chosen.name)
+            loadstring(game:HttpGet(chosen.url))()
+            -- No teleport here
+        else
+            SetStatus("Cannot afford any Easy towers – returning to lobby")
+            getgenv().SmartTeleportToLobby()
         end
+        runningEasy = false
     end
-
-    if not chosen then
-        chosen = fallback  -- if no strategy needs buying, use the first fully owned one
-    end
-
-    if chosen then
-        local reqs = EasyTowerRequirements[chosen.name] or {}
-        if #reqs > 0 then
-            AutoBuyTowers(reqs)
-        end
-        ApplyStrategySettings(chosen)
-        task.wait(0.3)
-        print("[AutoProgression] In lobby, selected Easy: " .. chosen.name)
-        SetStatus("In lobby – loading Easy: " .. chosen.name)
-        loadstring(game:HttpGet(chosen.url))()
-        StartPostMatchLobbyWatcher()
-    else
-        SetStatus("Cannot afford any Easy towers – returning to lobby")
-        SmartTeleportToLobby()
-    end
-    runningEasy = false
-end
 end
 
 local runningFrost = false
@@ -1005,7 +937,7 @@ local function RunFrostStrategy()
                 print("[AutoProgression] Selected Frost: " .. chosen.name .. " on " .. chosen.mapName)
                 SetStatus("Loading Frost: " .. chosen.name .. " on " .. chosen.mapName)
                 loadstring(game:HttpGet(chosen.url))()
-                StartPostMatchLobbyWatcher()
+                -- No teleport here – main script watcher handles it
                 runningFrost = false
                 return
             end
@@ -1024,7 +956,7 @@ local function RunFrostStrategy()
         end
         print("[AutoProgression] No Frost maps available. Teleporting to lobby...")
         SetStatus("No Frost maps – teleporting to lobby")
-        SmartTeleportToLobby()
+        getgenv().SmartTeleportToLobby()
     else
         local chosen = FrostStrategies[math.random(1, #FrostStrategies)]
         ApplyStrategySettings(chosen)
@@ -1032,7 +964,7 @@ local function RunFrostStrategy()
         print("[AutoProgression] In lobby, selected Frost: " .. chosen.name)
         SetStatus("In lobby – loading Frost: " .. chosen.name)
         loadstring(game:HttpGet(chosen.url))()
-        StartPostMatchLobbyWatcher()
+        -- No teleport here
     end
     runningFrost = false
 end
@@ -1129,7 +1061,7 @@ local function RunAutoProgression()
             else
                 print("[AutoProgression] In non-Frost match, teleporting to lobby to run Frost.")
                 SetStatus("Not Frost match – teleporting to lobby")
-                SmartTeleportToLobby()
+                getgenv().SmartTeleportToLobby()
             end
         else
             local result = AutoBuyTowers({
@@ -1144,7 +1076,7 @@ local function RunAutoProgression()
                 if currentDifficulty == "Frost" then
                     print("[AutoProgression] In Frost match but need Coins – teleporting to lobby.")
                     SetStatus("In Frost match, need Coins – teleporting to lobby")
-                    SmartTeleportToLobby()
+                    getgenv().SmartTeleportToLobby()
                 else
                     print("[AutoProgression] Not enough Coins for Frost – farming Easy.")
                     SetStatus("Not enough Coins for Frost – farming Easy")
@@ -1154,7 +1086,7 @@ local function RunAutoProgression()
                 if currentDifficulty == "Frost" then
                     print("[AutoProgression] In Frost match but need Gems – teleporting to lobby.")
                     SetStatus("In Frost match, need Gems – teleporting to lobby")
-                    SmartTeleportToLobby()
+                    getgenv().SmartTeleportToLobby()
                 else
                     print("[AutoProgression] Not enough Gems for Frost – farming UNEVO.")
                     SetStatus("Not enough Gems for Frost – farming UNEVO")
