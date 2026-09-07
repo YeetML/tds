@@ -1,0 +1,60 @@
+--[[
+    AutoFreezer – external module
+    Activates Frost Grenade on level 4+ Freezers that have a target.
+    Depends on: Globals.AutoFreezer (boolean), RemoteFunction, workspace, LocalPlayer
+]]
+local AutoFreezer = {}
+
+local running = false
+local thread = nil
+local LocalPlayer = game:GetService("Players").LocalPlayer
+local RemoteFunction = game:GetService("ReplicatedStorage"):FindFirstChild("RemoteFunction")
+local Workspace = game:GetService("Workspace")
+
+local function getFreezers()
+    local freezers = {}
+    local towersFolder = Workspace:FindFirstChild("Towers")
+    if not towersFolder then return freezers end
+    for _, tower in ipairs(towersFolder:GetChildren()) do
+        local rep = tower:FindFirstChild("TowerReplicator")
+        if rep then
+            local name = rep:GetAttribute("Name")
+            local owner = rep:GetAttribute("OwnerId")
+            local upgrade = rep:GetAttribute("Upgrade") or 0
+            if name == "Freezer" and owner == LocalPlayer.UserId and upgrade >= 4 then
+                table.insert(freezers, tower)
+            end
+        end
+    end
+    return freezers
+end
+
+function AutoFreezer.Start()
+    if running then return end
+    running = true
+    thread = task.spawn(function()
+        while running do
+            local freezers = getFreezers()
+            for _, freezer in ipairs(freezers) do
+                local target = freezer:FindFirstChild("Target")
+                if target and target.Value and target.Value ~= "" and target.Value ~= "None" then
+                    pcall(function()
+                        RemoteFunction:InvokeServer("Troops", "Abilities", "Activate", {
+                            Troop = freezer,
+                            Name = "Frost Grenade",
+                            Data = {}
+                        })
+                    end)
+                end
+            end
+            task.wait(0.5)
+        end
+    end)
+end
+
+function AutoFreezer.Stop()
+    running = false
+    if thread then task.cancel(thread); thread = nil end
+end
+
+return AutoFreezer
