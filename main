@@ -1,4 +1,4 @@
-local Globals = getgenv()
+local Globals = (getgenv and getgenv()) or shared or _G or {}
 
 _G.AutoProgSettings = _G.AutoProgSettings or {}
 
@@ -5173,56 +5173,134 @@ local function StartAutoNecro()
     end)
 end
 
-local AutoFreezerLib = nil
-
 local function StartAutoFreezer()
-    if AutoFreezerRunning then return end
-    if not AutoFreezerLib then
-        local success, loaded = pcall(function()
-            return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoFreezer"))()
-        end)
-        if not success or not loaded then
-            warn("[AutoFreezer] Failed to load module.")
-            return
-        end
-        AutoFreezerLib = loaded
-    end
+    if AutoFreezerRunning or not Globals.AutoFreezer then return end
     AutoFreezerRunning = true
-    AutoFreezerLib.Start()
-end
 
-local function StopAutoFreezer()
-    if not AutoFreezerRunning then return end
-    AutoFreezerRunning = false
-    if AutoFreezerLib then
-        AutoFreezerLib.Stop()
-    end
-end
+    task.spawn(function()
+        local ownerId = LocalPlayer.UserId
+        local abilityName = "Frost Grenade" 
 
-local AutoSaboteurLib = nil
+        while Globals.AutoFreezer do
+            local towersFolder = workspace:FindFirstChild("Towers")
+            if towersFolder then
+                for _, tower in ipairs(towersFolder:GetChildren()) do
+                    local rep = tower:FindFirstChild("TowerReplicator")
+                    if rep then
+                        local name = rep:GetAttribute("Name")
+                        local upgrade = rep:GetAttribute("Upgrade") or 0
+                        local owner = rep:GetAttribute("OwnerId")
+                        if name == "Freezer" and owner == ownerId and upgrade >= 4 then
+                            local target = tower:FindFirstChild("Target")
+                            if target and target.Value and target.Value ~= "" and target.Value ~= "None" then
+                                pcall(function()
+                                    RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
+                                        Troop = tower,
+                                        Name = abilityName,
+                                        Data = {}
+                                    })
+                                end)
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(0.5)
+        end
+
+        AutoFreezerRunning = false
+    end)
+end
 
 local function StartAutoSaboteur()
-    if AutoSaboteurRunning then return end
-    if not AutoSaboteurLib then
-        local success, loaded = pcall(function()
-            return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoSaboteur"))()
-        end)
-        if not success or not loaded then
-            warn("[AutoSaboteur] Failed to load module.")
-            return
-        end
-        AutoSaboteurLib = loaded
-    end
+    if AutoSaboteurRunning or not Globals.AutoSaboteur then return end
     AutoSaboteurRunning = true
-    AutoSaboteurLib.Start()
-end
 
-local function StopAutoSaboteur()
-    if not AutoSaboteurRunning then return end
-    AutoSaboteurRunning = false
-    if AutoSaboteurLib then
-        AutoSaboteurLib.Stop()
-    end
+    task.spawn(function()
+        print("🔁 Saboteur loop started")
+        while Globals.AutoSaboteur do
+            local towersFolder = workspace:FindFirstChild("Towers")
+            local npcsFolder = workspace:FindFirstChild("NPCs")
+            if not towersFolder or not npcsFolder then
+                task.wait(0.5)       
+                continue
+            end
+
+            local saboteurs = {}
+            for _, tower in ipairs(towersFolder:GetChildren()) do
+                local rep = tower:FindFirstChild("TowerReplicator")
+                if rep then
+                    local name = rep:GetAttribute("Name")
+                    local ownerId = rep:GetAttribute("OwnerId")
+                    local upgrade = rep:GetAttribute("Upgrade") or 0
+                    if name == "Saboteur" and ownerId == LocalPlayer.UserId and upgrade >= 3 then
+                        table.insert(saboteurs, tower)
+                    end
+                end
+            end
+
+            if #saboteurs == 0 then
+                task.wait(0.5)
+                continue
+            end
+
+            local npcPositions = {}
+            for _, npc in ipairs(npcsFolder:GetChildren()) do
+                local hrp = npc:FindFirstChild("HumanoidRootPart")
+                local pos = hrp and hrp.Position
+                if not pos then
+                    local part = npc:FindFirstChildWhichIsA("BasePart")
+                    if part then pos = part.Position end
+                end
+                if pos then table.insert(npcPositions, pos) end
+            end
+
+            if #npcPositions == 0 then
+                task.wait(0.5)
+                continue
+            end
+
+            for _, tower in ipairs(saboteurs) do
+                local rep = tower:FindFirstChild("TowerReplicator")
+                local towerPos = rep and rep:GetAttribute("Position")
+                if typeof(towerPos) ~= "Vector3" then
+                    local hrp = tower:FindFirstChild("HumanoidRootPart")
+                    towerPos = hrp and hrp.Position
+                    if not towerPos then
+                        local part = tower:FindFirstChildWhichIsA("BasePart")
+                        if part then towerPos = part.Position end
+                    end
+                end
+                if not towerPos then continue end
+
+                local range = rep and (rep:GetAttribute("Range") or rep:GetAttribute("TowerRange") or 16.5) or 16.5
+                range = tonumber(range) or 16.5
+
+                local targetPos = nil
+                for _, pos in ipairs(npcPositions) do
+                    local dx = towerPos.X - pos.X
+                    local dz = towerPos.Z - pos.Z
+                    if math.sqrt(dx*dx + dz*dz) <= range then
+                        targetPos = pos
+                        break
+                    end
+                end
+
+                if targetPos then
+                    pcall(function()
+                        RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
+                            Troop = tower,
+                            Name = "Aggressive Toxins",  
+                            Data = { position = targetPos }
+                        })
+                    end)
+                end
+            end
+
+            task.wait(0.5) 
+        end
+        AutoSaboteurRunning = false
+    end)
 end
 
 local AutoMedicLib = nil
@@ -5632,14 +5710,9 @@ task.spawn(function()
         end
         if Globals.AutoFreezer and not AutoFreezerRunning then
     StartAutoFreezer()
-elseif not Globals.AutoFreezer and AutoFreezerRunning then
-    StopAutoFreezer()
 end
-
 if Globals.AutoSaboteur and not AutoSaboteurRunning then
     StartAutoSaboteur()
-elseif not Globals.AutoSaboteur and AutoSaboteurRunning then
-    StopAutoSaboteur()
 end
         if Globals.AutoMercenary and not AutoMercenaryBaseRunning then
             StartAutoMercenary()
