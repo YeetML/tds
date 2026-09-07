@@ -1,7 +1,5 @@
 local Globals = getgenv()
-
 _G.AutoProgSettings = _G.AutoProgSettings or {}
-
 if shared.TDSTable then
     return shared.TDSTable
 end
@@ -218,6 +216,10 @@ local StackEnabled = false
 local SelectedTower = nil
 local StackSphere = nil
 
+local AutoMedicLib = nil
+local AutoBountyLib = nil
+local AutoTrialsLib = nil
+
 local AllTowers = {
     "Scout", "Sniper", "Paintballer", "Demoman", "Boomerang", "Slime Trooper", "Soldier",
     "Freezer", "Assassin", "Militant", "Shotgunner", "Hunter", "Pyromancer", "Ace Pilot", 
@@ -290,6 +292,49 @@ local DefaultSettings = {
     AutoTrials = false,
     AutoFreezer = false,
     AutoSaboteur = false,
+    Snapper = false,
+    BuffOverlay = false,
+}
+
+local TowerSnapper = {
+    Enabled = Globals.Snapper ~= nil and Globals.Snapper or true,
+    MaxRadius = 16,
+    CoarseStep = 0.35,
+    FineStep = 0.08,
+    SpacingOffset = 0.04,
+    LastInput = nil,
+    LastSnapped = nil,
+    LastHit = nil,
+    LastValid = false,
+    TowerCount = 0
+}
+
+local BuffOverlay = {
+    Enabled = true,
+    AuraVisuals = {},
+    PulseClock = 0,
+    BasePreviewRange = nil,
+    CurrentExpandedRange = nil,
+    SupportDefinitions = {
+        ["DJ Booth"] = {
+            Tag = "DJ",
+            Color = Color3.fromRGB(255, 43, 79),
+            GlowColor = Color3.fromRGB(255, 90, 120),
+            FallbackRanges = { [0] = 12, [1] = 15, [2] = 15, [3] = 15, [4] = 16.5, [5] = 18 }
+        },
+        ["Commander"] = {
+            Tag = "CMD",
+            Color = Color3.fromRGB(0, 210, 255),
+            GlowColor = Color3.fromRGB(120, 235, 255),
+            FallbackRanges = { [0] = 10, [1] = 10, [2] = 13, [3] = 15, [4] = 17 }
+        },
+        ["Medic"] = {
+            Tag = "MED",
+            Color = Color3.fromRGB(0, 255, 163),
+            GlowColor = Color3.fromRGB(120, 255, 210),
+            FallbackRanges = { [0] = 12, [1] = 12, [2] = 14, [3] = 15, [4] = 18, [5] = 20 }
+        }
+    }
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -305,6 +350,558 @@ local function NormalizeTimeScaleValue(val)
         end
     end
     return nil
+end
+
+local function InvalidateSnapCache()
+    TowerSnapper.LastInput = nil
+    TowerSnapper.LastSnapped = nil
+    TowerSnapper.LastHit = nil
+    TowerSnapper.LastValid = false
+end
+
+task.spawn(function()
+    local TowersFolder = workspace:WaitForChild("Towers", 30)
+    if TowersFolder then
+        TowersFolder.ChildAdded:Connect(InvalidateSnapCache)
+        TowersFolder.ChildRemoved:Connect(InvalidateSnapCache)
+    end
+end)
+
+local function GetTwoCircleTangents(PosA, RadiusA, PosB, RadiusB, RadiusNew)
+    local CenterDist = (Vector3.new(PosB.X, 0, PosB.Z) - Vector3.new(PosA.X, 0, PosA.Z)).Magnitude
+    local DistA = RadiusA + RadiusNew + TowerSnapper.SpacingOffset
+    local DistB = RadiusB + RadiusNew + TowerSnapper.SpacingOffset
+    if CenterDist > (DistA + DistB) or CenterDist < math.abs(DistA - DistB) or CenterDist == 0 then
+        return nil
+    end
+    local SideA = (DistA^2 - DistB^2 + CenterDist^2) / (2 * CenterDist)
+    local HeightSq = DistA^2 - SideA^2
+    if HeightSq < 0 then return nil end
+    local Height = math.sqrt(HeightSq)
+    local DirX = (PosB.X - PosA.X) / CenterDist
+    local DirZ = (PosB.Z - PosA.Z) / CenterDist
+    local MidX = PosA.X + (DirX * SideA)
+    local MidZ = PosA.Z + (DirZ * SideA)
+    local NormX = -DirZ
+    local NormZ = DirX
+    local Pocket1 = Vector3.new(MidX + (NormX * Height), PosA.Y, MidZ + (NormZ * Height))
+    local Pocket2 = Vector3.new(MidX - (NormX * Height), PosA.Y, MidZ - (NormZ * Height))
+    return Pocket1, Pocket2
+end
+
+local function FindHoneycombCandidates(TowerName, TargetPos)
+    local TowersFolder = workspace:FindFirstChild("Towers")
+    if not TowersFolder then return {} end
+    local Asset = require(ReplicatedStorage.Shared.Modules.Asset)
+    local SharedConstants = require(ReplicatedStorage.Shared.Modules.SharedGameConstants)
+    local TowerAsset = Asset("Troops", TowerName)
+    local DefaultBoundary = SharedConstants.DEFAULT_BOUNDARY_SIZE or 1.5
+    local NewRadius = (TowerAsset and TowerAsset.Properties and TowerAsset.Properties.BoundarySize) or DefaultBoundary
+    local NearbyTowers = {}
+
+    for _, TowerInstance in ipairs(TowersFolder:GetChildren()) do
+        local Replicator = TowerInstance:FindFirstChild("TowerReplicator")
+        if Replicator then
+            local OtherName = Replicator:GetAttribute("Name") or TowerInstance.Name
+            local OtherAsset = Asset("Troops", OtherName)
+            local OtherRadius = (OtherAsset and OtherAsset.Properties and OtherAsset.Properties.BoundarySize) or DefaultBoundary
+            local TowerPos = TowerInstance:GetPivot().Position
+            local Dist = (Vector3.new(TowerPos.X, 0, TowerPos.Z) - Vector3.new(TargetPos.X, 0, TargetPos.Z)).Magnitude
+            if Dist <= (OtherRadius + NewRadius + 12) then
+                table.insert(NearbyTowers, {
+                    Position = TowerPos,
+                    Radius = OtherRadius,
+                    Distance = Dist
+                })
+            end
+        end
+    end
+
+    if #NearbyTowers == 0 then return {} end
+    table.sort(NearbyTowers, function(A, B) return A.Distance < B.Distance end)
+
+    local Candidates = {}
+
+    if #NearbyTowers >= 2 then
+        for FirstIdx = 1, math.min(#NearbyTowers - 1, 3) do
+            for SecondIdx = FirstIdx + 1, math.min(#NearbyTowers, 4) do
+                local TowerA = NearbyTowers[FirstIdx]
+                local TowerB = NearbyTowers[SecondIdx]
+                local P1, P2 = GetTwoCircleTangents(TowerA.Position, TowerA.Radius, TowerB.Position, TowerB.Radius, NewRadius)
+                if P1 then table.insert(Candidates, P1) end
+                if P2 then table.insert(Candidates, P2) end
+            end
+        end
+    end
+
+    for Index = 1, math.min(#NearbyTowers, 3) do
+        local Tower = NearbyTowers[Index]
+        local Dir = (Vector3.new(TargetPos.X, 0, TargetPos.Z) - Vector3.new(Tower.Position.X, 0, Tower.Position.Z))
+        local TangentDist = Tower.Radius + NewRadius + TowerSnapper.SpacingOffset
+
+        if Dir.Magnitude > 0.01 then
+            table.insert(Candidates, Tower.Position + (Dir.Unit * TangentDist))
+        end
+
+        for AngleIdx = 0, 15 do
+            local Angle = (math.pi * 2 / 16) * AngleIdx
+            table.insert(Candidates, Tower.Position + Vector3.new(math.cos(Angle) * TangentDist, 0, math.sin(Angle) * TangentDist))
+        end
+    end
+
+    return Candidates
+end
+
+
+local function FindNearestValidPlacement(CheckCollisionsOriginal, TowerName, TargetPos, Team, MaxRadius)
+    local CurrentTowerCount = #workspace.Towers:GetChildren()
+    if CurrentTowerCount ~= TowerSnapper.TowerCount then
+        TowerSnapper.TowerCount = CurrentTowerCount
+        InvalidateSnapCache()
+    end
+
+    local IsValidDirect, DirectHit = CheckCollisionsOriginal(TowerName, TargetPos, Team)
+    if IsValidDirect then
+        TowerSnapper.LastInput = TargetPos
+        TowerSnapper.LastSnapped = TargetPos
+        TowerSnapper.LastHit = DirectHit
+        TowerSnapper.LastValid = true
+        return TargetPos, DirectHit, false
+    end
+
+    if TowerSnapper.LastInput and (TargetPos - TowerSnapper.LastInput).Magnitude < 0.02 then
+        if TowerSnapper.LastValid and TowerSnapper.LastSnapped then
+            return TowerSnapper.LastSnapped, TowerSnapper.LastHit, true
+        end
+    end
+
+    local BestPos = nil
+    local BestDist = math.huge
+    local BestHit = nil
+
+    local HoneycombCandidates = FindHoneycombCandidates(TowerName, TargetPos)
+    for _, CandPos in ipairs(HoneycombCandidates) do
+        local IsCandValid, CandHit = CheckCollisionsOriginal(TowerName, CandPos, Team)
+        if IsCandValid and CandHit then
+            local ActualPos = (typeof(CandHit) == "RaycastResult") and CandHit.Position or CandPos
+            local CandDist = (Vector3.new(ActualPos.X, 0, ActualPos.Z) - Vector3.new(TargetPos.X, 0, TargetPos.Z)).Magnitude
+            if CandDist < BestDist then
+                BestDist = CandDist
+                BestPos = ActualPos
+                BestHit = CandHit
+            end
+        end
+    end
+
+    MaxRadius = MaxRadius or TowerSnapper.MaxRadius
+    local CoarseStep = TowerSnapper.CoarseStep
+    local BestCoarseDist = math.huge
+    local BestAngle = 0
+    local BestRadius = 0
+
+    for Radius = CoarseStep, MaxRadius, CoarseStep do
+        if Radius >= BestDist then
+            break
+        end
+        local Count = math.max(12, math.floor(2 * math.pi * Radius / CoarseStep))
+        local AngleStep = (2 * math.pi) / Count
+        local FoundInRing = false
+
+        for Index = 0, Count - 1 do
+            local Theta = Index * AngleStep
+            local TestPos = TargetPos + Vector3.new(math.cos(Theta) * Radius, 0, math.sin(Theta) * Radius)
+            local Valid, Res = CheckCollisionsOriginal(TowerName, TestPos, Team)
+            if Valid and Res then
+                local ActualPos = (typeof(Res) == "RaycastResult") and Res.Position or TestPos
+                local Dist = (Vector3.new(ActualPos.X, 0, ActualPos.Z) - Vector3.new(TargetPos.X, 0, TargetPos.Z)).Magnitude
+                if Dist < BestCoarseDist then
+                    BestCoarseDist = Dist
+                    BestAngle = Theta
+                    BestRadius = Radius
+                    FoundInRing = true
+                end
+            end
+        end
+
+        if FoundInRing and BestCoarseDist <= Radius + (CoarseStep * 0.5) then
+            break
+        end
+    end
+
+    if BestCoarseDist < BestDist then
+        local FineBestPos = nil
+        local FineBestDist = math.huge
+        local FineBestRes = nil
+        local RadiusMin = math.max(0.04, BestRadius - CoarseStep)
+        local RadiusMax = BestRadius + (CoarseStep * 0.5)
+        local RadiusStep = TowerSnapper.FineStep
+        local AngleSpan = math.atan2(CoarseStep, BestRadius) * 1.6
+
+        for Radius = RadiusMin, RadiusMax, RadiusStep do
+            local AngleSteps = math.max(6, math.floor(Radius * AngleSpan / RadiusStep))
+            for Index = -AngleSteps, AngleSteps do
+                local Theta = BestAngle + (Index * (AngleSpan / AngleSteps))
+                local TestPos = TargetPos + Vector3.new(math.cos(Theta) * Radius, 0, math.sin(Theta) * Radius)
+                local Valid, Res = CheckCollisionsOriginal(TowerName, TestPos, Team)
+                if Valid and Res then
+                    local ActualPos = (typeof(Res) == "RaycastResult") and Res.Position or TestPos
+                    local Dist = (Vector3.new(ActualPos.X, 0, ActualPos.Z) - Vector3.new(TargetPos.X, 0, TargetPos.Z)).Magnitude
+                    if Dist < FineBestDist then
+                        FineBestDist = Dist
+                        FineBestPos = ActualPos
+                        FineBestRes = Res
+                    end
+                end
+            end
+            if FineBestPos and FineBestDist <= Radius + 0.04 then
+                break
+            end
+        end
+        if FineBestPos and FineBestDist < BestDist then
+            BestDist = FineBestDist
+            BestPos = FineBestPos
+            BestHit = FineBestRes
+        end
+    end
+
+    local FinalPos = BestPos or TargetPos
+    local FinalRes = BestHit or DirectHit
+    local IsSnapped = (BestPos ~= nil)
+
+    TowerSnapper.LastInput = TargetPos
+    TowerSnapper.LastSnapped = FinalPos
+    TowerSnapper.LastHit = FinalRes
+    TowerSnapper.LastValid = IsSnapped
+
+    return FinalPos, FinalRes, IsSnapped
+end
+
+local function HookPlacementSystem()
+    local Success, Err = pcall(function()
+        local NewPlacementController = require(ReplicatedStorage.Client.Controllers.Game.NewPlacementController)
+        local SharedGameFunctions = require(ReplicatedStorage.Shared.Modules.SharedGameFunctions)
+        local Scheduler = require(ReplicatedStorage.Shared.Modules.Scheduler)
+
+        local OrigCheckTowerCollisions = SharedGameFunctions.CheckTowerCollisions
+
+        local ProxyShared = setmetatable({}, {
+            __index = function(_, Key)
+                if Key == "CheckTowerCollisions" then
+                    return function(TowerName, Pos, Team, ...)
+                        if not TowerSnapper.Enabled then
+                            return OrigCheckTowerCollisions(TowerName, Pos, Team, ...)
+                        end
+
+                        local SnappedPos, HitRes, IsSnapped = FindNearestValidPlacement(
+                            OrigCheckTowerCollisions,
+                            TowerName,
+                            Pos,
+                            Team
+                        )
+
+                        if IsSnapped and HitRes then
+                            return true, HitRes
+                        end
+
+                        return OrigCheckTowerCollisions(TowerName, Pos, Team, ...)
+                    end
+                end
+                return SharedGameFunctions[Key]
+            end,
+            __newindex = function(_, Key, Val)
+                SharedGameFunctions[Key] = Val
+            end
+        })
+
+        if getupvalues and setupvalue then
+            local Upvals = getupvalues(NewPlacementController.Start)
+            for Idx, Val in pairs(Upvals) do
+                if Val == SharedGameFunctions then
+                    setupvalue(NewPlacementController.Start, Idx, ProxyShared)
+                    break
+                end
+            end
+        end
+
+        if NewPlacementController.Place and NewPlacementController.Place.Connect then
+            NewPlacementController.Place:Connect(function()
+                InvalidateSnapCache()
+            end)
+        end
+
+        local OrigAdd = Scheduler.add
+        Scheduler.add = function(Name, Signal, Callback)
+            if Name == "TowerPlacement" and type(Callback) == "function" then
+                local WrappedCallback = function(Dt)
+                    if not TowerSnapper.Enabled then
+                        return Callback(Dt)
+                    end
+
+                    local Upvals = getupvalues(Callback)
+                    local Mouse = Upvals[1]
+                    local RaycastParams = Upvals[2]
+                    local SharedGame = Upvals[3]
+                    local TowerData = Upvals[4]
+                    local Team = Upvals[5]
+                    local UpgradesStore = Upvals[7]
+                    local Model = Upvals[8]
+                    local SpringPos = Upvals[11]
+                    local RotLerp = Upvals[12]
+                    local TargetRot = Upvals[13]
+                    local AnimController = Upvals[14]
+                    local TowerClass = Upvals[15]
+                    local EnumModule = Upvals[16]
+                    local SpringNormal = Upvals[17]
+                    local QuaternionModule = Upvals[18]
+
+                    local Ray = workspace:Raycast(Mouse.UnitRay.Origin, Mouse.UnitRay.Direction * 1000, RaycastParams)
+                    if Ray then
+                        local IsValid, HitRes = SharedGame.CheckTowerCollisions(TowerData.Name, Ray.Position, Team)
+
+                        if Upvals[6] ~= IsValid then
+                            setupvalue(Callback, 6, IsValid)
+                            UpgradesStore.updateValid(Model, IsValid)
+                        end
+
+                        local FinalTargetPos = Ray.Position
+                        local FinalTargetNormal = Ray.Normal
+                        if IsValid and HitRes then
+                            local HitPos = (typeof(HitRes) == "RaycastResult") and HitRes.Position or HitRes
+                            setupvalue(Callback, 9, HitPos)
+                            FinalTargetPos = HitPos
+                            if typeof(HitRes) == "RaycastResult" and HitRes.Normal then
+                                FinalTargetNormal = HitRes.Normal
+                            end
+                        end
+
+                        if Upvals[10] then
+                            setupvalue(Callback, 10, false)
+                            SpringPos.init(FinalTargetPos, Vector3.new(0, 0, 0))
+                        else
+                            SpringPos.t = FinalTargetPos
+                        end
+
+                        local DtAlpha = math.min(Dt * 10, 1)
+                        RotLerp = math.lerp(RotLerp, TargetRot, DtAlpha)
+                        setupvalue(Callback, 12, RotLerp)
+
+                        local ModelCF = CFrame.new(SpringPos.p) * CFrame.Angles(0, math.rad(RotLerp), 0)
+
+                        if AnimController and TowerClass ~= EnumModule.TowerType.Flying and SpringNormal and QuaternionModule then
+                            SpringNormal.t = ModelCF.Position
+                            local Tilt = QuaternionModule(FinalTargetNormal, FinalTargetNormal + (-0.01 * SpringNormal.v)) + SpringNormal.p
+                            ModelCF = ModelCF * (Tilt - Tilt.Position)
+                        end
+
+                        Model:PivotTo(CFrame.new(ModelCF.X, FinalTargetPos.Y, ModelCF.Z) * CFrame.Angles(ModelCF:toEulerAnglesXYZ()))
+                    end
+                end
+                return OrigAdd(Name, Signal, WrappedCallback)
+            end
+            return OrigAdd(Name, Signal, Callback)
+        end
+    end)
+end
+
+local function GetDJRangeBuffPercent(UpgradeLevel, TrackName)
+    TrackName = TrackName or "Purple"
+    if TrackName == "Purple" then
+        local PurpleTable = { [0] = 12.5, [1] = 12.5, [2] = 15, [3] = 17.5, [4] = 22.5, [5] = 25 }
+        return PurpleTable[UpgradeLevel] or 12.5
+    elseif TrackName == "Green" or TrackName == "Red" then
+        if UpgradeLevel >= 5 then
+            return 10
+        end
+    end
+    return 0
+end
+
+local function ClearBuffVisuals()
+    for _, VisualRecord in pairs(BuffOverlay.AuraVisuals) do
+        if VisualRecord.OutlinePart and VisualRecord.OutlinePart.Parent then
+            VisualRecord.OutlinePart:Destroy()
+        end
+    end
+    table.clear(BuffOverlay.AuraVisuals)
+
+    if BuffOverlay.BasePreviewRange then
+        pcall(function()
+            local UpgradesStore = require(ReplicatedStorage.Client.Interfaces.Stores.Game.UpgradesStore)
+            UpgradesStore.updateZone({ range = BuffOverlay.BasePreviewRange })
+        end)
+        BuffOverlay.BasePreviewRange = nil
+        BuffOverlay.CurrentExpandedRange = nil
+    end
+end
+
+local function UpdateBuffOverlay(CursorPosition, DeltaTime)
+    if not BuffOverlay.Enabled or not CursorPosition then
+        ClearBuffVisuals()
+        return
+    end
+
+    local TowersFolder = workspace:FindFirstChild("Towers")
+    if not TowersFolder then
+        ClearBuffVisuals()
+        return
+    end
+
+    BuffOverlay.PulseClock = BuffOverlay.PulseClock + (DeltaTime or 0.016)
+    local PulseAlpha = (math.sin(BuffOverlay.PulseClock * 4) + 1) * 0.5
+
+    local FoundSupports = {}
+    local ActiveDJBuffPercent = 0
+
+    for _, TowerInstance in ipairs(TowersFolder:GetChildren()) do
+        local Replicator = TowerInstance:FindFirstChild("TowerReplicator")
+        if Replicator then
+            local TowerName = Replicator:GetAttribute("Name")
+            local Definition = BuffOverlay.SupportDefinitions[TowerName]
+            if Definition then
+                local UpgradeLevel = Replicator:GetAttribute("Upgrade") or 0
+                
+                local BaseRange = Replicator:GetAttribute("Range")
+                if not BaseRange or BaseRange <= 0 then
+                    BaseRange = Definition.FallbackRanges[UpgradeLevel] or Definition.FallbackRanges[0] or 12
+                end
+
+                local RangeBuff = Replicator:GetAttribute("RangeBuff") or 0
+                local ActualRadius = BaseRange * (1 + (RangeBuff / 100))
+                local TowerPosition = TowerInstance:GetPivot().Position
+
+                table.insert(FoundSupports, {
+                    Name = TowerName,
+                    Tag = Definition.Tag,
+                    Definition = Definition,
+                    Instance = TowerInstance,
+                    Position = TowerPosition,
+                    Radius = ActualRadius,
+                    Replicator = Replicator,
+                    Upgrade = UpgradeLevel
+                })
+            end
+        end
+    end
+
+    if #FoundSupports == 0 then
+        ClearBuffVisuals()
+        return
+    end
+
+    for _, SupportData in ipairs(FoundSupports) do
+        local FlatDistance = (Vector3.new(SupportData.Position.X, 0, SupportData.Position.Z) - Vector3.new(CursorPosition.X, 0, CursorPosition.Z)).Magnitude
+        local InRange = (FlatDistance <= SupportData.Radius)
+
+        if InRange and SupportData.Tag == "DJ" then
+            local TrackName = SupportData.Replicator:GetAttribute("Track") or "Purple"
+            local BuffPercent = GetDJRangeBuffPercent(SupportData.Upgrade, TrackName)
+            if BuffPercent > ActiveDJBuffPercent then
+                ActiveDJBuffPercent = BuffPercent
+            end
+        end
+
+        local VisualRecord = BuffOverlay.AuraVisuals[SupportData.Instance]
+        if not VisualRecord then
+            local OutlinePart = Instance.new("Part")
+            OutlinePart.Name = "AuraOutline_" .. SupportData.Tag
+            OutlinePart.Anchored = true
+            OutlinePart.CanCollide = false
+            OutlinePart.CanTouch = false
+            OutlinePart.CanQuery = false
+            OutlinePart.Transparency = 1
+            OutlinePart.Material = Enum.Material.Plastic
+            OutlinePart.Parent = workspace
+
+            local Adornment = Instance.new("CylinderHandleAdornment")
+            Adornment.Name = "RingAdornment"
+            Adornment.Adornee = OutlinePart
+            Adornment.AlwaysOnTop = false
+            Adornment.ZIndex = 1
+            Adornment.CFrame = CFrame.Angles(math.rad(90), 0, 0)
+            Adornment.Parent = OutlinePart
+
+            VisualRecord = {
+                OutlinePart = OutlinePart,
+                Adornment = Adornment
+            }
+            BuffOverlay.AuraVisuals[SupportData.Instance] = VisualRecord
+        end
+
+        local FloorY = SupportData.Position.Y + 0.08
+        VisualRecord.OutlinePart.Position = Vector3.new(SupportData.Position.X, FloorY, SupportData.Position.Z)
+        VisualRecord.OutlinePart.Size = Vector3.new(0.2, 0.2, 0.2)
+
+        local Radius = SupportData.Radius
+        local Thickness = 0.18
+        VisualRecord.Adornment.Radius = Radius
+        VisualRecord.Adornment.InnerRadius = Radius - Thickness
+        VisualRecord.Adornment.Height = 0.05
+        VisualRecord.Adornment.Color3 = InRange and SupportData.Definition.GlowColor or SupportData.Definition.Color
+        VisualRecord.Adornment.Transparency = InRange and (0.15 - (PulseAlpha * 0.1)) or 0.55
+    end
+
+    for SupportInstance, VisualRecord in pairs(BuffOverlay.AuraVisuals) do
+        if not SupportInstance or not SupportInstance.Parent then
+            if VisualRecord.OutlinePart then VisualRecord.OutlinePart:Destroy() end
+            BuffOverlay.AuraVisuals[SupportInstance] = nil
+        end
+    end
+
+    pcall(function()
+        local UpgradesStore = require(ReplicatedStorage.Client.Interfaces.Stores.Game.UpgradesStore)
+        local State = UpgradesStore.getState()
+        local CurrentStoreRange = State.range or 0
+
+        if CurrentStoreRange > 0 then
+            if not BuffOverlay.BasePreviewRange or (CurrentStoreRange ~= BuffOverlay.CurrentExpandedRange and CurrentStoreRange ~= BuffOverlay.BasePreviewRange) then
+                BuffOverlay.BasePreviewRange = CurrentStoreRange
+            end
+
+            local TargetRange = BuffOverlay.BasePreviewRange
+            if ActiveDJBuffPercent > 0 and TargetRange then
+                TargetRange = math.round(BuffOverlay.BasePreviewRange * (1 + (ActiveDJBuffPercent / 100)))
+            end
+
+            if TargetRange and TargetRange ~= CurrentStoreRange then
+                BuffOverlay.CurrentExpandedRange = TargetRange
+                UpgradesStore.updateZone({ range = TargetRange })
+            end
+        end
+    end)
+end
+
+RunService.RenderStepped:Connect(function(DeltaTime)
+    if GameState ~= "GAME" then
+        ClearBuffVisuals()
+        return
+    end
+
+    local success, NewPlacementController = pcall(require, ReplicatedStorage.Client.Controllers.Game.NewPlacementController)
+    if not success or not NewPlacementController then
+        ClearBuffVisuals()
+        return
+    end
+
+    if not NewPlacementController.Active or not BuffOverlay.Enabled then
+        ClearBuffVisuals()
+        return
+    end
+
+    local TargetPosition = TowerSnapper and TowerSnapper.LastSnapped
+    if not TargetPosition then
+        local Mouse = LocalPlayer:GetMouse()
+        TargetPosition = Mouse.Hit and Mouse.Hit.Position
+    end
+    
+    if TargetPosition then
+        UpdateBuffOverlay(TargetPosition, DeltaTime)
+    else
+        ClearBuffVisuals()
+    end
+end)
+
+if GameState == "GAME" then
+    HookPlacementSystem()
 end
 
 local function CoerceTimeScaleValue(val, fallback)
@@ -571,18 +1168,6 @@ end
 LoadSettings()
 Globals.TimeScaleValue = CoerceTimeScaleValue(Globals.TimeScaleValue, 2)
 Apply3dRendering()
-
-if Globals.RandomDJ or Globals.MuteOtherDJs then
-    if not AutoDJ then
-        AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
-    end
-    if Globals.RandomDJ and AutoDJ and not AutoDJ.IsRunning() then
-        AutoDJ.Start()
-    end
-    if Globals.MuteOtherDJs and AutoDJ and AutoDJ.StartMuteOthers then
-        AutoDJ.StartMuteOthers()
-    end
-end
 
 Globals.HideUsername = false 
 SetSetting("HideUsername", false)
@@ -1934,6 +2519,30 @@ local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-cli
     end)
 
     Interactive:Toggle({
+        Title = "Tower Snapper",
+        Desc = "Automatically snaps and honeycomb-packs towers into the nearest valid position when hovering invalid spots",
+        Value = Globals.Snapper ~= nil and Globals.Snapper or true,
+        Callback = function(Value)
+            TowerSnapper.Enabled = Value
+            SetSetting("Snapper", Value)
+            InvalidateSnapCache()
+        end
+    })
+
+    Interactive:Toggle({
+        Title = "Buff Indicator Overlay",
+        Desc = "Shows active DJ/Commander/Medic range auras and in-range badges while placing",
+        Value = Globals.BuffOverlay ~= nil and Globals.BuffOverlay or true,
+        Callback = function(Value)
+            BuffOverlay.Enabled = Value
+            SetSetting("BuffOverlay", Value)
+            if not Value then
+                ClearBuffVisuals()
+            end
+        end
+    })
+
+    Interactive:Toggle({
         Title = "Stack Tower",
         Desc = "Enables Stacking placement",
         Value = false,
@@ -2630,237 +3239,27 @@ local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) d
 
     Strategies:Section({Title = "Auto Trials"})
 
-local trialScripts = {
-    ["Speedy Enemies"]        = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Speedy.lua",
-    ["Glass"]                 = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Glass.lua",
-    ["Quarantine"]            = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Quarantine.lua",
-    ["Fog"]                   = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Fog.lua",
-    ["Limitation"]            = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Limitation.lua",
-    ["Flying"]                = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Flying.lua",
-    ["Jailed"]                = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Jailed.lua",
-    ["Exploding Enemies"]     = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Exploding.lua",
-    ["Inflation"]             = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Inflation.lua",
-    ["Committed"]             = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Committed.lua",
-    ["Hidden Enemies"]        = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Hidden.lua",
-    ["Hidden"]                = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Hidden.lua",
-    ["Broke"]                 = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Broke.lua",
-    ["Healthy Enemies"]       = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Healthy.lua"
-}
-
-local trialConfigs = {
-    ["Speedy Enemies"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "Trapper"}, SkillTree = {} },
-    ["Glass"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "Trapper"}, SkillTree = {} },
-    ["Quarantine"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
-    ["Fog"] = { Level = 175, Towers = {"Trapper", "Hacker", "Gatling Gun", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
-    ["Limitation"] = { Level = 175, Towers = {"Trapper", "Hacker", "Gatling Gun", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
-    ["Flying"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
-    ["Jailed"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "Military Base"}, SkillTree = {} },
-    ["Exploding Enemies"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
-    ["Inflation"] = { Level = 175, Towers = {"Ace Pilot", "Trapper", "Gatling Gun", "DJ Booth", "Medic"}, SkillTree = {} },
-    ["Committed"] = { Level = 175, Towers = {"Placeholder"}, SkillTree = {} },
-    ["Hidden"] = { Level = 175, Towers = {"Gatling Gun", "Hacker", "Mercenary Base", "Trapper", "DJ Booth"}, SkillTree = {} },
-    ["Broke"] = { Level = 175, Towers = {"Gatling Gun", "Militant", "Medic", "Trapper", "DJ Booth"}, SkillTree = {} },
-    ["Healthy Enemies"] = {
-        Level = 175,
-        Towers = {"Ace Pilot", "Mercenary Base", "DJ Booth", "Gatling Gun", "Medic"},
-        SkillTree = {
-            ["Bigger Budget"] = 10,
-            ["Fortify"] = 10,
-            ["Stonks"] = 10,
-            ["Over-Heal"] = 10,
-            ["Bandages"] = 10,
-            ["Accelerator"] = 10,
-            ["Enhanced Optics"] = 10,
-            ["Resourcefulness"] = 10,
-        }
-    }
-}
-
-local function getCurrentTrial()
-    local stateRep = game:GetService("ReplicatedStorage"):FindFirstChild("StateReplicators")
-    if stateRep then
-        local gameStateRep = stateRep:FindFirstChild("GameStateReplicator")
-        if gameStateRep then
-            local trial = gameStateRep:GetAttribute("GlobalTrial")
-            if trial and trial ~= "" then return trial end
-        end
-        local trialsRep = stateRep:FindFirstChild("TrialsStateReplicator")
-        if trialsRep then
-            local trial = trialsRep:GetAttribute("GlobalTrial")
-            if trial and trial ~= "" then return trial end
-        end
-    end
-    return nil
-end
-
-local function getSkillLevels()
-    local skills = {}
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("SurfaceGui") and obj.Name == "TileSurfaceGui" then
-            local frame = obj:FindFirstChild("Frame")
-            if frame then
-                local skillName = frame:FindFirstChild("SkillName")
-                local skillLevel = frame:FindFirstChild("SkillLevel")
-                if skillName and skillLevel then
-                    local name = skillName.Text
-                    local levelText = skillLevel.Text
-                    local current = 0
-                    if levelText:find("MAX") then
-                        local maxMatch = levelText:match("%[(%d+)%]")
-                        if maxMatch then current = tonumber(maxMatch) or 0 end
-                    else
-                        local parts = {}
-                        for part in levelText:gmatch("[^/]+") do
-                            table.insert(parts, part)
-                        end
-                        if #parts == 2 then
-                            current = tonumber(parts[1]) or 0
-                        end
-                    end
-                    skills[name] = current
-                end
-            end
-        end
-    end
-    return skills
-end
-
-local function checkSkillRequirements(trialName)
-    local config = trialConfigs[trialName]
-    if not config or not config.SkillTree or next(config.SkillTree) == nil then
-        return true, {}
-    end
-
-    local skills = getSkillLevels()
-    local missing = {}
-    for skillName, requiredLevel in pairs(config.SkillTree) do
-        local current = skills[skillName] or 0
-        if current < requiredLevel then
-            table.insert(missing, string.format("%s (Required: %d, Current: %d)", skillName, requiredLevel, current))
-        end
-    end
-    return #missing == 0, missing
-end
-
-local function OpenInventory()
-    local network = game:GetService("ReplicatedStorage"):FindFirstChild("Network")
-    if not network then return false end
-    local inventory = network:FindFirstChild("Inventory")
-    if not inventory then return false end
-    local openRemote = inventory:FindFirstChild("URE:OpenInventory")
-    if not openRemote then return false end
-    local pg = LocalPlayer:FindFirstChild("PlayerGui")
-    if pg and pg:FindFirstChild("ReactUniversalInventoryView") then
-        return true
-    end
-    openRemote:FireServer()
-    task.wait(2)
-    return true
-end
-
-local function GetOwnedTowers()
-    local towers = {}
-    OpenInventory()
-    for attempt = 1, 15 do
-        local pg = LocalPlayer:FindFirstChild("PlayerGui")
-        if pg then
-            local inv = pg:FindFirstChild("ReactUniversalInventoryView")
-            if inv then
-                local holder = inv:FindFirstChild("Holder")
-                if holder then
-                    local windowFrame = holder:FindFirstChild("windowFrame")
-                    if windowFrame then
-                        local towersFrame = windowFrame:FindFirstChild("towersInventoryFrame")
-                        if towersFrame then
-                            local towerContainer = towersFrame:FindFirstChild("towerContainer")
-                            if towerContainer then
-                                task.wait(0.5)
-                                for _, scroller in ipairs(towerContainer:GetChildren()) do
-                                    if string.find(scroller.Name, "scrolling") then
-                                        for _, frame in ipairs(scroller:GetChildren()) do
-                                            if frame:IsA("Frame") and frame.Name ~= "UIListLayout" then
-                                                local owned = false
-                                                local main = frame:FindFirstChild("main")
-                                                if main then
-                                                    local topThing = main:FindFirstChild("topThing")
-                                                    if topThing then
-                                                        if not topThing.Visible then
-                                                            owned = true
-                                                        else
-                                                            local icon = topThing:FindFirstChild("icon")
-                                                            if icon and icon:IsA("ImageLabel") then
-                                                                local image = icon.Image
-                                                                if image ~= "rbxassetid://8418293221" then
-                                                                    owned = true
-                                                                end
-                                                            else
-                                                                owned = true
-                                                            end
-                                                        end
-                                                    else
-                                                        owned = true
-                                                    end
-                                                else
-                                                    owned = true
-                                                end
-                                                if owned then
-                                                    table.insert(towers, frame.Name)
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                                return towers
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        task.wait(0.5)
-    end
-    warn("[AutoTrials] Timeout waiting for inventory UI – tower check may be incomplete.")
-    return towers
-end
-
-local function checkTowerRequirements(trialName)
-    local config = trialConfigs[trialName]
-    if not config or not config.Towers or #config.Towers == 0 then
-        return true, {}
-    end
-
-    local owned = GetOwnedTowers()
-    local missing = {}
-    for _, req in ipairs(config.Towers) do
-        if req == "Placeholder" then
-            continue
-        end
-        local found = false
-        for _, o in ipairs(owned) do
-            if o == req then
-                found = true
-                break
-            end
-        end
-        if not found then
-            table.insert(missing, req)
-        end
-    end
-    return #missing == 0, missing
-end
-
 local Trial = Strategies:Label({
     Title = "Current Trial: Loading...",
     Desc = "Required: Loading..."
 })
-
 local ReqMet = Strategies:Label({
     Title = "Requirements: Checking...",
     Desc = ""
 })
 
 local function updateTrialLabels()
-    local trialName = getCurrentTrial() or "No Active Trial"
+    if not AutoTrialsLib then
+        pcall(function()
+            Trial:SetTitle("Auto Trials: Inactive")
+            Trial:SetDesc("Enable toggle to start")
+            ReqMet:SetTitle("Module not loaded")
+            ReqMet:SetDesc("")
+        end)
+        return
+    end
+
+    local trialName = AutoTrialsLib.getCurrentTrial() or "No Active Trial"
     pcall(function()
         Trial:SetTitle("Current Trial: " .. tostring(trialName))
         Trial:SetDesc(trialName ~= "No Active Trial" and "See game for requirements" or "None required")
@@ -2870,6 +3269,7 @@ local function updateTrialLabels()
 end
 
 updateTrialLabels()
+
 task.spawn(function()
     while true do
         updateTrialLabels()
@@ -2898,63 +3298,35 @@ Strategies:Toggle({
     Value = Globals.AutoTrials,
     Callback = function(v)
         SetSetting("AutoTrials", v)
-        if not v then return end
+
+        if not v then
+            return
+        end
+
+        if not AutoTrialsLib then
+            local success, result = pcall(function()
+                return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials"))()
+            end)
+            if not success or not result then
+                Window:Notify({
+                    Title = "AutoTrials",
+                    Desc = "Failed to load module. Check your internet connection.",
+                    Time = 5,
+                    Type = "error"
+                })
+                SetSetting("AutoTrials", false)
+                return
+            end
+            AutoTrialsLib = result
+            updateTrialLabels()  
+        end
 
         task.spawn(function()
-            local trialName = getCurrentTrial()
-            if not trialName then
-                Window:Notify({Title = "AutoTrials", Desc = "No active trial found.", Time = 3, Type = "error"})
-                return
-            end
-
-            local skillPass, skillMissing = checkSkillRequirements(trialName)
-            if not skillPass then
-                local msg = "Missing skills:\n" .. table.concat(skillMissing, "\n")
-                Window:Notify({Title = "AutoTrials", Desc = msg, Time = 10, Type = "error"})
-                return
-            end
-
-            local towerPass, towerMissing = checkTowerRequirements(trialName)
-            if not towerPass then
-                local msg = "Missing towers:\n" .. table.concat(towerMissing, "\n")
-                Window:Notify({Title = "AutoTrials", Desc = msg, Time = 10, Type = "error"})
-                return
-            end
-
-            if GameState == "LOBBY" then
-                if writefile and makefolder then
-                    pcall(makefolder, "GlobalConfigs")
-                    pcall(writefile, "GlobalConfigs/trialscript.txt", trialName)
-                end
-                RemoteFunc:InvokeServer("Multiplayer", "v2:start", { count = 1, mode = "Trials" })
-                Window:Notify({Title = "AutoTrials", Desc = "Joined trial for " .. trialName, Time = 3})
-                return
-            end
-
-            if GameState == "GAME" then
-                local savedTrial = nil
-                if isfile then
-                    pcall(function()
-                        savedTrial = readfile("GlobalConfigs/trialscript.txt")
-                    end)
-                end
-                local targetTrial = savedTrial or trialName
-                local scriptUrl = trialScripts[targetTrial]
-                if not scriptUrl then
-                    Window:Notify({Title = "AutoTrials", Desc = "No strategy for " .. targetTrial, Time = 3, Type = "error"})
-                    return
-                end
-                local ok, err = pcall(function()
-                    local chunk = game:HttpGet(scriptUrl)
-                    local fn = loadstring(chunk)
-                    if fn then fn() end
-                end)
-                if ok then
-                    Window:Notify({Title = "AutoTrials", Desc = "Running strategy for " .. targetTrial, Time = 3})
-                else
-                    warn("[AutoTrials] Error: " .. tostring(err))
-                    Window:Notify({Title = "AutoTrials", Desc = "Failed to load strategy.", Time = 3, Type = "error"})
-                end
+            local result = AutoTrialsLib.runAuto()
+            if result.success then
+                Window:Notify({Title = "AutoTrials", Desc = result.message, Time = 3, Type = "normal"})
+            else
+                Window:Notify({Title = "AutoTrials", Desc = result.message, Time = 10, Type = "error"})
             end
         end)
     end
@@ -5173,138 +5545,57 @@ local function StartAutoNecro()
     end)
 end
 
+local AutoFreezerLib = nil
+
 local function StartAutoFreezer()
-    if AutoFreezerRunning or not Globals.AutoFreezer then return end
-    AutoFreezerRunning = true
-
-    task.spawn(function()
-        local ownerId = LocalPlayer.UserId
-        local abilityName = "Frost Grenade" 
-
-        while Globals.AutoFreezer do
-            local towersFolder = workspace:FindFirstChild("Towers")
-            if towersFolder then
-                for _, tower in ipairs(towersFolder:GetChildren()) do
-                    local rep = tower:FindFirstChild("TowerReplicator")
-                    if rep then
-                        local name = rep:GetAttribute("Name")
-                        local upgrade = rep:GetAttribute("Upgrade") or 0
-                        local owner = rep:GetAttribute("OwnerId")
-                        if name == "Freezer" and owner == ownerId and upgrade >= 4 then
-                            local target = tower:FindFirstChild("Target")
-                            if target and target.Value and target.Value ~= "" and target.Value ~= "None" then
-                                pcall(function()
-                                    RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
-                                        Troop = tower,
-                                        Name = abilityName,
-                                        Data = {}
-                                    })
-                                end)
-                            end
-                        end
-                    end
-                end
-            end
-            task.wait(0.5)
+    if AutoFreezerRunning then return end
+    if not AutoFreezerLib then
+        local success, loaded = pcall(function()
+            return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoFreezer"))()
+        end)
+        if not success or not loaded then
+            warn("[AutoFreezer] Failed to load module.")
+            return
         end
-
-        AutoFreezerRunning = false
-    end)
+        AutoFreezerLib = loaded
+    end
+    AutoFreezerRunning = true
+    AutoFreezerLib.Start()
 end
+
+local function StopAutoFreezer()
+    if not AutoFreezerRunning then return end
+    AutoFreezerRunning = false
+    if AutoFreezerLib then
+        AutoFreezerLib.Stop()
+    end
+end
+
+local AutoSaboteurLib = nil
 
 local function StartAutoSaboteur()
-    if AutoSaboteurRunning or not Globals.AutoSaboteur then return end
-    AutoSaboteurRunning = true
-
-    task.spawn(function()
-        print("🔁 Saboteur loop started")
-        while Globals.AutoSaboteur do
-            local towersFolder = workspace:FindFirstChild("Towers")
-            local npcsFolder = workspace:FindFirstChild("NPCs")
-            if not towersFolder or not npcsFolder then
-                task.wait(0.5)       
-                continue
-            end
-
-            local saboteurs = {}
-            for _, tower in ipairs(towersFolder:GetChildren()) do
-                local rep = tower:FindFirstChild("TowerReplicator")
-                if rep then
-                    local name = rep:GetAttribute("Name")
-                    local ownerId = rep:GetAttribute("OwnerId")
-                    local upgrade = rep:GetAttribute("Upgrade") or 0
-                    if name == "Saboteur" and ownerId == LocalPlayer.UserId and upgrade >= 3 then
-                        table.insert(saboteurs, tower)
-                    end
-                end
-            end
-
-            if #saboteurs == 0 then
-                task.wait(0.5)
-                continue
-            end
-
-            local npcPositions = {}
-            for _, npc in ipairs(npcsFolder:GetChildren()) do
-                local hrp = npc:FindFirstChild("HumanoidRootPart")
-                local pos = hrp and hrp.Position
-                if not pos then
-                    local part = npc:FindFirstChildWhichIsA("BasePart")
-                    if part then pos = part.Position end
-                end
-                if pos then table.insert(npcPositions, pos) end
-            end
-
-            if #npcPositions == 0 then
-                task.wait(0.5)
-                continue
-            end
-
-            for _, tower in ipairs(saboteurs) do
-                local rep = tower:FindFirstChild("TowerReplicator")
-                local towerPos = rep and rep:GetAttribute("Position")
-                if typeof(towerPos) ~= "Vector3" then
-                    local hrp = tower:FindFirstChild("HumanoidRootPart")
-                    towerPos = hrp and hrp.Position
-                    if not towerPos then
-                        local part = tower:FindFirstChildWhichIsA("BasePart")
-                        if part then towerPos = part.Position end
-                    end
-                end
-                if not towerPos then continue end
-
-                local range = rep and (rep:GetAttribute("Range") or rep:GetAttribute("TowerRange") or 16.5) or 16.5
-                range = tonumber(range) or 16.5
-
-                local targetPos = nil
-                for _, pos in ipairs(npcPositions) do
-                    local dx = towerPos.X - pos.X
-                    local dz = towerPos.Z - pos.Z
-                    if math.sqrt(dx*dx + dz*dz) <= range then
-                        targetPos = pos
-                        break
-                    end
-                end
-
-                if targetPos then
-                    pcall(function()
-                        RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
-                            Troop = tower,
-                            Name = "Aggressive Toxins",  
-                            Data = { position = targetPos }
-                        })
-                    end)
-                end
-            end
-
-            task.wait(0.5) 
+    if AutoSaboteurRunning then return end
+    if not AutoSaboteurLib then
+        local success, loaded = pcall(function()
+            return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoSaboteur"))()
+        end)
+        if not success or not loaded then
+            warn("[AutoSaboteur] Failed to load module.")
+            return
         end
-        AutoSaboteurRunning = false
-    end)
+        AutoSaboteurLib = loaded
+    end
+    AutoSaboteurRunning = true
+    AutoSaboteurLib.Start()
 end
 
-local AutoMedicLib = nil
-local AutoBountyLib = nil
+local function StopAutoSaboteur()
+    if not AutoSaboteurRunning then return end
+    AutoSaboteurRunning = false
+    if AutoSaboteurLib then
+        AutoSaboteurLib.Stop()
+    end
+end
 
 local function StopMedicChain()
     if AutoMedicLib then
@@ -5710,9 +6001,14 @@ task.spawn(function()
         end
         if Globals.AutoFreezer and not AutoFreezerRunning then
     StartAutoFreezer()
+elseif not Globals.AutoFreezer and AutoFreezerRunning then
+    StopAutoFreezer()
 end
+
 if Globals.AutoSaboteur and not AutoSaboteurRunning then
     StartAutoSaboteur()
+elseif not Globals.AutoSaboteur and AutoSaboteurRunning then
+    StopAutoSaboteur()
 end
         if Globals.AutoMercenary and not AutoMercenaryBaseRunning then
             StartAutoMercenary()
