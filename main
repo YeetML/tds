@@ -2077,7 +2077,7 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
             end
             if v and GameState == "GAME" then
                 if #executed_actions > 0 then
-                    local content = "local TDS = shared.TDSTable or loadstring(game:HttpGet(\"https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main\"))()\n\n"
+                    local content = "local TDS = shared.TDSTable or loadstring(HttpGet(\"https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main\"))()\n\n"
                     content = content .. table.concat(executed_actions, "\n")
                     writefile("ADS_LastStrat.lua", content)
                 end
@@ -2099,7 +2099,7 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
             end
             if v and GameState == "GAME" then
                 if #executed_actions > 0 then
-                    local content = "local TDS = shared.TDSTable or loadstring(game:HttpGet(\"https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main\"))()\n\n"
+                    local content = "local TDS = shared.TDSTable or loadstring(HttpGet(\"https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main\"))()\n\n"
                     content = content .. table.concat(executed_actions, "\n")
                     writefile("ADS_LastStrat.lua", content)
                 end
@@ -4866,7 +4866,7 @@ local function strategyRecordingSetup()
                     local actionString = string.format("TDS:%s(%s)", methodName, table.concat(stringifiedArguments, ", "))
                     table.insert(executed_actions, actionString)
                     
-                    local strategyFileContent = "local TDS = shared.TDSTable or loadstring(game:HttpGet(\"https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Library.lua\"))()\n\n"
+                    local strategyFileContent = "local TDS = shared.TDSTable or loadstring(HttpGet(\"https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Library.lua\"))()\n\n"
                     strategyFileContent = strategyFileContent .. table.concat(executed_actions, "\n")
                     writefile("ADS_LastStrat.lua", strategyFileContent)
                 end
@@ -5989,7 +5989,7 @@ task.spawn(function()
         end
         if Globals.RandomDJ then
             if not AutoDJ then
-                AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+                AutoDJ = loadstring(HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
             end
             if AutoDJ and not AutoDJ.IsRunning() then
                 AutoDJ.Start()
@@ -5999,7 +5999,7 @@ task.spawn(function()
         end
         if Globals.MuteOtherDJs then
             if not AutoDJ then
-                AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+                AutoDJ = loadstring(HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
             end
             if AutoDJ and AutoDJ.StartMuteOthers then
                 AutoDJ.StartMuteOthers()
