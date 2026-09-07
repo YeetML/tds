@@ -630,88 +630,28 @@ local function HookPlacementSystem()
         })
 
         if getupvalues and setupvalue then
-            local Upvals = getupvalues(NewPlacementController.Start)
-            for Idx, Val in pairs(Upvals) do
-                if Val == SharedGameFunctions then
-                    setupvalue(NewPlacementController.Start, Idx, ProxyShared)
-                    break
+            local ok, Upvals = pcall(getupvalues, NewPlacementController.Start)
+            if ok and type(Upvals) == "table" then
+                for Idx, Val in pairs(Upvals) do
+                    if Val == SharedGameFunctions then
+                        pcall(setupvalue, NewPlacementController.Start, Idx, ProxyShared)
+                        break
+                    end
                 end
             end
         end
 
-        if NewPlacementController.Place and NewPlacementController.Place.Connect then
+        if NewPlacementController.Place and typeof(NewPlacementController.Place) == "RBXScriptSignal" then
             NewPlacementController.Place:Connect(function()
                 InvalidateSnapCache()
             end)
-        end
-
-        local OrigAdd = Scheduler.add
-        Scheduler.add = function(Name, Signal, Callback)
-            if Name == "TowerPlacement" and type(Callback) == "function" then
-                local WrappedCallback = function(Dt)
-                    if not TowerSnapper.Enabled then
-                        return Callback(Dt)
-                    end
-                    local Upvals = getupvalues(Callback)
-                    local Mouse = Upvals[1]
-                    local RaycastParams = Upvals[2]
-                    local SharedGame = Upvals[3]
-                    local TowerData = Upvals[4]
-                    local Team = Upvals[5]
-                    local UpgradesStore = Upvals[7]
-                    local Model = Upvals[8]
-                    local SpringPos = Upvals[11]
-                    local RotLerp = Upvals[12]
-                    local TargetRot = Upvals[13]
-                    local AnimController = Upvals[14]
-                    local TowerClass = Upvals[15]
-                    local EnumModule = Upvals[16]
-                    local SpringNormal = Upvals[17]
-                    local QuaternionModule = Upvals[18]
-
-                    local Ray = workspace:Raycast(Mouse.UnitRay.Origin, Mouse.UnitRay.Direction * 1000, RaycastParams)
-                    if Ray then
-                        local IsValid, HitRes = SharedGame.CheckTowerCollisions(TowerData.Name, Ray.Position, Team)
-                        if Upvals[6] ~= IsValid then
-                            setupvalue(Callback, 6, IsValid)
-                            UpgradesStore.updateValid(Model, IsValid)
-                        end
-                        local FinalTargetPos = Ray.Position
-                        local FinalTargetNormal = Ray.Normal
-                        if IsValid and HitRes then
-                            local HitPos = (typeof(HitRes) == "RaycastResult") and HitRes.Position or HitRes
-                            setupvalue(Callback, 9, HitPos)
-                            FinalTargetPos = HitPos
-                            if typeof(HitRes) == "RaycastResult" and HitRes.Normal then
-                                FinalTargetNormal = HitRes.Normal
-                            end
-                        end
-                        if Upvals[10] then
-                            setupvalue(Callback, 10, false)
-                            SpringPos.init(FinalTargetPos, Vector3.new(0, 0, 0))
-                        else
-                            SpringPos.t = FinalTargetPos
-                        end
-                        local DtAlpha = math.min(Dt * 10, 1)
-                        RotLerp = math.lerp(RotLerp, TargetRot, DtAlpha)
-                        setupvalue(Callback, 12, RotLerp)
-                        local ModelCF = CFrame.new(SpringPos.p) * CFrame.Angles(0, math.rad(RotLerp), 0)
-                        if AnimController and TowerClass ~= EnumModule.TowerType.Flying and SpringNormal and QuaternionModule then
-                            SpringNormal.t = ModelCF.Position
-                            local Tilt = QuaternionModule(FinalTargetNormal, FinalTargetNormal + (-0.01 * SpringNormal.v)) + SpringNormal.p
-                            ModelCF = ModelCF * (Tilt - Tilt.Position)
-                        end
-                        Model:PivotTo(CFrame.new(ModelCF.X, FinalTargetPos.Y, ModelCF.Z) * CFrame.Angles(ModelCF:toEulerAnglesXYZ()))
-                    end
-                end
-                return OrigAdd(Name, Signal, WrappedCallback)
-            end
-            return OrigAdd(Name, Signal, Callback)
         end
     end)
 
     if not Success then
         warn("[Snapper] Failed to hook placement system:", Err)
+    else
+        print("[Snapper] Hooked successfully")
     end
 end
 
@@ -1127,6 +1067,9 @@ end
 LoadSettings()
 Globals.TimeScaleValue = CoerceTimeScaleValue(Globals.TimeScaleValue, 2)
 Apply3dRendering()
+
+TowerSnapper.Enabled = Globals.Snapper or false
+BuffOverlay.Enabled = Globals.BuffOverlay or false
 
 if Globals.RandomDJ or Globals.MuteOtherDJs then
     if not AutoDJ then
