@@ -5750,4 +5750,5 @@ if Globals.ClaimRewards and not AutoClaimRewards then
     StartClaimRewards()
 end
 MissionsUIFix()
+getgenv().SmartTeleportToLobby = SmartTeleportToLobby
 return TDS
