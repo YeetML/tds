@@ -1,0 +1,116 @@
+--[[
+    AutoSaboteur – external module
+    Uses Aggressive Toxins on the first enemy within range of a Saboteur (upgrade >= 3).
+    Depends on: Globals.AutoSaboteur (boolean), RemoteFunction, workspace, LocalPlayer
+]]
+local AutoSaboteur = {}
+
+local running = false
+local thread = nil
+local LocalPlayer = game:GetService("Players").LocalPlayer
+local RemoteFunction = game:GetService("ReplicatedStorage"):FindFirstChild("RemoteFunction")
+local Workspace = game:GetService("Workspace")
+
+local function getSaboteurs()
+    local saboteurs = {}
+    local towersFolder = Workspace:FindFirstChild("Towers")
+    if not towersFolder then return saboteurs end
+    for _, tower in ipairs(towersFolder:GetChildren()) do
+        local rep = tower:FindFirstChild("TowerReplicator")
+        if rep then
+            local name = rep:GetAttribute("Name")
+            local owner = rep:GetAttribute("OwnerId")
+            local upgrade = rep:GetAttribute("Upgrade") or 0
+            if name == "Saboteur" and owner == LocalPlayer.UserId and upgrade >= 3 then
+                table.insert(saboteurs, tower)
+            end
+        end
+    end
+    return saboteurs
+end
+
+local function getEnemyPositions()
+    local positions = {}
+    local npcsFolder = Workspace:FindFirstChild("NPCs")
+    if not npcsFolder then return positions end
+    for _, npc in ipairs(npcsFolder:GetChildren()) do
+        local hrp = npc:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            table.insert(positions, hrp.Position)
+        else
+            local part = npc:FindFirstChildWhichIsA("BasePart")
+            if part then
+                table.insert(positions, part.Position)
+            end
+        end
+    end
+    return positions
+end
+
+function AutoSaboteur.Start()
+    if running then return end
+    running = true
+    thread = task.spawn(function()
+        while running do
+            local saboteurs = getSaboteurs()
+            if #saboteurs == 0 then
+                task.wait(0.5)
+                goto continue
+            end
+
+            local enemyPositions = getEnemyPositions()
+            if #enemyPositions == 0 then
+                task.wait(0.5)
+                goto continue
+            end
+
+            for _, saboteur in ipairs(saboteurs) do
+                local rep = saboteur:FindFirstChild("TowerReplicator")
+                local towerPos = rep and rep:GetAttribute("Position")
+                if typeof(towerPos) ~= "Vector3" then
+                    local hrp = saboteur:FindFirstChild("HumanoidRootPart")
+                    towerPos = hrp and hrp.Position
+                    if not towerPos then
+                        local part = saboteur:FindFirstChildWhichIsA("BasePart")
+                        if part then towerPos = part.Position end
+                    end
+                end
+                if not towerPos then goto nextSaboteur end
+
+                local range = rep and (rep:GetAttribute("Range") or 16.5) or 16.5
+                range = tonumber(range) or 16.5
+
+                local targetPos = nil
+                for _, pos in ipairs(enemyPositions) do
+                    local dx = towerPos.X - pos.X
+                    local dz = towerPos.Z - pos.Z
+                    if math.sqrt(dx*dx + dz*dz) <= range then
+                        targetPos = pos
+                        break
+                    end
+                end
+
+                if targetPos then
+                    pcall(function()
+                        RemoteFunction:InvokeServer("Troops", "Abilities", "Activate", {
+                            Troop = saboteur,
+                            Name = "Aggressive Toxins",
+                            Data = { position = targetPos }
+                        })
+                    end)
+                end
+                ::nextSaboteur::
+            end
+
+            task.wait(0.5)
+            ::continue::
+        end
+    end)
+end
+
+function AutoSaboteur.Stop()
+    running = false
+    if thread then task.cancel(thread); thread = nil end
+end
+
+return AutoSaboteur
