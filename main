@@ -3393,12 +3393,8 @@ local function HandlePostMatch(skipRejoin)
 
     if not UiRoot then 
     if not skipRejoin then
-        if IsTrial() then
-            return RejoinMatch()
-        else
-            game:GetService("ReplicatedStorage").Network.Teleport["RE:backToLobby"]:FireServer()
-            return
-        end
+        game:GetService("ReplicatedStorage").Network.Teleport["RE:backToLobby"]:FireServer()
+        return
     else
         return
     end
@@ -3407,11 +3403,7 @@ end
 
     if not Globals.SendWebhook then
     if not skipRejoin then
-        if IsTrial() then
-            RejoinMatch()
-        else
-            game:GetService("ReplicatedStorage").Network.Teleport["RE:backToLobby"]:FireServer()
-        end
+        game:GetService("ReplicatedStorage").Network.Teleport["RE:backToLobby"]:FireServer()
     end
     return
 end
@@ -3481,11 +3473,7 @@ end
     task.wait(1.5)
 
     if not skipRejoin then
-    if IsTrial() then
-        RejoinMatch()
-    else
-        game:GetService("ReplicatedStorage").Network.Teleport["RE:backToLobby"]:FireServer()
-    end
+    game:GetService("ReplicatedStorage").Network.Teleport["RE:backToLobby"]:FireServer()
 end
 
     task.wait(9e9)
