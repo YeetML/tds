@@ -871,22 +871,26 @@ local function UpdateBuffOverlay(CursorPosition, DeltaTime)
 end
 
 RunService.RenderStepped:Connect(function(DeltaTime)
+    -- Only run when we are actually in a match
     if GameState ~= "GAME" then
         ClearBuffVisuals()
         return
     end
 
+    -- Safely attempt to load the placement controller
     local success, NewPlacementController = pcall(require, ReplicatedStorage.Client.Controllers.Game.NewPlacementController)
     if not success or not NewPlacementController then
         ClearBuffVisuals()
         return
     end
 
-    if not NewPlacementController.Active or not BuffOverlay.Enabled then
+    -- If the overlay is disabled or placement is not active, clear visuals
+    if not BuffOverlay.Enabled or not NewPlacementController.Active then
         ClearBuffVisuals()
         return
     end
 
+    -- Update overlay if we have a target position
     local TargetPosition = TowerSnapper and TowerSnapper.LastSnapped
     if not TargetPosition then
         local Mouse = LocalPlayer:GetMouse()
