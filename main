@@ -1040,7 +1040,7 @@ end
 
 -- ===== BRAWLER HELPERS =====
 local function BrawlerBuildPath()
-    local folder = Workspace.Map and Workspace.Map:FindFirstChild("Paths")
+    local folder = workspace.Map and workspace.Map:FindFirstChild("Paths")
     folder = folder and folder:FindFirstChild("1")
     if not folder then return nil end
     local points = {}
@@ -1055,7 +1055,7 @@ local function BrawlerBuildPath()
 end
 
 local BRAWLER_PATH_POINTS = BrawlerBuildPath()
-local BRAWLER_ROAD_PARTS = Workspace.Map and Workspace.Map:FindFirstChild("Road") and Workspace.Map.Road:GetChildren() or {}
+local BRAWLER_ROAD_PARTS = workspace.Map and workspace.Map:FindFirstChild("Road") and workspace.Map.Road:GetChildren() or {}
 
 local BRAWLER_SEGMENTS = {}
 if BRAWLER_PATH_POINTS and #BRAWLER_PATH_POINTS >= 2 then
@@ -1111,7 +1111,7 @@ local function BrawlerIsOnRoad(point)
 end
 
 local function BrawlerGetLeadEnemy()
-    local npcs = Workspace:FindFirstChild("NPCs")
+    local npcs = workspace:FindFirstChild("NPCs")
     if not npcs then return nil end
     local bestModel, bestProgress = nil, -math.huge
     for _, npc in ipairs(npcs:GetChildren()) do
@@ -5543,7 +5543,7 @@ local function StartAutoBrawler()
                         local right = Vector3.new(-dir.Z, 0, dir.X)
                         local enemyOnGround = Vector3.new(pivot.Position.X, center.Y, pivot.Position.Z)
 
-                        local towers = Workspace:FindFirstChild("Towers")
+                        local towers = workspace:FindFirstChild("Towers")
                         if towers then
                             for _, tower in ipairs(towers:GetChildren()) do
                                 local replicator = tower:FindFirstChild("TowerReplicator")
