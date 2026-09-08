@@ -219,6 +219,9 @@ local StackEnabled = false
 local SelectedTower = nil
 local StackSphere = nil
 
+local AutoMedicLib = nil
+local AutoBountyLib = nil
+
 local AllTowers = {
     "Scout", "Sniper", "Paintballer", "Demoman", "Boomerang", "Slime Trooper", "Soldier",
     "Freezer", "Assassin", "Militant", "Shotgunner", "Hunter", "Pyromancer", "Ace Pilot", 
@@ -5289,9 +5292,6 @@ local function StartAutoSaboteur()
         AutoSaboteurRunning = false
     end)
 end
-
-local AutoMedicLib = nil
-local AutoBountyLib = nil
 
 local function StopMedicChain()
     if AutoMedicLib then
