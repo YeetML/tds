@@ -207,6 +207,7 @@ local AutoUpgradeSelectedRunning = false
 local AutoUpgradeAllRunning = false
 local AutoFreezerRunning = false
 local AutoSaboteurRunning = false
+local AutoTrialsRunning = false
 
 local MaxPathDistance = 300 
 local MilMarker = nil
