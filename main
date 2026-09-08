@@ -523,7 +523,7 @@ end
 
 local function SetSetting(name, value)
     if DefaultSettings[name] ~= nil then
-        if _G.AutoProgSettings.__locked and _G.AutoProgSettings[name] ~= nil and name ~= "WebhookURL" then
+        if _G.AutoProgSettings.__locked and _G.AutoProgSettings[name] ~= nil and name ~= "WebhookURL" and name ~= "SendWebhook" then
     return
 end
         if name == "TimeScaleValue" then
