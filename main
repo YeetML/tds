@@ -207,6 +207,7 @@ local AutoUpgradeSelectedRunning = false
 local AutoUpgradeAllRunning = false
 local AutoFreezerRunning = false
 local AutoSaboteurRunning = false
+local AutoClaimAchievementsRunning = false
 
 local MaxPathDistance = 300 
 local MilMarker = nil
@@ -290,6 +291,7 @@ local DefaultSettings = {
     AutoTrials = false,
     AutoFreezer = false,
     AutoSaboteur = false,
+    AutoClaimAchievements = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -1877,6 +1879,16 @@ Automation:Toggle({
             SetSetting("ClaimRewards", v)
         end
     })
+
+    Automation:Toggle({
+    Title = "Auto Claim Achievements",
+    Desc = "Automatically claims achievements when they become available (looks for 'claim' button).",
+    Value = Globals.AutoClaimAchievements,
+    Callback = function(v)
+        SetSetting("AutoClaimAchievements", v)
+        if v then StartAutoClaimAchievements() end
+    end
+})
 
 Automation:Toggle({
     Title = "Auto Redeem Codes",
@@ -5634,6 +5646,86 @@ local function StartAutoUpgradeAll()
     end)
 end
 
+local function StartAutoClaimAchievements()
+    if AutoClaimAchievementsRunning or not Globals.AutoClaimAchievements or GameState ~= "LOBBY" then 
+        return 
+    end
+    AutoClaimAchievementsRunning = true
+
+    task.spawn(function()
+        local claimed = {}
+        local claimRemote = nil
+
+        while Globals.AutoClaimAchievements and GameState == "LOBBY" do
+            pcall(function()
+                if not claimRemote then
+                    claimRemote = ReplicatedStorage:FindFirstChild("Network")
+                        and ReplicatedStorage.Network:FindFirstChild("Achievements")
+                        and ReplicatedStorage.Network.Achievements:FindFirstChild("RF:Claim")
+                end
+                if not claimRemote then
+                    task.wait(1)
+                    return
+                end
+
+                local logBook = PlayerGui:FindFirstChild("ReactLobbyLogBook")
+                if not logBook then
+                    task.wait(1)
+                    return
+                end
+
+                local frame = logBook:FindFirstChild("Frame")
+                local info = frame and frame:FindFirstChild("Information")
+                local selectionScroll = info and info:FindFirstChild("selectionScroll")
+                local achievementsFolder = selectionScroll and selectionScroll:FindFirstChild("achievements")
+
+                if not achievementsFolder then
+                    task.wait(1)
+                    return
+                end
+
+                for _, child in ipairs(achievementsFolder:GetChildren()) do
+                    if child.Name:match("^achievement:") then
+                        local titleContainer = child:FindFirstChild("titleContainer")
+                        if titleContainer then
+                            local titleLabel = titleContainer:FindFirstChild("title")
+                            if titleLabel and titleLabel:IsA("TextLabel") then
+                                local title = titleLabel.Text
+                                if title and title ~= "" and not claimed[title] then
+                                    local equip = titleContainer:FindFirstChild("equip")
+                                    if equip then
+                                        claimed[title] = true
+                                    else
+                                        local claimable = child:FindFirstChild("claim")
+                                        if claimable then
+                                            local success, err = pcall(function()
+                                                claimRemote:InvokeServer(title)
+                                            end)
+                                            if success then
+                                                claimed[title] = true
+                                                Logger:Log("Claimed achievement: " .. title)
+                                                Window:Notify({
+                                                    Title = "Achievement Claimed",
+                                                    Desc = "Claimed: " .. title,
+                                                    Time = 3,
+                                                    Type = "normal"
+                                                })
+                                            else
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(1)
+
+        AutoClaimAchievementsRunning = false
+    end)
+end
+
 task.spawn(function()
     while true do
         if _G.AutoProgSettings.__locked then
@@ -5729,6 +5821,9 @@ end
         if Globals.AutoUpgradeAll and not AutoUpgradeAllRunning then
             StartAutoUpgradeAll()
         end
+        if Globals.AutoClaimAchievements and not AutoClaimAchievementsRunning then
+    StartAutoClaimAchievements()
+end
                 if Globals.AutoMedic and not AutoMedicRunning then
             StartMedicChain()
         elseif not Globals.AutoMedic and AutoMedicRunning then
