@@ -1672,11 +1672,6 @@ Automation:Toggle({
     Value = Globals.AutoBrawler or false,
     Callback = function(v)
         SetSetting("AutoBrawler", v)
-        if v then
-            StartAutoBrawler()
-        else
-            StopAutoBrawler()
-        end
     end
 })
 
