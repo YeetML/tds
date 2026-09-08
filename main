@@ -5647,8 +5647,8 @@ local function StartAutoUpgradeAll()
 end
 
 local function StartAutoClaimAchievements()
-    if AutoClaimAchievementsRunning or not Globals.AutoClaimAchievements or GameState ~= "LOBBY" then 
-        return 
+    if AutoClaimAchievementsRunning or not Globals.AutoClaimAchievements or GameState ~= "LOBBY" then
+        return
     end
     AutoClaimAchievementsRunning = true
 
@@ -5698,19 +5698,22 @@ local function StartAutoClaimAchievements()
                                     else
                                         local claimable = child:FindFirstChild("claim")
                                         if claimable then
-                                            local success, err = pcall(function()
+                                            local success = pcall(function()
                                                 claimRemote:InvokeServer(title)
                                             end)
                                             if success then
                                                 claimed[title] = true
-                                                Logger:Log("Claimed achievement: " .. title)
-                                                Window:Notify({
-                                                    Title = "Achievement Claimed",
-                                                    Desc = "Claimed: " .. title,
-                                                    Time = 3,
-                                                    Type = "normal"
-                                                })
-                                            else
+                                                if Logger and Logger.Log then
+                                                    Logger:Log("Claimed achievement: " .. title)
+                                                end
+                                                if Window and Window.Notify then
+                                                    Window:Notify({
+                                                        Title = "Achievement Claimed",
+                                                        Desc = "Claimed: " .. title,
+                                                        Time = 3,
+                                                        Type = "normal"
+                                                    })
+                                                end
                                             end
                                         end
                                     end
@@ -5721,6 +5724,7 @@ local function StartAutoClaimAchievements()
                 end
             end)
             task.wait(1)
+        end
 
         AutoClaimAchievementsRunning = false
     end)
