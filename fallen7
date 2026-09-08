@@ -1,0 +1,156 @@
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+
+TDS:Loadout("Gatling Gun", "DJ Booth", "Mercenary Base", "Trapper", "Hacker")
+TDS:Mode("Frost")
+TDS:GameInfo("Dusty Bridges", {HiddenEnemies = true, Glass = true, ExplodingEnemies = true, Limitation = true, Committed = true, Quarantine = true})
+TDS:UnlockTimeScale()
+TDS:TimeScale(2)
+TDS:VoteSkip(11, 39)
+
+-- [ Wave 5 Placements + Full Strategy ]
+
+-- Place Trapper 1
+TDS:Place("Trapper", 31.812786102294922, 28.952667236328125, -164.83441162109375)
+TDS:Ready()
+
+-- Place Trappers 2, 3, 4, 5
+TDS:Place("Trapper", 34.33209228515625, 28.697355270385742, -166.70689392089844)
+TDS:Place("Trapper", 37.207496643066406, 28.640535354614258, -168.14857482910156)
+TDS:Place("Trapper", 40.387847900390625, 28.509803771972656, -169.01657104492188)
+TDS:Place("Trapper", 43.81343078613281, 28.43197250366211, -169.8206787109375)
+
+-- Upgrades & settings for Trapper 5, 4, 1
+TDS:Upgrade(5)
+TDS:Upgrade(5)
+TDS:SetOption(5, "Trap", "Landmine")
+TDS:SetTarget(5, "Last")
+TDS:SetTarget(5, "Strongest")
+TDS:Upgrade(4)
+TDS:Upgrade(1)
+
+-- Place Trapper 6
+TDS:Place("Trapper", 47.75687789916992, 28.52938461303711, -168.90744018554688)
+TDS:Upgrade(1)
+TDS:SetOption(1, "Trap", "Landmine")
+TDS:Upgrade(4)
+TDS:SetOption(4, "Trap", "Landmine")
+
+-- Place Gatling Gun (7)
+TDS:Place("Gatling Gun", 40.546817779541016, 28.966188430786133, -165.53872680664062)
+TDS:Upgrade(7)
+TDS:Upgrade(7)
+
+-- Upgrades & settings for Trappers 6, 2, 3
+TDS:Upgrade(6)
+TDS:Upgrade(6)
+TDS:SetOption(6, "Trap", "Landmine")
+TDS:Upgrade(2)
+TDS:Upgrade(2)
+TDS:SetOption(2, "Trap", "Landmine")
+TDS:Upgrade(3)
+TDS:Upgrade(3)
+TDS:SetOption(3, "Trap", "Landmine")
+
+-- Place Trapper 8
+TDS:Place("Trapper", 51.01872634887695, 28.37632942199707, -168.86123657226562)
+TDS:Upgrade(8)
+TDS:Upgrade(8)
+TDS:SetOption(8, "Trap", "Landmine")
+
+-- Place Hacker 9
+TDS:Place("Hacker", 33.739776611328125, 28.786334991455078, -162.09408569335938)
+TDS:Upgrade(9)
+TDS:Upgrade(9)
+
+-- Place Hacker 10
+TDS:Place("Hacker", 49.72801208496094, 28.599868774414062, -166.0048065185547)
+TDS:Upgrade(10)
+TDS:Upgrade(10)
+
+-- Place DJ Booth (11)
+TDS:Place("DJ Booth", 43.21610641479492, 28.99209213256836, -161.7581787109375)
+TDS:Upgrade(11)
+TDS:Upgrade(11)
+TDS:Upgrade(11)
+TDS:SetOption(11, "Track", "Green")
+
+-- Place Mercenary Base 12
+TDS:Place("Mercenary Base", 48.3128662109375, 29.32293701171875, -153.33261108398438)
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:SetOption(12, "Unit 1", "Riot Guard")
+TDS:SetOption(12, "Unit 2", "Riot Guard")
+TDS:SetOption(12, "Unit 3", "Riot Guard")
+
+-- Place Mercenary Base 13
+TDS:Place("Mercenary Base", 45.46561813354492, 29.205305099487305, -148.45584106445312)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:SetOption(13, "Unit 2", "Riot Guard")
+TDS:SetOption(13, "Unit 3", "Riot Guard")
+TDS:SetOption(13, "Unit 1", "Riot Guard")
+
+-- Place Mercenary Base 14
+TDS:Place("Mercenary Base", 44.10409927368164, 29.154611587524414, -144.04730224609375)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:SetOption(14, "Unit 1", "Riot Guard")
+TDS:SetOption(14, "Unit 2", "Riot Guard")
+TDS:SetOption(14, "Unit 3", "Riot Guard")
+
+-- Batch upgrades (first wave)
+TDS:Upgrade(12)
+TDS:Upgrade(13)
+TDS:Upgrade(14)
+TDS:Upgrade(11)
+TDS:Upgrade(11)
+TDS:Upgrade(7)
+TDS:Upgrade(7)
+TDS:Upgrade(12)
+TDS:Upgrade(13)
+TDS:Upgrade(14)
+
+-- Batch upgrades (second wave + Hacker dual paths)
+TDS:Upgrade(7)
+TDS:Upgrade(7)
+TDS:Upgrade(9)
+TDS:Upgrade(9)
+TDS:Upgrade(9, 2)   -- Hacker 9 second path
+TDS:Upgrade(10)
+TDS:Upgrade(10)
+TDS:Upgrade(10, 2)  -- Hacker 10 second path
+
+-- Switch Trappers 6 and 5 to Bear Traps
+TDS:Upgrade(6)
+TDS:Upgrade(6)
+TDS:SetOption(6, "Trap", "Bear Traps")
+TDS:Upgrade(5)
+TDS:Upgrade(5)
+TDS:SetOption(5, "Trap", "Bear Traps")
+
+-- Final upgrades for Trappers 1, 4, 2, 3, 8
+TDS:Upgrade(1)
+TDS:Upgrade(1)
+TDS:Upgrade(4)
+TDS:Upgrade(4)
+TDS:Upgrade(2)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+TDS:Upgrade(3)
+TDS:Upgrade(8)
+TDS:Upgrade(8)
+
+-- DJ Booth to Red track
+TDS:SetOption(11, "Track", "Red")
+
+-- Hacker Abilities (your corrected positions & distribution)
+TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(52.29336929321289, 28.33711051940918, -176.62826538085938), towerToClone = 7}, true)
+TDS:Ability(10, "Hologram Tower", {towerPosition = Vector3.new(45.84001159667969, 29.299192428588867, -139.60568237304688), towerToClone = 12}, true)
+TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(52.51472473144531, 29.392780303955078, -146.77999877929688), towerToClone = 12}, true)
+TDS:Ability(10, "Hologram Tower", {towerPosition = Vector3.new(52.471134185791016, 29.37128448486328, -140.83108520507812), towerToClone = 12}, true)
