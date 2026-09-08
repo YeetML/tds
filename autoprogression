@@ -1158,54 +1158,39 @@ local function fetchCodesFromBeebom()
 end
 
 local function ClaimAchievements()
-    -- Wait until the lobby GUI is fully loaded
-    local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not PlayerGui then return end
+    -- Load the Cache module
+    local ok, CacheMod = pcall(require, ReplicatedStorage.Client.Modules.Cache)
+    if not ok then return end
 
-    local logBook = PlayerGui:FindFirstChild("ReactLobbyLogBook")
-    if not logBook then return end
-
-    -- Wait for the achievements container
-    local achievementsContainer = logBook:FindFirstChild("Frame")
-        and logBook.Frame:FindFirstChild("Information")
-        and logBook.Frame.Information:FindFirstChild("selectionScroll")
-        and logBook.Frame.Information.selectionScroll:FindFirstChild("achievements")
-    if not achievementsContainer then return end
-
-    -- Iterate over all achievement folders
-    for _, achievement in pairs(achievementsContainer:GetChildren()) do
-        -- Only process achievement folders (they have a name like "achievement:XX")
-        if achievement:IsA("Frame") and achievement.Name:match("^achievement:") then
-            -- Check if already claimed (has "equip" child)
-            local titleContainer = achievement:FindFirstChild("titleContainer")
-            if not titleContainer then continue end
-            if titleContainer:FindFirstChild("equip") then
-                -- Already claimed, skip
-                continue
-            end
-
-            -- Check if claimable (has "claim" child)
-            if not achievement:FindFirstChild("claim") then
-                -- Not yet claimable (requirements not met)
-                continue
-            end
-
-            -- Get the achievement title from the titleContainer
-            local titleLabel = titleContainer:FindFirstChild("title")
-            if not titleLabel or not titleLabel:IsA("TextLabel") then
-                continue
-            end
-            local title = titleLabel.Text
-            if title == "" then continue end
-
-            -- Claim the achievement
-            print("[Achievement] Claiming:", title)
-            SetStatus("Claiming achievement: " .. title)
-            pcall(function()
-                ReplicatedStorage:WaitForChild("Network"):WaitForChild("Achievements"):WaitForChild("RF:Claim"):InvokeServer(title)
-            end)
-            task.wait(0.5) -- Small delay between claims
+    local achCache = CacheMod("Achievements")
+    local data = achCache:GetValue()
+    if not data then
+        achCache:Download()
+        local start = os.clock()
+        while not achCache:GetValue() and os.clock() - start < 5 do
+            task.wait(0.1)
         end
+        data = achCache:GetValue()
+    end
+    if not data then return end
+
+    -- Find claimable achievements
+    local claimable = {}
+    for name, entry in pairs(data) do
+        if type(entry) == "table" and entry.completed == true then
+            table.insert(claimable, name)
+        end
+    end
+
+    if #claimable == 0 then return end
+
+    -- Claim them silently
+    local claimFunc = ReplicatedStorage:WaitForChild("Network"):WaitForChild("Achievements"):WaitForChild("RF:Claim")
+    for _, name in ipairs(claimable) do
+        pcall(function()
+            claimFunc:InvokeServer(name)
+        end)
+        task.wait(0.3)
     end
 end
 
