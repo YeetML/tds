@@ -207,6 +207,7 @@ local AutoUpgradeSelectedRunning = false
 local AutoUpgradeAllRunning = false
 local AutoFreezerRunning = false
 local AutoSaboteurRunning = false
+local AutoBrawlerRunning = false
 
 local MaxPathDistance = 300 
 local MilMarker = nil
@@ -1672,28 +1673,9 @@ Automation:Toggle({
     Callback = function(v)
         SetSetting("AutoBrawler", v)
         if v then
-            if not AutoBrawlerLib then
-                local success, result = pcall(function()
-                    return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoBrawler"))()
-                end)
-                if success and type(result) == "table" and result.Start then
-                    AutoBrawlerLib = result
-                else
-                    Window:Notify({
-                        Title = "Error",
-                        Desc = "Failed to load AutoBrawler",
-                        Time = 3,
-                        Type = "error"
-                    })
-                    SetSetting("AutoBrawler", false)
-                    return
-                end
-            end
-            AutoBrawlerLib.Start()
+            StartAutoBrawler()
         else
-            if AutoBrawlerLib and AutoBrawlerLib.Stop then
-                AutoBrawlerLib.Stop()
-            end
+            StopAutoBrawler()
         end
     end
 })
@@ -5452,6 +5434,34 @@ local function StartBountyChain()
     end)
 end
 
+local function StartAutoBrawler()
+    if AutoBrawlerRunning then return end
+
+    if not AutoBrawlerLib then
+        local success, result = pcall(function()
+            return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoBrawler.lua"))()
+        end)
+        if success and type(result) == "table" and result.Start then
+            AutoBrawlerLib = result
+        else
+            warn("[AutoBrawler] Failed to load library")
+            return
+        end
+    end
+
+    if AutoBrawlerLib and AutoBrawlerLib.Start then
+        AutoBrawlerRunning = true
+        AutoBrawlerLib.Start()
+    end
+end
+
+local function StopAutoBrawler()
+    if AutoBrawlerLib and AutoBrawlerLib.Stop then
+        AutoBrawlerLib.Stop()
+    end
+    AutoBrawlerRunning = false
+end
+
 local function StartAutoMercenary()
     if not Globals.AutoMercenary and not Globals.AutoMilitary then return end
 
@@ -5774,6 +5784,11 @@ end
         elseif not Globals.AutoBounty and AutoBountyRunning then
             StopBountyChain()
         end
+if Globals.AutoBrawler and not AutoBrawlerRunning then
+    StartAutoBrawler()
+elseif not Globals.AutoBrawler and AutoBrawlerRunning then
+    StopAutoBrawler()
+end
         if Globals.AutoRedeemCodes and not CodesRedeemed and not AutoRedeemRunning then
     redeemCodesFromBeebom()
 end
