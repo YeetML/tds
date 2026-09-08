@@ -145,7 +145,8 @@ TDS:Upgrade(8)
 
 TDS:SetOption(11, "Track", "Red")
 
-TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(0.1069461852312088, 243, 145.86935424804688), towerToClone = 7}, true)
-TDS:Ability(10, "Hologram Tower", {towerPosition = Vector3.new(-2.588909864425659, 243, 159.48695373535156), towerToClone = 12}, true)
-TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(2.60925030708313, 243, 159.5057373046875), towerToClone = 12}, true)
-TDS:Ability(10, "Hologram Tower", {towerPosition = Vector3.new(2.60925030708313, 243, 164.80357055664062), towerToClone = 12}, true)
+-- Now using your Simplicity ability positions (not the Lay By ones)
+TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(-11.800848007202148, 1, 0.37440013885498047), towerToClone = 7}, true)
+TDS:Ability(10, "Hologram Tower", {towerPosition = Vector3.new(6.427371501922607, 0.9999831914901733, 3.495210647583008), towerToClone = 12}, true)
+TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(-3.326542377471924, 0.9999831914901733, -3.120914936065674), towerToClone = 13}, true)
+TDS:Ability(10, "Hologram Tower", {towerPosition = Vector3.new(-4.719409942626953, 0.9999831914901733, -9.211892127990723), towerToClone = 14}, true)
