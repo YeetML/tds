@@ -1,0 +1,152 @@
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+
+TDS:Loadout("Gatling Gun", "DJ Booth", "Trapper", "Hacker", "Mercenary Base")
+TDS:Mode("Fallen")
+TDS:GameInfo("Wrecked Battlefield II", {})
+
+TDS:VoteSkip(11, 39)
+TDS:UnlockTimeScale()
+TDS:TimeScale(2)
+
+TDS:Place("Trapper", -15.896781921386719, 0.646377444267273, 2.3833236694335938)   -- 1
+TDS:Ready()
+TDS:Place("Trapper", -19.551124572753906, 0.7995535731315613, 5.871944427490234)    -- 2
+TDS:Place("Trapper", -17.401519775390625, 0.4646010398864746, 8.021549224853516)    -- 3
+TDS:Place("Trapper", -12.92689037322998, 0.48089224100112915, 3.2114992141723633)   -- 4
+TDS:Place("Trapper", -14.310976028442383, 0.4027089476585388, 8.16955280303955)     -- 5
+
+TDS:Upgrade(5)
+TDS:Upgrade(5)
+TDS:SetOption(5, "Trap", "Landmine")
+TDS:SetTarget(5, "Last")
+TDS:SetTarget(5, "Strongest")
+
+TDS:Upgrade(4)
+TDS:Upgrade(1)
+
+TDS:Place("Trapper", -9.926609992980957, 0.3328436613082886, 3.3579635620117188)    -- 6
+
+TDS:Upgrade(1)
+TDS:SetOption(1, "Trap", "Landmine")
+
+TDS:Upgrade(4)
+TDS:SetOption(4, "Trap", "Landmine")
+
+TDS:Place("Gatling Gun", -7.13597297668457, 0.4026988446712494, 1.1804580688476562) -- 7
+
+TDS:Upgrade(7)
+TDS:Upgrade(7)
+
+TDS:Upgrade(6)
+TDS:Upgrade(6)
+TDS:SetOption(6, "Trap", "Landmine")
+
+TDS:Upgrade(2)
+TDS:Upgrade(2)
+TDS:SetOption(2, "Trap", "Landmine")
+
+TDS:Upgrade(3)
+TDS:Upgrade(3)
+TDS:SetOption(3, "Trap", "Landmine")
+
+TDS:Place("Trapper", -16.87743377685547, 0.6522292494773865, -0.4977083206176758)  -- 8
+
+TDS:Upgrade(8)
+TDS:Upgrade(8)
+TDS:SetOption(8, "Trap", "Landmine")
+
+TDS:Place("Hacker", -21.570096969604492, 1.051630973815918, 3.4208011627197266)    -- 9
+
+TDS:Upgrade(9)
+TDS:Upgrade(9)
+
+TDS:Place("Hacker", -2.633509635925293, -0.01458132266998291, 8.851325035095215)   -- 10
+
+TDS:Upgrade(10)
+TDS:Upgrade(10)
+
+TDS:Place("DJ Booth", -10.313779830932617, 0.13171464204788208, 8.413463592529297) -- 11
+
+TDS:Upgrade(11)
+TDS:Upgrade(11)
+TDS:Upgrade(11)
+TDS:SetOption(11, "Track", "Green")
+
+TDS:Place("Mercenary Base", -2.1619319915771484, 0.17298287153244019, 3.756293296813965) -- 12
+
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:SetOption(12, "Unit 1", "Riot Guard")
+TDS:SetOption(12, "Unit 2", "Riot Guard")
+TDS:SetOption(12, "Unit 3", "Riot Guard")
+
+TDS:Place("Mercenary Base", -1.7784767150878906, 0.45592159032821655, -0.7496528625488281) -- 13
+
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:SetOption(13, "Unit 2", "Riot Guard")
+TDS:SetOption(13, "Unit 3", "Riot Guard")
+TDS:SetOption(13, "Unit 1", "Riot Guard")
+
+TDS:Place("Mercenary Base", -6.874485015869141, 0.984637975692749, -3.025186061859131) -- 14
+
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:SetOption(14, "Unit 1", "Riot Guard")
+TDS:SetOption(14, "Unit 2", "Riot Guard")
+TDS:SetOption(14, "Unit 3", "Riot Guard")
+
+TDS:Upgrade(12)
+TDS:Upgrade(13)
+TDS:Upgrade(14)
+TDS:Upgrade(11)
+TDS:Upgrade(11)
+TDS:Upgrade(7)
+TDS:Upgrade(7)
+TDS:Upgrade(12)
+TDS:Upgrade(13)
+TDS:Upgrade(14)
+
+TDS:WaitForWave(33)
+
+TDS:Upgrade(7)
+TDS:Upgrade(7)
+TDS:Upgrade(9)
+TDS:Upgrade(9)
+TDS:Upgrade(9, 2)
+TDS:Upgrade(10)
+TDS:Upgrade(10)
+TDS:Upgrade(10, 2)
+
+TDS:Upgrade(6)
+TDS:Upgrade(6)
+TDS:SetOption(6, "Trap", "Bear Traps")
+
+TDS:Upgrade(5)
+TDS:Upgrade(5)
+TDS:SetOption(5, "Trap", "Bear Traps")
+
+TDS:Upgrade(1)
+TDS:Upgrade(1)
+TDS:Upgrade(4)
+TDS:Upgrade(4)
+TDS:Upgrade(2)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+TDS:Upgrade(3)
+TDS:Upgrade(8)
+TDS:Upgrade(8)
+
+TDS:SetOption(11, "Track", "Red")
+
+-- Abilities in the exact order they appear in the snippet (positions preserved)
+TDS:Ability(10, "Hologram Tower", {towerPosition = Vector3.new(-8.286893844604492, -0.07280600070953369, 12.497047424316406), towerToClone = 11}, true)
+TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(-4.260587692260742, 1.3591749668121338, -7.412224292755127), towerToClone = 13}, true)
+TDS:Ability(10, "Hologram Tower", {towerPosition = Vector3.new(1.2986068725585938, 0.740748941898346, -4.432466506958008), towerToClone = 13}, true)
+TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(2.5556447505950928, 0.04643750190734863, 3.5357961654663086), towerToClone = 12}, true)
