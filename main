@@ -5654,35 +5654,17 @@ local function StartAutoClaimAchievements()
 
     task.spawn(function()
         local claimed = {}
-        local claimRemote = nil
 
         while Globals.AutoClaimAchievements and GameState == "LOBBY" do
             pcall(function()
-                if not claimRemote then
-                    claimRemote = ReplicatedStorage:FindFirstChild("Network")
-                        and ReplicatedStorage.Network:FindFirstChild("Achievements")
-                        and ReplicatedStorage.Network.Achievements:FindFirstChild("RF:Claim")
-                end
-                if not claimRemote then
-                    task.wait(1)
-                    return
-                end
-
                 local logBook = PlayerGui:FindFirstChild("ReactLobbyLogBook")
-                if not logBook then
-                    task.wait(1)
-                    return
-                end
+                if not logBook then return end
 
                 local frame = logBook:FindFirstChild("Frame")
                 local info = frame and frame:FindFirstChild("Information")
                 local selectionScroll = info and info:FindFirstChild("selectionScroll")
                 local achievementsFolder = selectionScroll and selectionScroll:FindFirstChild("achievements")
-
-                if not achievementsFolder then
-                    task.wait(1)
-                    return
-                end
+                if not achievementsFolder then return end
 
                 for _, child in ipairs(achievementsFolder:GetChildren()) do
                     if child.Name:match("^achievement:") then
@@ -5698,22 +5680,22 @@ local function StartAutoClaimAchievements()
                                     else
                                         local claimable = child:FindFirstChild("claim")
                                         if claimable then
-                                            local success = pcall(function()
-                                                claimRemote:InvokeServer(title)
+                                            -- Just fire it, no searching
+                                            pcall(function()
+                                                game:GetService("ReplicatedStorage").Network.Achievements["RF:Claim"]:InvokeServer(title)
                                             end)
-                                            if success then
-                                                claimed[title] = true
-                                                if Logger and Logger.Log then
-                                                    Logger:Log("Claimed achievement: " .. title)
-                                                end
-                                                if Window and Window.Notify then
-                                                    Window:Notify({
-                                                        Title = "Achievement Claimed",
-                                                        Desc = "Claimed: " .. title,
-                                                        Time = 3,
-                                                        Type = "normal"
-                                                    })
-                                                end
+                                            claimed[title] = true
+
+                                            if Logger and Logger.Log then
+                                                Logger:Log("Claimed achievement: " .. title)
+                                            end
+                                            if Window and Window.Notify then
+                                                Window:Notify({
+                                                    Title = "Achievement Claimed",
+                                                    Desc = "Claimed: " .. title,
+                                                    Time = 3,
+                                                    Type = "normal"
+                                                })
                                             end
                                         end
                                     end
