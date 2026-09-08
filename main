@@ -5434,7 +5434,7 @@ local function StartAutoBrawler()
 
     if not AutoBrawlerLib then
         local success, result = pcall(function()
-            return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoBrawler.lua"))()
+            return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoBrawler"))()
         end)
         if success and type(result) == "table" and result.Start then
             AutoBrawlerLib = result
