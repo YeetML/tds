@@ -2,7 +2,7 @@ local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/td
 
 TDS:Loadout("Gatling Gun", "DJ Booth", "Trapper", "Hacker", "Mercenary Base")
 TDS:Mode("Fallen")
-TDS:GameInfo("Coral Deep", {})
+TDS:GameInfo("Coral Deep", {HiddenEnemies = true, Glass = true, ExplodingEnemies = true, Limitation = true, Committed = true, Quarantine = true})
 
 TDS:VoteSkip(11, 39)
 TDS:UnlockTimeScale()
