@@ -2898,98 +2898,92 @@ function StartAutoTrials()
     AutoTrialsRunning = true
 
     task.spawn(function()
-        while Globals.AutoTrials do
-            local trialName = getCurrentTrial()
-            if not trialName then
-                task.wait(3)
-                continue
+        local trialName = getCurrentTrial()
+        if not trialName then
+            Window:Notify({Title = "AutoTrials", Desc = "No active trial found.", Time = 3, Type = "error"})
+            AutoTrialsRunning = false
+            return
+        end
+
+        local skillPass, skillMissing = checkSkillRequirements(trialName)
+        if not skillPass then
+            local msg = "Missing skills:\n" .. table.concat(skillMissing, "\n")
+            Window:Notify({Title = "AutoTrials", Desc = msg, Time = 10, Type = "error"})
+            AutoTrialsRunning = false
+            return
+        end
+
+        local towerPass, towerMissing = checkTowerRequirements(trialName)
+        if not towerPass then
+            local msg = "Missing towers:\n" .. table.concat(towerMissing, "\n")
+            Window:Notify({Title = "AutoTrials", Desc = msg, Time = 10, Type = "error"})
+            AutoTrialsRunning = false
+            return
+        end
+
+        if GameState == "LOBBY" then
+            if writefile and makefolder then
+                pcall(makefolder, "GlobalConfigs")
+                pcall(writefile, "GlobalConfigs/trialscript.txt", trialName)
             end
+            RemoteFunc:InvokeServer("Multiplayer", "v2:start", { count = 1, mode = "Trials" })
+            Window:Notify({Title = "AutoTrials", Desc = "Joined trial for " .. trialName, Time = 3})
+            AutoTrialsRunning = false
+            return
+        end
 
-            local skillPass, skillMissing = checkSkillRequirements(trialName)
-            if not skillPass then
-                local msg = "Missing skills:\n" .. table.concat(skillMissing, "\n")
-                Window:Notify({Title = "AutoTrials", Desc = msg, Time = 10, Type = "error"})
-                task.wait(10)
-                continue
-            end
-
-            local towerPass, towerMissing = checkTowerRequirements(trialName)
-            if not towerPass then
-                local msg = "Missing towers:\n" .. table.concat(towerMissing, "\n")
-                Window:Notify({Title = "AutoTrials", Desc = msg, Time = 10, Type = "error"})
-                task.wait(10)
-                continue
-            end
-
-            if GameState == "LOBBY" then
-                if writefile and makefolder then
-                    pcall(makefolder, "GlobalConfigs")
-                    pcall(writefile, "GlobalConfigs/trialscript.txt", trialName)
-                end
-                RemoteFunc:InvokeServer("Multiplayer", "v2:start", { count = 1, mode = "Trials" })
-                Window:Notify({Title = "AutoTrials", Desc = "Joined trial for " .. trialName, Time = 3})
-                task.wait(15)
-                continue
-            end
-
-            if GameState == "GAME" then
-                local savedTrial = nil
-                if isfile then
-                    pcall(function()
-                        savedTrial = readfile("GlobalConfigs/trialscript.txt")
-                    end)
-                end
-                local targetTrial = savedTrial or trialName
-
-                local trialMap = {
-                    ["SpeedyEnemies"] = "Speedy Enemies",
-                    ["Speedy Enemies"] = "Speedy Enemies",
-                    ["Glass"] = "Glass",
-                    ["Quarantine"] = "Quarantine",
-                    ["Fog"] = "Fog",
-                    ["Limitation"] = "Limitation",
-                    ["Flying"] = "Flying",
-                    ["Jailed"] = "Jailed",
-                    ["ExplodingEnemies"] = "Exploding Enemies",
-                    ["Exploding Enemies"] = "Exploding Enemies",
-                    ["Inflation"] = "Inflation",
-                    ["Committed"] = "Committed",
-                    ["Hidden"] = "Hidden",
-                    ["HiddenEnemies"] = "Hidden Enemies",
-                    ["Hidden Enemies"] = "Hidden Enemies",
-                    ["Broke"] = "Broke",
-                    ["Healthy"] = "Healthy Enemies",
-                    ["HealthyEnemies"] = "Healthy Enemies",
-                    ["Healthy Enemies"] = "Healthy Enemies",
-                }
-                local mapped = trialMap[targetTrial] or targetTrial
-                local scriptUrl = trialScripts[mapped]
-                if not scriptUrl then
-                    Window:Notify({Title = "AutoTrials", Desc = "No strategy for " .. targetTrial, Time = 3, Type = "error"})
-                    task.wait(10)
-                    continue
-                end
-
-                local ok, err = pcall(function()
-                    local chunk = game:HttpGet(scriptUrl)
-                    chunk = "local TDS = shared.TDSTable or _G.TDS or error('TDS not found')\n" .. chunk
-                    local fn = loadstring(chunk)
-                    if fn then fn() end
+        if GameState == "GAME" then
+            local savedTrial = nil
+            if isfile then
+                pcall(function()
+                    savedTrial = readfile("GlobalConfigs/trialscript.txt")
                 end)
-                if ok then
-                    Window:Notify({Title = "AutoTrials", Desc = "Running strategy for " .. targetTrial, Time = 3})
-                    while Globals.AutoTrials and GameState == "GAME" do
-                        task.wait(5)
-                    end
-                else
-                    warn("[AutoTrials] Error: " .. tostring(err))
-                    Window:Notify({Title = "AutoTrials", Desc = "Failed to load strategy.", Time = 3, Type = "error"})
-                    task.wait(10)
-                end
+            end
+            local targetTrial = savedTrial or trialName
+
+            local trialMap = {
+                ["SpeedyEnemies"] = "Speedy Enemies",
+                ["Speedy Enemies"] = "Speedy Enemies",
+                ["Glass"] = "Glass",
+                ["Quarantine"] = "Quarantine",
+                ["Fog"] = "Fog",
+                ["Limitation"] = "Limitation",
+                ["Flying"] = "Flying",
+                ["Jailed"] = "Jailed",
+                ["ExplodingEnemies"] = "Exploding Enemies",
+                ["Exploding Enemies"] = "Exploding Enemies",
+                ["Inflation"] = "Inflation",
+                ["Committed"] = "Committed",
+                ["Hidden"] = "Hidden",
+                ["HiddenEnemies"] = "Hidden Enemies",
+                ["Hidden Enemies"] = "Hidden Enemies",
+                ["Broke"] = "Broke",
+                ["Healthy"] = "Healthy Enemies",
+                ["HealthyEnemies"] = "Healthy Enemies",
+                ["Healthy Enemies"] = "Healthy Enemies",
+            }
+            local mapped = trialMap[targetTrial] or targetTrial
+            local scriptUrl = trialScripts[mapped]
+            if not scriptUrl then
+                Window:Notify({Title = "AutoTrials", Desc = "No strategy for " .. targetTrial, Time = 3, Type = "error"})
+                AutoTrialsRunning = false
+                return
+            end
+
+            local ok, err = pcall(function()
+                local chunk = game:HttpGet(scriptUrl)
+                chunk = "local TDS = shared.TDSTable or _G.TDS or error('TDS not found')\n" .. chunk
+                local fn = loadstring(chunk)
+                if fn then fn() end
+            end)
+            if ok then
+                Window:Notify({Title = "AutoTrials", Desc = "Running strategy for " .. targetTrial, Time = 3})
             else
-                task.wait(3)
+                warn("[AutoTrials] Error: " .. tostring(err))
+                Window:Notify({Title = "AutoTrials", Desc = "Failed to load strategy.", Time = 3, Type = "error"})
             end
         end
+
         AutoTrialsRunning = false
     end)
 end
