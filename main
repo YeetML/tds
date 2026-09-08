@@ -290,6 +290,7 @@ local DefaultSettings = {
     AutoTrials = false,
     AutoFreezer = false,
     AutoSaboteur = false,
+	AutoBrawler = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -1661,6 +1662,39 @@ Automation:Toggle({
     Value = Globals.AutoSaboteur,
     Callback = function(v)
         SetSetting("AutoSaboteur", v)
+    end
+})
+
+Automation:Toggle({
+    Title = "Auto Brawler Reposition",
+    Desc = "Automatically repositions your Brawler towers (upgrade 4+) near the leading enemy.",
+    Value = Globals.AutoBrawler or false,
+    Callback = function(v)
+        SetSetting("AutoBrawler", v)
+        if v then
+            if not AutoBrawlerLib then
+                local success, result = pcall(function()
+                    return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoBrawler"))()
+                end)
+                if success and type(result) == "table" and result.Start then
+                    AutoBrawlerLib = result
+                else
+                    Window:Notify({
+                        Title = "Error",
+                        Desc = "Failed to load AutoBrawler",
+                        Time = 3,
+                        Type = "error"
+                    })
+                    SetSetting("AutoBrawler", false)
+                    return
+                end
+            end
+            AutoBrawlerLib.Start()
+        else
+            if AutoBrawlerLib and AutoBrawlerLib.Stop then
+                AutoBrawlerLib.Stop()
+            end
+        end
     end
 })
 
@@ -5280,6 +5314,7 @@ end
 
 local AutoMedicLib = nil
 local AutoBountyLib = nil
+local AutoBrawlerLib = nil
 
 local function StopMedicChain()
     if AutoMedicLib then
