@@ -2970,13 +2970,9 @@ if not scriptUrl then
 end
                 local ok, err = pcall(function()
     local chunk = game:HttpGet(scriptUrl)
+    chunk = "local TDS = shared.TDSTable or _G.TDS or error('TDS not found')\n" .. chunk
     local fn = loadstring(chunk)
-    if fn then
-        local env = getfenv(fn) or _G
-        env.TDS = shared.TDSTable or _G.TDS or TDS 
-        setfenv(fn, env)
-        fn()
-    end
+    if fn then fn() end
 end)
                 if ok then
                     Window:Notify({Title = "AutoTrials", Desc = "Running strategy for " .. targetTrial, Time = 3})
