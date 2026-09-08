@@ -1,7 +1,7 @@
 local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
 
 TDS:Loadout("Gatling Gun", "DJ Booth", "Mercenary Base", "Trapper", "Hacker")
-TDS:Mode("Frost")
+TDS:Mode("Fallen")
 TDS:GameInfo("Dusty Bridges", {HiddenEnemies = true, Glass = true, ExplodingEnemies = true, Limitation = true, Committed = true, Quarantine = true})
 TDS:UnlockTimeScale()
 TDS:TimeScale(2)
