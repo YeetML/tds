@@ -15,6 +15,21 @@ local platform = UserInputService:GetPlatform()
 local IsMobile = (platform == Enum.Platform.IOS or platform == Enum.Platform.Android)
 local SETTINGS_FILE = "AutoProgression.json"
 
+local ALL_TOWERS = {
+    "Scout", "Sniper", "Paintballer", "Demoman", "Boomerang", "Slime Trooper",
+    "Soldier", "Crook Boss", "Freezer", "Assassin", "Militant", "Shotgunner",
+    "Hunter", "Pyromancer", "Ace Pilot", "Farm", "Medic", "Electroshocker",
+    "Rocketeer", "Trapper", "Military Base", "Mercenary Base", "Mortar", "Turret",
+    "Commander", "Cowboy", "Warden", "DJ Booth", "Tesla", "Saboteur",
+    "Minigunner", "Ranger", "Pursuit", "Gatling Gun", "Brawler", "Necromancer",
+    "Accelerator", "Engineer", "Hacker",
+    "EvolvedOperator", "EvolvedEnforcer", "EvolvedKingpin", "EvolvedJuggernaut"
+}
+local function GetAllTowers()
+    return ALL_TOWERS
+end
+getgenv().GetAllTowers = GetAllTowers
+
 getgenv().HcEvoActive = getgenv().HcEvoActive or false
 getgenv().HcUnevoActive = getgenv().HcUnevoActive or false
 getgenv().AutoUpgradeSelected = false
