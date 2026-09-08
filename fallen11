@@ -1,0 +1,163 @@
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+
+TDS:Loadout("Gatling Gun", "DJ Booth", "Trapper", "Hacker", "Mercenary Base")
+TDS:Mode("Fallen")
+TDS:GameInfo("Iceville", {HiddenEnemies = true, Glass = true, ExplodingEnemies = true, Limitation = true, Committed = true, Quarantine = true})
+
+TDS:VoteSkip(11, 39)
+TDS:UnlockTimeScale()
+TDS:TimeScale(2)
+
+-- Indices 1–5: first 5 Trappers
+TDS:Place("Trapper", -23.72357940673828, 2.9999897480010986, 27.38749885559082)   -- 1
+TDS:Ready()
+TDS:Place("Trapper", -23.945322036743164, 2.9999871253967285, 24.322803497314453)  -- 2
+TDS:Place("Trapper", -23.945322036743164, 2.9999871253967285, 21.28280258178711)   -- 3
+TDS:Place("Trapper", -29.059139251708984, 2.999995708465576, 27.568653106689453)  -- 4
+TDS:Place("Trapper", -29.729745864868164, 2.9999961853027344, 24.60354232788086)   -- 5
+
+TDS:Upgrade(5)
+TDS:Upgrade(5)
+TDS:SetOption(5, "Trap", "Landmine")
+TDS:SetTarget(5, "Last")
+TDS:SetTarget(5, "Strongest")
+
+TDS:Upgrade(4)
+TDS:Upgrade(1)
+
+-- Index 6: sixth Trapper
+TDS:Place("Trapper", -29.729745864868164, 2.9999966621398926, 21.563541412353516) -- 6
+
+TDS:Upgrade(1)
+TDS:SetOption(1, "Trap", "Landmine")
+
+TDS:Upgrade(4)
+TDS:SetOption(4, "Trap", "Landmine")
+
+-- Index 7: Gatling Gun
+TDS:Place("Gatling Gun", -23.945322036743164, 2.999997615814209, 14.702801704406738) -- 7
+
+TDS:Upgrade(7)
+TDS:Upgrade(7)
+
+TDS:Upgrade(6)
+TDS:Upgrade(6)
+TDS:SetOption(6, "Trap", "Landmine")
+
+TDS:Upgrade(2)
+TDS:Upgrade(2)
+TDS:SetOption(2, "Trap", "Landmine")
+
+TDS:Upgrade(3)
+TDS:Upgrade(3)
+TDS:SetOption(3, "Trap", "Landmine")
+
+-- Index 8: seventh Trapper
+TDS:Place("Trapper", -23.945322036743164, 2.999997138977051, 18.242801666259766)  -- 8
+
+TDS:Upgrade(8)
+TDS:Upgrade(8)
+TDS:SetOption(8, "Trap", "Landmine")
+
+-- Index 9: first Hacker
+TDS:Place("Hacker", -20.683578491210938, 2.9999911785125732, 27.38749885559082)   -- 9
+
+TDS:Upgrade(9)
+TDS:Upgrade(9)
+
+-- Index 10: second Hacker
+TDS:Place("Hacker", -33.071659088134766, 2.999997138977051, 17.584043502807617)   -- 10
+
+TDS:Upgrade(10)
+TDS:Upgrade(10)
+
+-- Index 11: DJ Booth
+TDS:Place("DJ Booth", -29.031658172607422, 2.999997138977051, 17.584043502807617) -- 11
+
+TDS:Upgrade(11)
+TDS:Upgrade(11)
+TDS:Upgrade(11)
+TDS:SetOption(11, "Track", "Green")
+
+-- Index 12: first Mercenary Base
+TDS:Place("Mercenary Base", -26.193435668945312, 2.9999983310699463, 11.04902458190918) -- 12
+
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:Upgrade(12)
+TDS:SetOption(12, "Unit 1", "Riot Guard")
+TDS:SetOption(12, "Unit 2", "Riot Guard")
+TDS:SetOption(12, "Unit 3", "Riot Guard")
+
+-- Index 13: second Mercenary Base
+TDS:Place("Mercenary Base", -30.64073371887207, 2.999998092651367, 11.961791038513184) -- 13
+
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:Upgrade(13)
+TDS:SetOption(13, "Unit 2", "Riot Guard")
+TDS:SetOption(13, "Unit 3", "Riot Guard")
+TDS:SetOption(13, "Unit 1", "Riot Guard")
+
+-- Index 14: third Mercenary Base
+TDS:Place("Mercenary Base", -37.461814880371094, 2.999998092651367, 12.371122360229492) -- 14
+
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:SetOption(14, "Unit 1", "Riot Guard")
+TDS:SetOption(14, "Unit 2", "Riot Guard")
+TDS:SetOption(14, "Unit 3", "Riot Guard")
+
+TDS:Upgrade(12)
+TDS:Upgrade(13)
+TDS:Upgrade(14)
+TDS:Upgrade(11)
+TDS:Upgrade(11)
+TDS:Upgrade(7)
+TDS:Upgrade(7)
+TDS:Upgrade(12)
+TDS:Upgrade(13)
+TDS:Upgrade(14)
+
+TDS:WaitForWave(33)
+
+TDS:Upgrade(7)
+TDS:Upgrade(7)
+TDS:Upgrade(9)
+TDS:Upgrade(9)
+TDS:Upgrade(9, 2)
+TDS:Upgrade(10)
+TDS:Upgrade(10)
+TDS:Upgrade(10, 2)
+
+TDS:Upgrade(6)
+TDS:Upgrade(6)
+TDS:SetOption(6, "Trap", "Bear Traps")
+
+TDS:Upgrade(5)
+TDS:Upgrade(5)
+TDS:SetOption(5, "Trap", "Bear Traps")
+
+TDS:Upgrade(1)
+TDS:Upgrade(1)
+TDS:Upgrade(4)
+TDS:Upgrade(4)
+TDS:Upgrade(2)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+TDS:Upgrade(3)
+TDS:Upgrade(8)
+TDS:Upgrade(8)
+
+TDS:SetOption(11, "Track", "Red")
+
+-- Four ability calls in the exact order of the reference (9, 10, 9, 10)
+-- using the four positions from the Iceville snippet, but with fixed clone targets (7, 12, 13, 14)
+TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(-20.61553192138672, 2.9999871253967285, 19.94995880126953), towerToClone = 7}, true)
+TDS:Ability(10, "Hologram Tower", {towerPosition = Vector3.new(-37.41978073120117, 2.999997138977051, 18.141294479370117), towerToClone = 12}, true)
+TDS:Ability(9, "Hologram Tower", {towerPosition = Vector3.new(-42.029945373535156, 2.999997138977051, 17.77203941345215), towerToClone = 13}, true)
+TDS:Ability(10, "Hologram Tower", {towerPosition = Vector3.new(-36.489768981933594, 2.9999988079071045, 7.965252876281738), towerToClone = 14}, true)
