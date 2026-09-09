@@ -207,6 +207,7 @@ local AutoUpgradeSelectedRunning = false
 local AutoUpgradeAllRunning = false
 local AutoFreezerRunning = false
 local AutoSaboteurRunning = false
+local AutoBrawlerRunning = false
 
 local MaxPathDistance = 300 
 local MilMarker = nil
@@ -290,6 +291,7 @@ local DefaultSettings = {
     AutoTrials = false,
     AutoFreezer = false,
     AutoSaboteur = false,
+	AutoBrawler = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -523,9 +525,9 @@ end
 
 local function SetSetting(name, value)
     if DefaultSettings[name] ~= nil then
-        if _G.AutoProgSettings.__locked and _G.AutoProgSettings[name] ~= nil and name ~= "WebhookURL" and name ~= "SendWebhook" then
-    return
-end
+        if _G.AutoProgSettings.__locked and _G.AutoProgSettings[name] ~= nil then
+            return  
+        end
         if name == "TimeScaleValue" then
             value = CoerceTimeScaleValue(value, Globals.TimeScaleValue or 2)
         end
@@ -1664,6 +1666,15 @@ Automation:Toggle({
     end
 })
 
+Automation:Toggle({
+    Title = "Auto Brawler Reposition",
+    Desc = "Automatically repositions your Brawler towers (upgrade 4+) near the leading enemy.",
+    Value = Globals.AutoBrawler,
+    Callback = function(v)
+        SetSetting("AutoBrawler", v)
+    end
+})
+
     Automation:Textbox({
         Title = "DJ Custom Music",
         Desc = "Custom audio ID for your owned tower (Default, Neon Rave, Neko, etc.)",
@@ -2640,7 +2651,7 @@ local trialScripts = {
     ["Jailed"]                = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Jailed.lua",
     ["Exploding Enemies"]     = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Exploding.lua",
     ["Inflation"]             = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Inflation.lua",
-    ["Committed"]             = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Committed.lua",
+    ["Committed"]             = "https://raw.githubusercontent.com/AmonguszzZ/ModdedAether/refs/heads/main/Strats/Committed.lua",
     ["Hidden Enemies"]        = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Hidden.lua",
     ["Hidden"]                = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Hidden.lua",
     ["Broke"]                 = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Broke.lua",
@@ -2968,13 +2979,11 @@ if not scriptUrl then
     Window:Notify({Title = "AutoTrials", Desc = "No strategy for " .. targetTrial, Time = 3, Type = "error"})
     return
 end
-task.wait(2)
                 local ok, err = pcall(function()
-    local chunk = game:HttpGet(scriptUrl)
-    chunk = "local TDS = shared.TDSTable or _G.TDS or error('TDS not found')\n" .. chunk
-    local fn = loadstring(chunk)
-    if fn then fn() end
-end)
+                    local chunk = game:HttpGet(scriptUrl)
+                    local fn = loadstring(chunk)
+                    if fn then fn() end
+                end)
                 if ok then
                     Window:Notify({Title = "AutoTrials", Desc = "Running strategy for " .. targetTrial, Time = 3})
                 else
@@ -4822,7 +4831,7 @@ local function MuteOtherDJsLoop()
     end)
 end
 
-function StartBackToLobby()
+local function StartBackToLobby()
     if GameState ~= "GAME" then return end
     if BackToLobbyRunning then return end
     BackToLobbyRunning = true
@@ -5282,6 +5291,7 @@ end
 
 local AutoMedicLib = nil
 local AutoBountyLib = nil
+local AutoBrawlerLib = nil
 
 local function StopMedicChain()
     if AutoMedicLib then
@@ -5417,6 +5427,34 @@ local function StartBountyChain()
 
         AutoBountyLib.Bounty("Universal")
     end)
+end
+
+local function StartAutoBrawler()
+    if AutoBrawlerRunning then return end
+
+    if not AutoBrawlerLib then
+        local success, result = pcall(function()
+            return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoBrawler"))()
+        end)
+        if success and type(result) == "table" and result.Start then
+            AutoBrawlerLib = result
+        else
+            warn("[AutoBrawler] Failed to load library")
+            return
+        end
+    end
+
+    if AutoBrawlerLib and AutoBrawlerLib.Start then
+        AutoBrawlerRunning = true
+        AutoBrawlerLib.Start()
+    end
+end
+
+local function StopAutoBrawler()
+    if AutoBrawlerLib and AutoBrawlerLib.Stop then
+        AutoBrawlerLib.Stop()
+    end
+    AutoBrawlerRunning = false
 end
 
 local function StartAutoMercenary()
@@ -5741,6 +5779,11 @@ end
         elseif not Globals.AutoBounty and AutoBountyRunning then
             StopBountyChain()
         end
+if Globals.AutoBrawler and not AutoBrawlerRunning then
+    StartAutoBrawler()
+elseif not Globals.AutoBrawler and AutoBrawlerRunning then
+    StopAutoBrawler()
+end
         if Globals.AutoRedeemCodes and not CodesRedeemed and not AutoRedeemRunning then
     redeemCodesFromBeebom()
 end
