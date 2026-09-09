@@ -29,16 +29,47 @@ local function GetAllTowers()
     return ALL_TOWERS
 end
 
---[[local function BuyAllSkillsTillMax()
-    -- Only run in lobby (skills aren't interactive in matches)
+--[[--[[
+    Standalone Skill Tree Buyer for Tower Defense Simulator
+    Run this in the lobby. Buys all skill nodes until maxed or out of coins.
+]]
+
+-- Helper: Get a player stat (Coins, Gems, Level, etc.)
+local function GetStat(name)
+    local LocalPlayer = game:GetService("Players").LocalPlayer
+    local obj = LocalPlayer:FindFirstChild(name)
+    if obj and obj.Value ~= nil then return tonumber(obj.Value) or 0 end
+    local attr = LocalPlayer:GetAttribute(name)
+    if attr ~= nil then return tonumber(attr) or 0 end
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    local stat = leaderstats and leaderstats:FindFirstChild(name)
+    if stat and stat.Value ~= nil then return tonumber(stat.Value) or 0 end
+    return 0
+end
+
+-- Helper: Check if we're in the lobby (workspace has "Lobby" or placeId is 3260590327)
+local function IsInLobby()
+    local placeId = game.PlaceId
+    if placeId == 3260590327 then return true end
+    return workspace:FindFirstChild("Lobby") ~= nil
+end
+
+-- Simple status printer (no UI)
+local function SetStatus(text)
+    print("[SkillTree] " .. text)
+end
+
+-- Main purchase function (no goto, uses while-true-break for skipping)
+local function BuyAllSkillsTillMax()
+    -- Must be in lobby
     if not IsInLobby() then
-        print("[SkillTree] Not in lobby – skipping skill purchases.")
-        SetStatus("Skill tree: need to be in lobby")
+        print("[SkillTree] Not in lobby – please go to the lobby first.")
+        SetStatus("Not in lobby – run this in the lobby")
         return
     end
 
-    -- Locate the purchase remote once
-    local remote = ReplicatedStorage:FindFirstChild("Network")
+    -- Locate the purchase remote
+    local remote = game:GetService("ReplicatedStorage"):FindFirstChild("Network")
     if remote then remote = remote:FindFirstChild("Skills") end
     if remote then remote = remote:FindFirstChild("RF:Purchase") end
     if not remote then
@@ -49,14 +80,12 @@ end
     -- Gather all skill nodes from workspace
     local skillNodes = {}
     for _, child in ipairs(workspace:GetChildren()) do
-        -- Each skill is a folder (e.g., "12", "13", "Scavenger") containing a TileSurfaceGui
         local tileGui = child:FindFirstChild("TileSurfaceGui")
         if tileGui then
             local frame = tileGui:FindFirstChild("Frame")
             if frame then
                 local purchaseFrame = frame:FindFirstChild("PurchaseFrame")
                 if purchaseFrame then
-                    -- Valid skill node found
                     table.insert(skillNodes, {
                         id = child.Name,
                         folder = child,
@@ -76,95 +105,98 @@ end
     print(string.format("[SkillTree] Found %d skill nodes. Starting purchase loop...", #skillNodes))
     SetStatus("Buying all skills...")
 
-    -- We'll loop through each skill node and buy until max or out of coins
+    -- Loop through each skill node
     for _, node in ipairs(skillNodes) do
-        local skillId = node.id
-        local purchaseFrame = node.purchaseFrame
+        -- Use a while-true loop to allow skipping to next node with 'break'
+        while true do
+            local skillId = node.id
+            local purchaseFrame = node.purchaseFrame
 
-        -- The coin label is usually nested inside PurchaseFrame
-        local purchaseButton = purchaseFrame:FindFirstChild("PurchaseFrame")  -- nested in some cases
-        if not purchaseButton then
-            purchaseButton = purchaseFrame  -- fallback
-        end
-
-        local coinsLabel = purchaseButton and purchaseButton:FindFirstChild("Coins")
-        if not coinsLabel or not coinsLabel:IsA("TextLabel") then
-            warn(string.format("[SkillTree] Skipping %s – no coin label found.", skillId))
-            goto continue
-        end
-
-        print(string.format("[SkillTree] === Buying skill: %s ===", skillId))
-        SetStatus(string.format("Buying %s...", skillId))
-
-        local maxAttempts = 30  -- safety limit per skill
-        local attempts = 0
-
-        while attempts < maxAttempts do
-            attempts = attempts + 1
-
-            -- If the purchase frame is hidden or the button says "MAX", skill is maxed
-            if not purchaseFrame.Visible then
-                print(string.format("[SkillTree] %s – purchase frame hidden (maxed).", skillId))
-                break
+            -- The coin label is inside PurchaseFrame
+            local purchaseButton = purchaseFrame:FindFirstChild("PurchaseFrame")
+            if not purchaseButton then
+                purchaseButton = purchaseFrame
             end
 
-            -- Parse coin cost (e.g., "1,420" → 1420)
-            local costText = coinsLabel.Text
-            local costString = costText:gsub("[^%d]", "")
-            local cost = tonumber(costString)
-            if not cost then
-                -- If cost can't be parsed, maybe it says "MAX" or is empty
-                if costText:upper():find("MAX") or costText == "" then
-                    print(string.format("[SkillTree] %s – reached max (text: '%s').", skillId, costText))
+            local coinsLabel = purchaseButton and purchaseButton:FindFirstChild("Coins")
+            if not coinsLabel or not coinsLabel:IsA("TextLabel") then
+                warn(string.format("[SkillTree] Skipping %s – no coin label found.", skillId))
+                break  -- skip to next skill
+            end
+
+            print(string.format("[SkillTree] === Buying skill: %s ===", skillId))
+            SetStatus(string.format("Buying %s...", skillId))
+
+            local maxAttempts = 30
+            local attempts = 0
+
+            while attempts < maxAttempts do
+                attempts = attempts + 1
+
+                -- If purchase frame is hidden or button says "MAX", skill is maxed
+                if not purchaseFrame.Visible then
+                    print(string.format("[SkillTree] %s – purchase frame hidden (maxed).", skillId))
                     break
-                else
-                    warn(string.format("[SkillTree] %s – could not parse cost: '%s'", skillId, costText))
+                end
+
+                -- Parse coin cost (e.g., "1,420" → 1420)
+                local costText = coinsLabel.Text
+                local costString = costText:gsub("[^%d]", "")
+                local cost = tonumber(costString)
+                if not cost then
+                    if costText:upper():find("MAX") or costText == "" then
+                        print(string.format("[SkillTree] %s – reached max (text: '%s').", skillId, costText))
+                        break
+                    else
+                        warn(string.format("[SkillTree] %s – could not parse cost: '%s'", skillId, costText))
+                        break
+                    end
+                end
+
+                -- Check coins
+                local coins = GetStat("Coins")
+                if coins < cost then
+                    print(string.format("[SkillTree] %s – not enough coins (need %d, have %d). Stopping all purchases.", skillId, cost, coins))
+                    SetStatus("Out of coins for skills")
+                    return  -- stop entire process
+                end
+
+                -- Attempt purchase
+                print(string.format("[SkillTree] %s – buying level for %d coins", skillId, cost))
+                local success, result = pcall(function()
+                    return remote:InvokeServer(skillId)
+                end)
+
+                if not success then
+                    warn(string.format("[SkillTree] %s – purchase failed: %s", skillId, tostring(result)))
+                    break
+                end
+
+                -- Wait for UI update and avoid rate limits
+                task.wait(0.5)
+
+                -- If label now shows "MAX", we're done with this skill
+                if coinsLabel.Text:upper():find("MAX") then
+                    print(string.format("[SkillTree] %s – maxed out.", skillId))
                     break
                 end
             end
 
-            -- Check coins
-            local coins = GetStat("Coins")
-            if coins < cost then
-                print(string.format("[SkillTree] %s – not enough coins (need %d, have %d). Stopping all purchases.", skillId, cost, coins))
-                SetStatus("Out of coins for skills")
-                return  -- stop entire process, no more coins for any skill
+            if attempts >= maxAttempts then
+                print(string.format("[SkillTree] %s – reached max attempts, moving to next.", skillId))
             end
 
-            -- Attempt purchase
-            print(string.format("[SkillTree] %s – buying level for %d coins", skillId, cost))
-            local success, result = pcall(function()
-                return remote:InvokeServer(skillId)
-            end)
-
-            if not success then
-                warn(string.format("[SkillTree] %s – purchase failed: %s", skillId, tostring(result)))
-                break
-            end
-
-            -- Wait for UI update and avoid rate limits
-            task.wait(0.5)
-
-            -- If label now shows "MAX", we're done with this skill
-            if coinsLabel.Text:upper():find("MAX") then
-                print(string.format("[SkillTree] %s – maxed out.", skillId))
-                break
-            end
+            task.wait(0.3)
+            break  -- exit the while-true loop to proceed to next skill
         end
-
-        if attempts >= maxAttempts then
-            print(string.format("[SkillTree] %s – reached max attempts, moving to next.", skillId))
-        end
-
-        -- Small delay between skills
-        task.wait(0.3)
-
-        continue
     end
 
     print("[SkillTree] Finished processing all skills.")
     SetStatus("All skills processed")
-end]]
+end
+
+-- Run it
+BuyAllSkillsTillMax()]]
 
 getgenv().GetAllTowers = GetAllTowers
 
