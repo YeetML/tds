@@ -50,6 +50,20 @@ _G.AutoProgSettings = _G.AutoProgSettings or {
     __locked = false,
 }
 
+do
+    local g = getgenv()
+    g.AutoRejoin  = false
+    g.AutoRestart = false
+    _G.AutoProgSettings.AutoRejoin  = false
+    _G.AutoProgSettings.AutoRestart = false
+    local mainGlobals = rawget(g, "Globals") or _G.Globals
+    if mainGlobals then
+        mainGlobals.AutoRejoin  = false
+        mainGlobals.AutoRestart = false
+    end
+    print("[AutoProgression] Main script AutoRejoin/AutoRestart forced OFF")
+end
+
 local function SetStatus(text)
     local ui = getgenv().AutoProgressionUI
     if ui and ui.status then
@@ -66,8 +80,8 @@ local function ApplyStrategySettings(strategy)
         AutoSkip            = (strategy.autoSkip ~= nil) and strategy.autoSkip or false,
         AutoPremium         = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
         AutoReady           = (strategy.autoReady ~= nil) and strategy.autoReady or false,
-        AutoRejoin          = true,   -- Enable main script's watcher
-        AutoRestart         = false,  -- We only need rejoin, not restart
+        AutoRejoin          = false, 
+        AutoRestart         = false, 
         AutoUpgradeSelected = false,
         AutoUpgradeAll      = false,
     }
@@ -1132,6 +1146,119 @@ local function RunFrostStrategy()
     end
     runningFrost = false
 end
+local APR_HandlingGameOver = false
+
+local function APR_GetGameStateReplicator()
+    local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
+    return sr and sr:FindFirstChild("GameStateReplicator")
+end
+
+local function APR_IsTrial()
+    local rep = APR_GetGameStateReplicator()
+    if not rep then return false end
+    local t = rep:GetAttribute("GlobalTrial")
+    return t and t ~= ""
+end
+
+local function APR_IsEasySurvival()
+    if APR_IsTrial() then return false end
+    local rep = APR_GetGameStateReplicator()
+    if not rep then return false end
+    return rep:GetAttribute("Difficulty") == "Easy"
+end
+
+local function APR_WaitForRewardsUI(timeout)
+    local deadline = os.clock() + (timeout or 30)
+    while os.clock() < deadline do
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        if pg then
+            local root = pg:FindFirstChild("ReactGameNewRewards")
+            local frame = root and root:FindFirstChild("Frame")
+            local go = frame and frame:FindFirstChild("gameOver")
+            local rs = go and go:FindFirstChild("RewardsScreen")
+            if rs and rs:FindFirstChild("RewardsSection") then
+                return true
+            end
+        end
+        task.wait(0.5)
+    end
+    return false
+end
+
+local function APR_RequeueEasy()
+    local remote = ReplicatedStorage:WaitForChild("RemoteFunction", 10)
+    if not remote then return false end
+    local ok, attempts = false, 0
+    while not ok and attempts < 30 do
+        attempts = attempts + 1
+        local success, result = pcall(function()
+            return remote:InvokeServer("Multiplayer", "v2:start", {
+                difficulty = "Easy",
+                mode       = "survival",
+                count      = 1,
+            })
+        end)
+        if success and result then
+            ok = true
+        else
+            task.wait(0.5)
+        end
+    end
+    return ok
+end
+
+local function APR_TeleportLobby()
+    local tp = getgenv().SmartTeleportToLobby
+    if type(tp) == "function" then
+        pcall(tp)
+        return
+    end
+    pcall(function()
+        TeleportService:Teleport(3260590327, LocalPlayer)
+    end)
+end
+
+local function APR_HandleGameOver()
+    if APR_HandlingGameOver then return end
+    APR_HandlingGameOver = true
+
+    task.spawn(function()
+        APR_WaitForRewardsUI(30)
+        task.wait(2)
+
+        if APR_IsEasySurvival() then
+            SetStatus("Easy – requeueing...")
+            print("[AutoProgression] Easy match ended, requeueing directly...")
+            APR_RequeueEasy()
+        else
+            SetStatus("Match ended – returning to lobby...")
+            print("[AutoProgression] Match ended, teleporting to lobby...")
+            APR_TeleportLobby()
+        end
+
+        task.wait(5)
+        APR_HandlingGameOver = false
+    end)
+end
+
+local function APR_StartMatchWatcher()
+    task.spawn(function()
+        local wasGameOver = false
+        while true do
+            local rep = APR_GetGameStateReplicator()
+            if rep then
+                local isGameOver = rep:GetAttribute("GameOver") == true
+                if isGameOver and not wasGameOver then
+                    APR_HandleGameOver()
+                end
+                wasGameOver = isGameOver
+            else
+                wasGameOver = false
+            end
+            task.wait(1)
+        end
+    end)
+end
 
 local AutoProgressionRunning = false
 local AutoProgressionEnabled = false
@@ -1732,3 +1859,5 @@ task.spawn(function()
         end
     end
 end)
+
+APR_StartMatchWatcher()
