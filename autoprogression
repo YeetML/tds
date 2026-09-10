@@ -723,6 +723,12 @@ local FrostStrategies = {
     { name = "frost4", mapName = "Retro Crossroads", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost4", autoPremium = false, autoSkip = false, autoRejoin = true, autoReady = true },
     { name = "frost5", mapName = "Dusty Bridges", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost5", autoPremium = false, autoSkip = false, autoRejoin = true, autoReady = true },
 }
+
+local PizzaPartySettings = {
+    autoSkip    = false,
+    autoReady   = false,
+    autoPremium = false,
+}
 local RunYeetEasy
 
 local function RunHardcoreUnevo()
@@ -1311,6 +1317,7 @@ local function RunPizzaParty()
 
     getgenv().TimeScaleEnabled = false
     SetStatus("Starting Pizza Party strategy...")
+    ApplyStrategySettings(PizzaPartySettings)
 
     local PIZZA_TOWERS = {
         {"Minigunner", 8000},
