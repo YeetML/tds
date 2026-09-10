@@ -490,15 +490,16 @@ local function VetoMap()
 end
 
 local EasyStrategies = {
-    { name = "easy1", mapName = "Crossroads", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy1", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
-    --{ name = "easy2", mapName = "Gilded Path", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy2", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
-    { name = "easy3", mapName = "Dead Ahead", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy3", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
-    { name = "easy4", mapName = "Lay By", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy4", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
-    --{ name = "easy5", mapName = "Mason Arch", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy5", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
-    { name = "easy6", mapName = "Abyssal Trench",        url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy6", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
-    { name = "easy7", mapName = "Simplicity",            url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy7", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
-    { name = "easy8", mapName = "Dusty Bridges",         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy8", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
-    { name = "easy9", mapName = "Wrecked Battlefield II", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy9", autoPremium = false, autoSkip = true, autoRejoin = true, autoReady = true },
+    { name = "easy1", mapName = "Crossroads", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy1", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    --{ name = "easy2", mapName = "Gilded Path", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy2", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy3", mapName = "Dead Ahead", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy3", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy4", mapName = "Lay By", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy4", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    --{ name = "easy5", mapName = "Mason Arch", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy5", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy6", mapName = "Abyssal Trench",        url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy6", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy7", mapName = "Simplicity",            url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy7", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy8", mapName = "Dusty Bridges",         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy8", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy9", mapName = "Wrecked Battlefield II", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy9", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy10", mapName = "Coral Deep", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy10", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
 }
 
 local EasyTowerRequirements = {
@@ -511,6 +512,7 @@ local EasyTowerRequirements = {
     easy7 = {{"Militant", 800}},
     easy8 = {{"Militant", 800}},
     easy9 = {{"Militant", 800}},
+    easy10 = {{"Militant", 800}},
 }
 
 local FrostStrategies = {
