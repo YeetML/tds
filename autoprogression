@@ -46,6 +46,7 @@ _G.AutoProgSettings = _G.AutoProgSettings or {
     ForceFrost = false,
     ForceHardcoreUnevo = false,
     ForceHardcoreEvo = false,
+    ForcePizzaParty = false,
     ForceBootCamp = false,
     __locked = false,
 }
@@ -1095,6 +1096,45 @@ RunYeetEasy = function()
     end
 end
 
+local runningPizzaParty = false
+local function RunPizzaParty()
+    if runningPizzaParty then return end
+    runningPizzaParty = true
+
+    getgenv().TimeScaleEnabled = false
+    SetStatus("Starting Pizza Party strategy...")
+
+    local PIZZA_TOWERS = {
+        {"Minigunner", 8000},
+        {"Ranger",     12000},
+        {"DJ Booth",   5000},
+        {"Commander",  4000},
+        {"Trapper",    3000},
+    }
+
+    print("[AutoProgression] Pizza Party – checking tower ownership/costs...")
+    SetStatus("Pizza Party: checking towers...")
+
+    local result = AutoBuyTowers(PIZZA_TOWERS)
+
+    if result == "OK" then
+        SetStatus("Loading Pizza Party strategy...")
+        print("[AutoProgression] Loading pizzaparty script...")
+        loadstring(game:HttpGet(
+            "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/pizzaparty"
+        ))()
+    else
+        -- "Coins" or "Gems" → not enough resources → fallback to Easy
+        print("[AutoProgression] Pizza Party – not enough resources (" .. tostring(result) .. "), falling back to Easy.")
+        SetStatus("Pizza Party: not enough resources – farming Easy")
+        runningPizzaParty = false
+        RunYeetEasy()
+        return
+    end
+
+    runningPizzaParty = false
+end
+
 local runningFrost = false
 local function RunFrostStrategy()
     if runningFrost then return end
@@ -1287,8 +1327,14 @@ local function RunAutoProgression()
     local forceHcUnevo = _G.AutoProgSettings.ForceHardcoreUnevo or false
     local forceHcEvo = _G.AutoProgSettings.ForceHardcoreEvo or false
     local forceBootCamp = _G.AutoProgSettings.ForceBootCamp or false
+    local forcePizzaParty = _G.AutoProgSettings.ForcePizzaParty or false
 
-    if forceBootCamp then
+    if forcePizzaParty then
+        SetStatus("Force mode: Pizza Party")
+        RunPizzaParty()
+        AutoProgressionRunning = false
+        return
+    elseif forceBootCamp then
         SetStatus("Force mode: Boot Camp")
         RunBootCamp()
         AutoProgressionRunning = false
@@ -1327,7 +1373,7 @@ local function RunAutoProgression()
         end
         AutoProgressionRunning = false
         return
-    elseif forceHcUnevo then
+    --[[elseif forceHcUnevo then
         SetStatus("Force mode: Hardcore UNEVO")
         RunHardcoreUnevo()
         AutoProgressionRunning = false
@@ -1336,7 +1382,7 @@ local function RunAutoProgression()
         SetStatus("Force mode: Hardcore EVO")
         RunHardcoreEvo()
         AutoProgressionRunning = false
-        return
+        return]]
     end
 
     local level = GetStat("Level")
@@ -1390,9 +1436,12 @@ local function RunAutoProgression()
     elseif level >= 120 then
         SetStatus("Level " .. level .. " → Hardcore EVO path")
         RunHardcoreEvo()
-    elseif level >= 51 then
+    --[[elseif level >= 51 then
         SetStatus("Level " .. level .. " → Hardcore UNEVO path")
-        RunHardcoreUnevo()
+        RunHardcoreUnevo()]]
+    elseif level >= 51 then
+        SetStatus("Level " .. level .. " → Pizza Party path")
+        RunPizzaParty()
     else
         SetStatus("Level " .. level .. " → Farming Easy")
         RunYeetEasy()
@@ -1505,7 +1554,7 @@ local function CreateUI()
     gui.ResetOnSpawn = false
     gui.Parent = CoreGui
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 300, 0, 420)
+    frame.Size = UDim2.new(0, 300, 0, 460)
     frame.Position = UDim2.new(0.5, -150, 0.7, -210)
     frame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
     frame.BorderSizePixel = 0
@@ -1623,6 +1672,7 @@ local function CreateUI()
     local hcUnevoBtn = CreateModeToggle(260, "HC Unevo", "ForceHardcoreUnevo")
     local hcEvoBtn = CreateModeToggle(286, "HC Evo", "ForceHardcoreEvo")
     local bootCampBtn = CreateModeToggle(312, "Boot Camp", "ForceBootCamp")
+    local pizzaPartyBtn = CreateModeToggle(338, "Pizza Party", "ForcePizzaParty")
 
     local function updateModeButton(btn, settingKey)
         if _G.AutoProgSettings[settingKey] then
@@ -1643,6 +1693,7 @@ local function CreateUI()
                 ForceHardcoreUnevo = _G.AutoProgSettings.ForceHardcoreUnevo,
                 ForceHardcoreEvo = _G.AutoProgSettings.ForceHardcoreEvo,
                 ForceBootCamp = _G.AutoProgSettings.ForceBootCamp,
+                ForcePizzaParty = _G.AutoProgSettings.ForcePizzaParty,
             }
             writefile(SETTINGS_FILE, HttpService:JSONEncode(saveData))
         end
@@ -1650,10 +1701,11 @@ local function CreateUI()
 
     local function updateMainUI()
         local anyForceOn = _G.AutoProgSettings.ForceEasy or
-                           _G.AutoProgSettings.ForceFrost or
-                           _G.AutoProgSettings.ForceHardcoreUnevo or
-                           _G.AutoProgSettings.ForceHardcoreEvo or
-                           _G.AutoProgSettings.ForceBootCamp
+                       _G.AutoProgSettings.ForceFrost or
+                       _G.AutoProgSettings.ForceHardcoreUnevo or
+                       _G.AutoProgSettings.ForceHardcoreEvo or
+                       _G.AutoProgSettings.ForceBootCamp or
+                       _G.AutoProgSettings.ForcePizzaParty
         local isRunning = AutoProgressionEnabled or anyForceOn
         if isRunning then
             toggle.Text = "ON"
@@ -1680,7 +1732,7 @@ local function CreateUI()
     local function toggleMode(settingKey, btn)
         getgenv().HcEvoActive = false
         getgenv().HcUnevoActive = false
-        local forceKeys = {"ForceEasy", "ForceFrost", "ForceHardcoreUnevo", "ForceHardcoreEvo", "ForceBootCamp"}
+        local forceKeys = {"ForceEasy", "ForceFrost", "ForceHardcoreUnevo", "ForceHardcoreEvo", "ForceBootCamp","ForcePizzaParty"}
         for _, key in ipairs(forceKeys) do
             if key ~= settingKey then
                 _G.AutoProgSettings[key] = false
@@ -1692,6 +1744,7 @@ local function CreateUI()
         updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
         updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
         updateModeButton(bootCampBtn, "ForceBootCamp")
+        updateModeButton(pizzaPartyBtn, "ForcePizzaParty")
         if _G.AutoProgSettings[settingKey] then
             AutoProgressionEnabled = true
             _G.AutoProgSettings.AutoProgressionEnabled = true
@@ -1713,6 +1766,7 @@ local function CreateUI()
             _G.AutoProgSettings.ForceHardcoreUnevo = false
             _G.AutoProgSettings.ForceHardcoreEvo = false
             _G.AutoProgSettings.ForceBootCamp = false
+            _G.AutoProgSettings.ForcePizzaParty = false
             getgenv().HcEvoActive = false
             getgenv().HcUnevoActive = false
             updateModeButton(easyBtn, "ForceEasy")
@@ -1720,6 +1774,7 @@ local function CreateUI()
             updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
             updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
             updateModeButton(bootCampBtn, "ForceBootCamp")
+            updateModeButton(pizzaPartyBtn, "ForcePizzaParty")
             SetStatus("Stopped")
         else
             SetStatus("Starting...")
@@ -1738,6 +1793,7 @@ local function CreateUI()
     hcUnevoBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreUnevo", hcUnevoBtn) end)
     hcEvoBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreEvo", hcEvoBtn) end)
     bootCampBtn.MouseButton1Click:Connect(function() toggleMode("ForceBootCamp", bootCampBtn) end)
+    pizzaPartyBtn.MouseButton1Click:Connect(function() toggleMode("ForcePizzaParty", pizzaPartyBtn) end)
 
     if isfile and isfile(SETTINGS_FILE) then
         local success, data = pcall(function()
@@ -1770,6 +1826,7 @@ local function CreateUI()
     updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
     updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
     updateModeButton(bootCampBtn, "ForceBootCamp")
+    updateModeButton(pizzaPartyBtn, "ForcePizzaParty")
     if AutoProgressionEnabled then
         task.spawn(RunAutoProgression)
     end
@@ -1822,6 +1879,7 @@ local function CreateUI()
         hcUnevoBtn = hcUnevoBtn,
         hcEvoBtn = hcEvoBtn,
         bootCampBtn = bootCampBtn,
+        pizzaPartyBtn = pizzaPartyBtn,
     }
 end
 
@@ -1831,7 +1889,8 @@ task.spawn(function()
                            _G.AutoProgSettings.ForceFrost or
                            _G.AutoProgSettings.ForceHardcoreUnevo or
                            _G.AutoProgSettings.ForceHardcoreEvo or
-                           _G.AutoProgSettings.ForceBootCamp
+                           _G.AutoProgSettings.ForceBootCamp or 
+                           _G.AutoProgSettings.ForcePizzaParty
         if (AutoProgressionEnabled or anyForceOn) and not CoreGui:FindFirstChild("AutoProgressionUI") then
             print("[AutoProgression] UI was destroyed, recreating...")
             local newUI = CreateUI()
@@ -1847,6 +1906,7 @@ getgenv().RunYeetEasy = RunYeetEasy
 getgenv().RunAutoProgression = RunAutoProgression
 getgenv().RunHardcoreUnevo = RunHardcoreUnevo
 getgenv().RunHardcoreEvo = RunHardcoreEvo
+getgenv().RunPizzaParty = RunPizzaParty
 getgenv().RunBootCamp = RunBootCamp
 
 task.spawn(function()
