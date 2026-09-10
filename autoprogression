@@ -7,7 +7,7 @@ local TeleportService = game:GetService("TeleportService")
 local Cache = require(ReplicatedStorage.Client.Modules.Cache)
 local TowerExpUtil = require(ReplicatedStorage.Shared.Modules.TowerExpUtil)
 
-local Globals = getgenv().Globals or _G.Globals
+local Globals = getgenv().Globals or _G.Globals or getgenv()
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
 local RemoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent")
@@ -76,7 +76,7 @@ end
 getgenv().SetStatus = SetStatus
 
 local function ApplyStrategySettings(strategy)
-    local MainGlobals = getgenv().Globals or _G.Globals
+    local MainGlobals = getgenv().Globals or _G.Globals or getgenv()
     local settings = {
         AutoSkip            = (strategy.autoSkip ~= nil) and strategy.autoSkip or false,
         AutoPremium         = (strategy.autoPremium ~= nil) and strategy.autoPremium or false,
@@ -296,7 +296,7 @@ local function APR_GetAllRewards()
 end
 
 local function APR_SendMatchWebhook()
-    local MainGlobals = getgenv().Globals or _G.Globals
+    local MainGlobals = getgenv().Globals or _G.Globals or getgenv()
     if not MainGlobals then return false, "no Globals" end
     if not MainGlobals.SendWebhook then return false, "SendWebhook off" end
     if not MainGlobals.WebhookURL or MainGlobals.WebhookURL == "" then
@@ -1476,10 +1476,12 @@ local function APR_HandleGameOver()
         APR_WaitForRewardsUI(30)
         task.wait(0.5)
 
-        SetStatus("Sending match results...")
-        local ok, err = pcall(APR_SendMatchWebhook)
-        if not ok then
-            warn("[AutoProgression] Webhook call errored: " .. tostring(err))
+                SetStatus("Sending match results...")
+        local sent, reason = APR_SendMatchWebhook()
+        if sent then
+            print("[AutoProgression] ✅ Webhook sent")
+        else
+            warn("[AutoProgression] ❌ Webhook skipped: " .. tostring(reason))
         end
         task.wait(0.5) 
 
