@@ -1,22 +1,3 @@
---[[
-    AutoMedic
-    - Icon readiness + DamageBuff detection
-    - Live Globals.MedicTarget / Globals.Towerslot
-    - Patient wait on current Medic
-    - Claim-aware + circular range filter
-    - clearAllSelected before attach + after uber (fixes stuck Medic claims)
-
-    CHANGES in this version:
-    - toggleOne/attachTargets/clearAllSelected/detachTargets rewritten to
-      fire toggles as one concurrent batch (still instant), then verify
-      once and retry ONLY the specific UIDs the server's concurrent-write
-      race dropped, instead of firing-and-forgetting and silently losing
-      targets when capacity > 1.
-    - AutoMedic.Chain toggle-off (and restart) now force-runs cleanup
-      (stopWatch + clearAllSelected) on whatever medic/watch was active
-      when it was cancelled, instead of leaving a stuck selection and a
-      leaked TowersSelected-changed connection running forever.
-]]
 local Players           = game:GetService("Players")
 local Workspace         = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -543,7 +524,7 @@ local function WaitForReady(medic)
         if IsMedicReady() then
             return true
         end
-        task.wait(0.02)
+        task.wait(0.05)
     end
     return false
 end
@@ -571,7 +552,7 @@ local function WaitForUberStart(medic, targets, baseline, uberData, timeout)
                 end
             end
         end
-        task.wait(0.02)
+        task.wait(0.05)
     end
     return not IsMedicReady(), false
 end
@@ -609,7 +590,7 @@ local function WaitForUberEnd(targets, baseline, uberData, activationAt, sawDama
         if anyObserved and allReturned then
             return
         end
-        task.wait(0.02)
+        task.wait(0.05)
     end
 end
 local function TryStartUber(medic, targets)
@@ -630,7 +611,7 @@ local function TryStartUber(medic, targets)
         if started then
             return true, baseline, uberData, activationAt, saw, stopWatch
         end
-        task.wait(0.02)
+        task.wait(0.05)
     end
     stopWatch()
     return false, nil, nil, nil, false, function() end
@@ -668,7 +649,7 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
             if #targets == 0 then
                 clearAllSelected(selected)
                 activeLoops[medicIndex].lastTargets = {}
-                task.wait(0.02)
+                task.wait(0.05)
                 continue
             end
             clearAllSelected(selected)
@@ -678,12 +659,12 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
             if started and baseline and uberData and at then
                 WaitForUberEnd(attached, baseline, uberData, at, saw)
             else
-                task.wait(0.02)
+                task.wait(0.05)
             end
             stopWatch()
             clearAllSelected(selected)
             activeLoops[medicIndex].lastTargets = {}
-            task.wait(0.02)
+            task.wait(0.05)
         end
     end)
     activeLoops[medicIndex].thread = thread
@@ -727,7 +708,7 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
                 end
             end
             if #usable == 0 then
-                task.wait(0.02)
+                task.wait(0.05)
                 continue
             end
             if nextIdx > #usable then
@@ -736,7 +717,7 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
             local medic = usable[nextIdx]
             if not medic or not IsAlive(medic) then
                 nextIdx += 1
-                task.wait(0.02)
+                task.wait(0.05)
                 continue
             end
             local liveTarget, liveMode, liveTowers = getCurrentSettings()
