@@ -491,17 +491,30 @@ local function VetoMap()
 end
 
 local EasyStrategies = {
-    { name = "easy1", mapName = "Crossroads", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy1", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy1", mapName = "Crossroads", priority = 1, url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy1", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
     --{ name = "easy2", mapName = "Gilded Path", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy2", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
-    { name = "easy3", mapName = "Dead Ahead", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy3", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
-    { name = "easy4", mapName = "Lay By", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy4", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy3", mapName = "Dead Ahead", priority = 4, url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy3", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy4", mapName = "Lay By", priority = 4, url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy4", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
     --{ name = "easy5", mapName = "Mason Arch", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy5", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
-    { name = "easy6", mapName = "Abyssal Trench",        url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy6", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
-    { name = "easy7", mapName = "Simplicity",            url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy7", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
-    { name = "easy8", mapName = "Dusty Bridges",         url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy8", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
-    { name = "easy9", mapName = "Wrecked Battlefield II", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy9", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
-    { name = "easy10", mapName = "Coral Deep", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy10", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy6", mapName = "Abyssal Trench", priority = 3,       url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy6", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy7", mapName = "Simplicity", priority = 2,           url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy7", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy8", mapName = "Dusty Bridges", priority = 3,        url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy8", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy9", mapName = "Wrecked Battlefield II",priority = 2, url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy9", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy10", mapName = "Coral Deep", priority = 2,url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy10", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy11", mapName = "Winter Abyss",priority = 3, url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy11", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy12", mapName = "Meltdown", priority = 2,url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy12", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy13", mapName = "Iceville", priority = 2,url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy13", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy14", mapName = "Four Seasons", priority = 2,url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy14", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy15", mapName = "Deserted Village", priority = 2,url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy15", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy16", mapName = "Crystal Cave", priority = 2,url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy16", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy17", mapName = "Cyber City", priority = 2,url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy17", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
+    { name = "easy18", mapName = "Moon Base", priority = 2,url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/easy18", autoPremium = false, autoSkip = true, autoRejoin = false, autoReady = true },
 }
+
+local EasyStrategyOrder = {}
+for i, s in ipairs(EasyStrategies) do
+    EasyStrategyOrder[s.name] = i
+end
 
 local EasyTowerRequirements = {
     easy1 = {},
@@ -514,6 +527,14 @@ local EasyTowerRequirements = {
     easy8 = {{"Militant", 800}},
     easy9 = {{"Militant", 800}},
     easy10 = {{"Militant", 800}},
+    easy11 = {{"Militant", 800}},
+    easy12 = {{"Militant", 800}},
+    easy13 = {{"Militant", 800}},
+    easy14 = {{"Militant", 800}},
+    easy15 = {{"Militant", 800}},
+    easy16 = {{"Militant", 800}},
+    easy17 = {{"Militant", 800}},
+    easy18 = {{"Militant", 800}},
 }
 
 local FrostStrategies = {
@@ -1000,7 +1021,15 @@ RunYeetEasy = function()
             end
 
             if #feasibleStrategies > 0 then
-                local chosen = feasibleStrategies[math.random(1, #feasibleStrategies)]
+                table.sort(feasibleStrategies, function(a, b)
+                    local pa = a.priority or 0
+                    local pb = b.priority or 0
+                    if pa ~= pb then
+                        return pa > pb
+                    end
+                    return (EasyStrategyOrder[a.name] or 999) < (EasyStrategyOrder[b.name] or 999)
+                end)
+                local chosen = feasibleStrategies[1]
                 local reqs = EasyTowerRequirements[chosen.name] or {}
 
                 if #reqs > 0 then
