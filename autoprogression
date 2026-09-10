@@ -189,8 +189,187 @@ local function OwnsTower(towerName)
     SetStatus("Checking ownership: " .. towerName)
     return OwnsTowerCache(towerName)
 end
+local APR_SessionCoins = 0
+local APR_SessionGems  = 0
 
---[[ OLD TELEPORT AND WATCHER FUNCTIONS ARE REMOVED. ALL TELEPORTS NOW USE getgenv().SmartTeleportToLobby() ]]
+local APR_ItemNames = {
+    ["17447507910"]     = "Timescale Ticket(s)",
+    ["17438486690"]     = "Range Flag(s)",
+    ["17438486138"]     = "Damage Flag(s)",
+    ["17438487774"]     = "Cooldown Flag(s)",
+    ["17429537022"]     = "Blizzard(s)",
+    ["17448596749"]     = "Napalm Strike(s)",
+    ["18493073533"]     = "Spin Ticket(s)",
+    ["17429548305"]     = "Supply Drop(s)",
+    ["18443277308"]     = "Low Grade Consumable Crate(s)",
+    ["136180382135048"] = "Santa Radio(s)",
+    ["18443277106"]     = "Mid Grade Consumable Crate(s)",
+    ["18443277591"]     = "High Grade Consumable Crate(s)",
+    ["132155797622156"] = "Christmas Tree(s)",
+    ["124065875200929"] = "Fruit Cake(s)",
+    ["17429541513"]     = "Barricade(s)",
+    ["110415073436604"] = "Holy Hand Grenade(s)",
+    ["17429533728"]     = "Frag Grenade(s)",
+    ["17437703262"]     = "Molotov(s)",
+    ["139414922355803"] = "Present Clusters(s)"
+}
+
+local function APR_GetAllRewards()
+    local results = {
+        Coins = 0, Gems = 0, XP = 0, Wave = 0,
+        Level = 0, Time = "00:00", Status = "UNKNOWN", Others = {}
+    }
+
+    local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    local UiRoot = PlayerGui and PlayerGui:FindFirstChild("ReactGameNewRewards")
+    local MainFrame = UiRoot and UiRoot:FindFirstChild("Frame")
+    local GameOver = MainFrame and MainFrame:FindFirstChild("gameOver")
+    local RewardsScreen = GameOver and GameOver:FindFirstChild("RewardsScreen")
+
+    -- Time completed
+    local GameStats = RewardsScreen and RewardsScreen:FindFirstChild("gameStats")
+    local StatsList = GameStats and GameStats:FindFirstChild("stats")
+    if StatsList then
+        for _, frame in ipairs(StatsList:GetChildren()) do
+            local l1 = frame:FindFirstChild("textLabel")
+            local l2 = frame:FindFirstChild("textLabel2")
+            local refLabel = l2 and l2:FindFirstChild("refLabel")
+            if l1 and refLabel and l1.Text:find("Time Completed:") then
+                results.Time = refLabel.Text
+                break
+            end
+        end
+    end
+
+    -- Win/Loss banner
+    local TopBanner = RewardsScreen and RewardsScreen:FindFirstChild("RewardBanner")
+    if TopBanner and TopBanner:FindFirstChild("textLabel") then
+        local txt = TopBanner.textLabel.Text:upper()
+        results.Status = txt:find("TRIUMPH") and "WIN"
+                      or (txt:find("LOST") and "LOSS" or "UNKNOWN")
+    end
+
+    -- Level
+    local lvlObj = LocalPlayer:FindFirstChild("Level")
+    if lvlObj then results.Level = lvlObj.Value or 0 end
+
+    -- Wave
+    pcall(function()
+        local label = PlayerGui.ReactGameTopGameDisplay.Frame.wave.container.value
+        local waveNum = label.Text:match("^(%d+)")
+        if waveNum then results.Wave = tonumber(waveNum) or 0 end
+    end)
+
+    -- Rewards section
+    local SectionRewards = RewardsScreen and RewardsScreen:FindFirstChild("RewardsSection")
+    if SectionRewards then
+        for _, item in ipairs(SectionRewards:GetChildren()) do
+            if tonumber(item.Name) then
+                local IconId = "0"
+                local img = item:FindFirstChildWhichIsA("ImageLabel", true)
+                if img then IconId = img.Image:match("%d+") or "0" end
+
+                for _, child in ipairs(item:GetDescendants()) do
+                    if child:IsA("TextLabel") then
+                        local text = child.Text
+                        local amt = tonumber(text:match("(%d+)")) or 0
+                        if text:find("Coins") then
+                            results.Coins = amt
+                        elseif text:find("Gems") then
+                            results.Gems = amt
+                        elseif text:find("XP") then
+                            results.XP = amt
+                        elseif text:lower():find("x%d+") then
+                            local displayName = APR_ItemNames[IconId] or ("Unknown Item (" .. IconId .. ")")
+                            table.insert(results.Others, {
+                                Amount = text:match("x%d+"),
+                                Name   = displayName
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return results
+end
+
+local function APR_SendMatchWebhook()
+    local MainGlobals = getgenv().Globals or _G.Globals
+    if not MainGlobals then return false, "no Globals" end
+    if not MainGlobals.SendWebhook then return false, "SendWebhook off" end
+    if not MainGlobals.WebhookURL or MainGlobals.WebhookURL == "" then
+        return false, "no WebhookURL"
+    end
+
+    local httpRequest = syn and syn.request
+        or http and http.request
+        or http_request
+        or request
+    if not httpRequest then return false, "no HTTP" end
+
+    local match = APR_GetAllRewards()
+    APR_SessionCoins = APR_SessionCoins + match.Coins
+    APR_SessionGems  = APR_SessionGems  + match.Gems
+
+    local BonusString = ""
+    if #match.Others > 0 then
+        for _, res in ipairs(match.Others) do
+            BonusString = BonusString .. "🎁 **" .. res.Amount .. " " .. res.Name .. "**\n"
+        end
+    else
+        BonusString = "_No bonus rewards found._"
+    end
+
+    local PostData = {
+        username = "TDS AutoStrat",
+        embeds = {{
+            title = (match.Status == "WIN" and "🏆 TRIUMPH" or "💀 DEFEAT"),
+            color = (match.Status == "WIN" and 0x2ecc71 or 0xe74c3c),
+            description =
+                "### 📋 Match Overview\n" ..
+                "> **Status:** `" .. match.Status .. "`\n" ..
+                "> **Time:** `" .. match.Time .. "`\n" ..
+                "> **Current Level:** `" .. match.Level .. "`\n" ..
+                "> **Wave:** `" .. match.Wave .. "`\n",
+            fields = {
+                {
+                    name = "✨ Rewards",
+                    value = "```ansi\n\27[2;33mCoins:\27[0m +" .. match.Coins ..
+                            "\n\27[2;34mGems: \27[0m +" .. match.Gems ..
+                            "\n\27[2;32mXP:   \27[0m +" .. match.XP .. "```",
+                    inline = false
+                },
+                { name = "🎁 Bonus Items", value = BonusString, inline = true },
+                { name = "📊 Session Totals",
+                  value = "```py\n# Total Amount\nCoins: " .. APR_SessionCoins ..
+                          "\nGems:  " .. APR_SessionGems .. "```",
+                  inline = true }
+            },
+            footer = { text = "Logged for " .. LocalPlayer.Name .. " • TDS AutoStrat" },
+            timestamp = DateTime.now():ToIsoDate()
+        }}
+    }
+
+    local ok, err = pcall(function()
+        httpRequest({
+            Url = MainGlobals.WebhookURL,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode(PostData)
+        })
+    end)
+
+    if ok then
+        print("[AutoProgression] ✅ Webhook sent")
+        return true
+    else
+        warn("[AutoProgression] Webhook failed: " .. tostring(err))
+        return false
+    end
+end
+getgenv().APR_SendMatchWebhook = APR_SendMatchWebhook
 
 local function AutoBuyTowers(towerList)
     print("[AutoProgression] Checking towers to buy...")
@@ -1295,7 +1474,14 @@ local function APR_HandleGameOver()
 
     task.spawn(function()
         APR_WaitForRewardsUI(30)
-        task.wait(2)
+        task.wait(0.5)
+
+        SetStatus("Sending match results...")
+        local ok, err = pcall(APR_SendMatchWebhook)
+        if not ok then
+            warn("[AutoProgression] Webhook call errored: " .. tostring(err))
+        end
+        task.wait(0.5) 
 
         if APR_IsEasySurvival() then
             SetStatus("Easy – requeueing...")
@@ -1307,7 +1493,7 @@ local function APR_HandleGameOver()
             APR_TeleportLobby()
         end
 
-        task.wait(5)
+        task.wait(0.5)
         APR_HandlingGameOver = false
     end)
 end
