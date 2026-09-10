@@ -207,6 +207,7 @@ local AutoUpgradeSelectedRunning = false
 local AutoUpgradeAllRunning = false
 local AutoFreezerRunning = false
 local AutoSaboteurRunning = false
+local AutoBrawlerRunning = false
 
 local MaxPathDistance = 300 
 local MilMarker = nil
@@ -290,6 +291,7 @@ local DefaultSettings = {
     AutoTrials = false,
     AutoFreezer = false,
     AutoSaboteur = false,
+    AutoBrawler = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -1661,6 +1663,15 @@ Automation:Toggle({
     Value = Globals.AutoSaboteur,
     Callback = function(v)
         SetSetting("AutoSaboteur", v)
+    end
+})
+
+Automation:Toggle({
+    Title = "Auto Brawler Reposition",
+    Desc = "Automatically repositions your Brawler towers (upgrade 4+) near the leading enemy.",
+    Value = Globals.AutoBrawler,
+    Callback = function(v)
+        SetSetting("AutoBrawler", v)
     end
 })
 
@@ -5282,6 +5293,7 @@ end
 
 local AutoMedicLib = nil
 local AutoBountyLib = nil
+local AutoBrawlerLib = nil
 
 local function StopMedicChain()
     if AutoMedicLib then
@@ -5295,6 +5307,34 @@ local function StopBountyChain()
         AutoBountyLib.Bounty("Off")
     end
     AutoBountyRunning = false
+end
+
+local function StartAutoBrawler()
+    if AutoBrawlerRunning then return end
+
+    if not AutoBrawlerLib then
+        local success, result = pcall(function()
+            return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoBrawler"))()
+        end)
+        if success and type(result) == "table" and result.Start then
+            AutoBrawlerLib = result
+        else
+            warn("[AutoBrawler] Failed to load library")
+            return
+        end
+    end
+
+    if AutoBrawlerLib and AutoBrawlerLib.Start then
+        AutoBrawlerRunning = true
+        AutoBrawlerLib.Start()
+    end
+end
+
+local function StopAutoBrawler()
+    if AutoBrawlerLib and AutoBrawlerLib.Stop then
+        AutoBrawlerLib.Stop()
+    end
+    AutoBrawlerRunning = false
 end
 
 local function StartMedicChain()
@@ -5690,6 +5730,11 @@ task.spawn(function()
 end
 if Globals.AutoSaboteur and not AutoSaboteurRunning then
     StartAutoSaboteur()
+end
+if Globals.AutoBrawler and not AutoBrawlerRunning then
+    StartAutoBrawler()
+elseif not Globals.AutoBrawler and AutoBrawlerRunning then
+    StopAutoBrawler()
 end
         if Globals.AutoMercenary and not AutoMercenaryBaseRunning then
             StartAutoMercenary()
