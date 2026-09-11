@@ -491,6 +491,146 @@ local function IsInLobby()
     return workspace:FindFirstChild("Lobby") ~= nil
 end
 
+local SKILL_TARGETS = {
+    { name = "Enhanced Optics", maxLevel = 10 },
+    { name = "Resourcefulness", maxLevel = 10 },
+    { name = "Stonks",          maxLevel = 10 },
+    { name = "Bigger Budget",   maxLevel = 10 },
+}
+
+local function ParseSkillLevel(text)
+    text = tostring(text or "")
+    if text:upper():find("MAX") then
+        local mx = tonumber(text:match("%[(%d+)%]")) or 0
+        return mx, mx, true
+    end
+    local cur, mx = text:match("(%d+)%s*/%s*(%d+)")
+    return tonumber(cur) or 0, tonumber(mx) or 0, false
+end
+
+local function FindSkillNodes()
+    local map = {}
+    for _, tile in ipairs(workspace:GetDescendants()) do
+        if tile:IsA("SurfaceGui") and tile.Name == "TileSurfaceGui" then
+            local frame = tile:FindFirstChild("Frame")
+            local node  = tile.Parent
+            if frame and node then
+                local nameLbl = frame:FindFirstChild("SkillName")
+                local lvlLbl  = frame:FindFirstChild("SkillLevel")
+                local pFrame  = frame:FindFirstChild("PurchaseFrame")
+                if nameLbl and lvlLbl and nameLbl.Text ~= "" then
+                    map[nameLbl.Text] = {
+                        id            = node.Name,
+                        purchaseFrame = pFrame,
+                        lvlLbl        = lvlLbl,
+                    }
+                end
+            end
+        end
+    end
+    return map
+end
+
+local function GetSkillCost(entry)
+    local inner = entry.purchaseFrame
+        and entry.purchaseFrame:FindFirstChild("PurchaseFrame")
+    local coinsF  = inner and inner:FindFirstChild("Coins")
+    local costLbl = coinsF and coinsF:FindFirstChild("text")
+    if costLbl then
+        return tonumber((costLbl.Text:gsub("[^%d]", "")))
+    end
+    return nil
+end
+
+local function GetSkillPurchaseRemote()
+    local net    = ReplicatedStorage:FindFirstChild("Network")
+    local skills = net and net:FindFirstChild("Skills")
+    return skills and skills:FindFirstChild("RF:Purchase")
+end
+
+local SkillBuyingRunning = false
+
+local function RunSkillPurchases()
+    if SkillBuyingRunning then return end
+    SkillBuyingRunning = true
+
+    local remote = GetSkillPurchaseRemote()
+    if not remote then
+        print("[SkillBuyer] RF:Purchase not found – skipping this cycle.")
+        SkillBuyingRunning = false
+        return
+    end
+
+    for _, target in ipairs(SKILL_TARGETS) do
+        while true do
+            if not IsInLobby() then
+                print("[SkillBuyer] Left lobby mid-run – stopping.")
+                SkillBuyingRunning = false
+                return
+            end
+
+            local map = FindSkillNodes()
+            local entry = map[target.name]
+            if not entry then
+                print("[SkillBuyer] Skill not found in tree: " .. target.name)
+                break
+            end
+
+            -- 1) Parse level FIRST (works even when frame is invisible)
+            local cur, mx, isMax = ParseSkillLevel(entry.lvlLbl.Text)
+
+            -- 2) Already at/past our personal target?
+            if cur >= target.maxLevel then
+                print(string.format("[SkillBuyer] %s already at/past target %d (currently %s) – skipping.",
+                    target.name, target.maxLevel, entry.lvlLbl.Text))
+                break
+            end
+
+            -- 3) Game hard cap reached?
+            if mx > 0 and cur >= mx then
+                print(string.format("[SkillBuyer] %s at game max (%d) – skipping.", target.name, mx))
+                break
+            end
+
+            -- 4) Locked (frame not visible)?
+            if entry.purchaseFrame and not entry.purchaseFrame.Visible then
+                print("[SkillBuyer] " .. target.name .. " is locked – skipping for now.")
+                break
+            end
+
+            -- 5) Affordability
+            local cost = GetSkillCost(entry)
+            if cost then
+                local coins = GetStat("Coins")
+                if coins < cost then
+                    print(string.format(
+                        "[SkillBuyer] Not enough coins for %s (need %d, have %d) – pausing this skill.",
+                        target.name, cost, coins))
+                    break
+                end
+            end
+
+            -- 6) Buy one level
+            local ok, err = pcall(function()
+                remote:InvokeServer(entry.id)
+            end)
+
+            if not ok then
+                warn(string.format("[SkillBuyer] Purchase failed for %s (id %s): %s",
+                    target.name, tostring(entry.id), tostring(err)))
+                break
+            end
+
+            print(string.format("[SkillBuyer] Bought %s (id %s) → was %s",
+                target.name, tostring(entry.id), entry.lvlLbl.Text))
+
+            task.wait(0.4)
+        end
+    end
+
+    SkillBuyingRunning = false
+end
+
 --[[local function BuyAllSkillsTillMax()
     if not IsInLobby() then
         print("[SkillTree] Not in lobby – skipping skill purchases.")
@@ -2195,5 +2335,18 @@ task.spawn(function()
         task.wait(1)
     end
 end)
+
+task.spawn(function()
+    while true do
+        task.wait(3)
+        local lvl = GetStat("Level")
+        if lvl >= 51 and IsInLobby() and not SkillBuyingRunning then
+            task.spawn(RunSkillPurchases)
+        end
+    end
+end)
+
+getgenv().RunSkillPurchases   = RunSkillPurchases
+getgenv().SkillBuyingRunning  = function() return SkillBuyingRunning end
 
 APR_StartMatchWatcher()
