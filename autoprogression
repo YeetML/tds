@@ -2180,7 +2180,7 @@ end)
 
 task.spawn(function()
     while true do
-        ScrubForeignSettings()          -- ← your addition
+        ScrubForeignSettings()    
 
         if _G.AutoProgSettings.__locked then
             for key, value in pairs(_G.AutoProgSettings) do
