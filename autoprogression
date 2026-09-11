@@ -615,7 +615,6 @@ local function RunSkillPurchases()
 
     local remote = GetSkillPurchaseRemote()
     if not remote then
-        print("[SkillBuyer] RF:Purchase not found – skipping this cycle.")
         SkillBuyingRunning = false
         return
     end
@@ -623,7 +622,6 @@ local function RunSkillPurchases()
     for _, target in ipairs(SKILL_TARGETS) do
         while true do
             if not IsInLobby() then
-                print("[SkillBuyer] Left lobby mid-run – stopping.")
                 SkillBuyingRunning = false
                 return
             end
@@ -631,33 +629,27 @@ local function RunSkillPurchases()
             local map = FindSkillNodes()
             local entry = map[target.name]
             if not entry then
-                print("[SkillBuyer] Skill not found in tree: " .. target.name)
                 break
             end
 
-            -- 1) Parse level FIRST (works even when frame is invisible)
             local cur, mx, isMax = ParseSkillLevel(entry.lvlLbl.Text)
 
-            -- 2) Already at/past our personal target?
             if cur >= target.maxLevel then
                 print(string.format("[SkillBuyer] %s already at/past target %d (currently %s) – skipping.",
                     target.name, target.maxLevel, entry.lvlLbl.Text))
                 break
             end
 
-            -- 3) Game hard cap reached?
             if mx > 0 and cur >= mx then
                 print(string.format("[SkillBuyer] %s at game max (%d) – skipping.", target.name, mx))
                 break
             end
 
-            -- 4) Locked (frame not visible)?
             if entry.purchaseFrame and not entry.purchaseFrame.Visible then
                 print("[SkillBuyer] " .. target.name .. " is locked – skipping for now.")
                 break
             end
 
-            -- 5) Affordability
             local cost = GetSkillCost(entry)
             if cost then
                 local coins = GetStat("Coins")
@@ -669,7 +661,6 @@ local function RunSkillPurchases()
                 end
             end
 
-            -- 6) Buy one level
             local ok, err = pcall(function()
                 remote:InvokeServer(entry.id)
             end)
@@ -2483,7 +2474,7 @@ end)
 
 task.spawn(function()
     while true do
-        task.wait(3)
+        task.wait(0.2)
         local lvl = GetStat("Level")
         if lvl >= 51 and IsInLobby() and not SkillBuyingRunning then
             task.spawn(RunSkillPurchases)
