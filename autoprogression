@@ -43,13 +43,46 @@ end
 _G.AutoProgSettings = _G.AutoProgSettings or {
     AutoProgressionEnabled = false,
     ForceEasy = false,
-    ForceFrost = false,
+    ForceFallen = false,
     ForceHardcoreUnevo = false,
     ForceHardcoreEvo = false,
     ForcePizzaParty = false,
     ForceBootCamp = false,
     __locked = false,
 }
+
+-- ═══════════════════════════════════════════════════════════════
+-- MODE REGISTRY — every force-mode button lives here.
+-- To add a new mode:
+--   1) add a row below
+--   2) add { ForceX = false, } to _G.AutoProgSettings
+--   3) add { ForceX = true,  } to APR_LOCKED_KEYS
+--   4) add an "elseif forceX then RunX()" branch in RunAutoProgression
+-- Everything else (UI buttons, save/load, anyForceOn, toggles) auto-updates.
+-- ═══════════════════════════════════════════════════════════════
+local MODE_REGISTRY = {
+    { key = "ForceEasy",          label = "Easy",        y = 208 },
+    { key = "ForceFallen",        label = "Fallen",      y = 234 },
+    { key = "ForceHardcoreUnevo", label = "HC Unevo",    y = 260 },
+    { key = "ForceHardcoreEvo",   label = "HC Evo",      y = 286 },
+    { key = "ForceBootCamp",      label = "Boot Camp",   y = 312 },
+    { key = "ForcePizzaParty",    label = "Pizza Party", y = 338 },
+}
+
+local function IsAnyForceOn()
+    for _, m in ipairs(MODE_REGISTRY) do
+        if _G.AutoProgSettings[m.key] then return true end
+    end
+    return false
+end
+
+local function ClearAllForceModes(exceptKey)
+    for _, m in ipairs(MODE_REGISTRY) do
+        if m.key ~= exceptKey then
+            _G.AutoProgSettings[m.key] = false
+        end
+    end
+end
 
 do
     local g = getgenv()
@@ -79,7 +112,7 @@ getgenv().SetStatus = SetStatus
 local APR_LOCKED_KEYS = {
     AutoProgressionEnabled  = true,
     ForceEasy               = true,
-    ForceFrost              = true,
+    ForceFallen             = true,
     ForceHardcoreUnevo      = true,
     ForceHardcoreEvo        = true,
     ForcePizzaParty         = true,
@@ -220,6 +253,32 @@ getgenv().IsTowerMaxLevel = IsTowerMaxLevel
 local function OwnsTower(towerName)
     SetStatus("Checking ownership: " .. towerName)
     return OwnsTowerCache(towerName)
+end
+local function MeetsRequirement(req)
+    local towerName = req[1]
+    if OwnsTower(towerName) then return true end
+
+    local needCoins, needGems = 0, 0
+
+    if #req == 2 then
+        needCoins = tonumber(req[2]) or 0
+    elseif #req == 3 then
+        local cost = tonumber(req[2]) or 0
+        local currency = req[3]
+        if currency == "Gems" then needGems = cost else needCoins = cost end
+    elseif #req == 5 then
+        local cost1, cur1 = tonumber(req[2]) or 0, req[3]
+        local cost2, cur2 = tonumber(req[4]) or 0, req[5]
+        if cur1 == "Coins" then needCoins = needCoins + cost1
+        elseif cur1 == "Gems" then needGems = needGems + cost1 end
+        if cur2 == "Coins" then needCoins = needCoins + cost2
+        elseif cur2 == "Gems" then needGems = needGems + cost2 end
+    elseif type(req[2]) == "table" then
+        needCoins = req[2].Coins or 0
+        needGems  = req[2].Gems  or 0
+    end
+
+    return GetStat("Coins") >= needCoins and GetStat("Gems") >= needGems
 end
 local APR_SessionCoins = 0
 local APR_SessionGems  = 0
@@ -888,12 +947,59 @@ local EasyTowerRequirements = {
     easy18 = {{"Militant", 800}},
 }
 
-local FrostStrategies = {
-    { name = "frost1", mapName = "Abyssal Trench", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost1", autoPremium = false, autoSkip = false, autoRejoin = true, autoReady = true },
-    { name = "frost2", mapName = "Lay By", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost2", autoPremium = false, autoSkip = false, autoRejoin = true, autoReady = true },
-    { name = "frost3", mapName = "Crossroads", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost3", autoPremium = false, autoSkip = false, autoRejoin = true, autoReady = true },
-    { name = "frost4", mapName = "Retro Crossroads", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost4", autoPremium = false, autoSkip = false, autoRejoin = true, autoReady = true },
-    { name = "frost5", mapName = "Dusty Bridges", url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/frost5", autoPremium = false, autoSkip = false, autoRejoin = true, autoReady = true },
+local FallenStrategies = {
+    { name = "fallen1", mapName = "Simplicity", priority = 2,
+      url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/fallen1",
+      autoPremium = false, autoSkip = false, autoRejoin = false, autoReady = true },
+    { name = "fallen2", mapName = "Coral Deep", priority = 2,
+      url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/fallen2",
+      autoPremium = false, autoSkip = false, autoRejoin = false, autoReady = true },
+    { name = "fallen3", mapName = "Wrecked Battlefield", priority = 2,
+      url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/fallen3",
+      autoPremium = false, autoSkip = false, autoRejoin = false, autoReady = true },
+      { name = "fallen4", mapName = "Wrecked Battlefield II", priority = 2,
+      url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/fallen4",
+      autoPremium = false, autoSkip = false, autoRejoin = false, autoReady = true },
+      { name = "fallen5", mapName = "Abyssal Trench", priority = 3,
+      url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/fallen5",
+      autoPremium = false, autoSkip = false, autoRejoin = false, autoReady = true },
+      { name = "fallen6", mapName = "Lay By", priority = 4,
+      url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/fallen6",
+      autoPremium = false, autoSkip = false, autoRejoin = false, autoReady = true },
+      { name = "fallen7", mapName = "Dusty Bridges", priority = 3,
+      url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/fallen7",
+      autoPremium = false, autoSkip = false, autoRejoin = false, autoReady = true },
+      { name = "fallen8", mapName = "Deserted Village", priority = 2,
+      url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/fallen8",
+      autoPremium = false, autoSkip = false, autoRejoin = false, autoReady = true },
+      { name = "fallen9", mapName = "Four Seasons", priority = 2,
+      url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/fallen9",
+      autoPremium = false, autoSkip = false, autoRejoin = false, autoReady = true },
+      { name = "fallen10", mapName = "Cyber City", priority = 2,
+      url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/fallen10",
+      autoPremium = false, autoSkip = false, autoRejoin = false, autoReady = true },
+      { name = "fallen11", mapName = "Iceville", priority = 2,
+      url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/fallen11",
+      autoPremium = false, autoSkip = false, autoRejoin = false, autoReady = true },
+}
+
+local FallenStrategyOrder = {}
+for i, s in ipairs(FallenStrategies) do
+    FallenStrategyOrder[s.name] = i
+end
+
+local FallenTowerRequirements = {
+    fallen1 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
+    fallen2 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
+    fallen3 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
+    fallen4 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
+    fallen5 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}, {"Rocketeer", 2500}},
+    fallen6 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
+    fallen7 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
+    fallen8 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
+    fallen9 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
+    fallen10 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
+    fallen11 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
 }
 
 local PizzaPartySettings = {
@@ -1342,6 +1448,9 @@ local function RunBootCamp()
     end)
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- RUN EASY  (strict difficulty gate: must be "Easy" in-match)
+-- ═══════════════════════════════════════════════════════════════
 local runningEasy = false
 RunYeetEasy = function()
     if runningEasy then return end
@@ -1349,7 +1458,29 @@ RunYeetEasy = function()
     getgenv().TimeScaleEnabled = false
     SetStatus("Starting Easy strategy...")
 
+    local function getDifficulty()
+        local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
+        local rep = sr and sr:FindFirstChild("GameStateReplicator")
+        return rep and rep:GetAttribute("Difficulty") or nil
+    end
+
     if not IsInLobby() then
+        -- Wait briefly in case Difficulty hasn't replicated yet
+        local diff = getDifficulty()
+        local deadline = os.clock() + 5
+        while not diff and os.clock() < deadline do
+            task.wait(0.1)
+            diff = getDifficulty()
+        end
+
+        if diff ~= "Easy" then
+            print("[AutoProgression] Easy – wrong difficulty (" .. tostring(diff) .. ") – returning to lobby.")
+            SetStatus("Easy: wrong difficulty – going to lobby")
+            runningEasy = false
+            getgenv().SmartTeleportToLobby()
+            return
+        end
+
         while true do
             local availableMaps = GetAvailableMaps()
             local feasibleStrategies = {}
@@ -1423,6 +1554,7 @@ RunYeetEasy = function()
 
         print("[AutoProgression] No feasible Easy maps available. Returning to lobby...")
         SetStatus("No Easy maps – teleporting to lobby")
+        runningEasy = false                             -- ← was missing before
         getgenv().SmartTeleportToLobby()
     else
         -- In lobby: prefer strategies that require towers we can afford to buy
@@ -1433,16 +1565,13 @@ RunYeetEasy = function()
             local reqs = EasyTowerRequirements[strategy.name] or {}
             local feasible = true
             local needsBuying = false
-            local canAfford = true
 
             for _, req in ipairs(reqs) do
                 local towerName = req[1]
                 local cost = req[2] or 0
                 if not OwnsTower(towerName) then
                     needsBuying = true
-                    local coins = GetStat("Coins")
-                    if coins < cost then
-                        canAfford = false
+                    if GetStat("Coins") < cost then
                         feasible = false
                         break
                     end
@@ -1459,21 +1588,16 @@ RunYeetEasy = function()
             end
         end
 
-        if not chosen then
-            chosen = fallback
-        end
+        if not chosen then chosen = fallback end
 
         if chosen then
             local reqs = EasyTowerRequirements[chosen.name] or {}
-            if #reqs > 0 then
-                AutoBuyTowers(reqs)
-            end
+            if #reqs > 0 then AutoBuyTowers(reqs) end
             ApplyStrategySettings(chosen)
             task.wait(0.3)
             print("[AutoProgression] In lobby, selected Easy: " .. chosen.name)
             SetStatus("In lobby – loading Easy: " .. chosen.name)
             loadstring(game:HttpGet(chosen.url))()
-            -- No teleport here
         else
             SetStatus("Cannot afford any Easy towers – returning to lobby")
             getgenv().SmartTeleportToLobby()
@@ -1522,58 +1646,153 @@ local function RunPizzaParty()
     runningPizzaParty = false
 end
 
-local runningFrost = false
-local function RunFrostStrategy()
-    if runningFrost then return end
-    runningFrost = true
+-- ═══════════════════════════════════════════════════════════════
+-- RUN FALLEN  (strict difficulty gate: must be "Fallen" in-match)
+-- ═══════════════════════════════════════════════════════════════
+local runningFallen = false
+local function RunFallenStrategy()
+    if runningFallen then return end
+    runningFallen = true
     getgenv().TimeScaleEnabled = false
-    SetStatus("Starting Frost strategy...")
+    SetStatus("Starting Fallen strategy...")
+
+    local function getDifficulty()
+        local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
+        local rep = sr and sr:FindFirstChild("GameStateReplicator")
+        return rep and rep:GetAttribute("Difficulty") or nil
+    end
+
+    local function goToLobby(reason)
+        print("[AutoProgression] Fallen – " .. reason .. " – returning to lobby.")
+        SetStatus("Fallen: " .. reason .. " – going to lobby")
+        runningFallen = false
+        getgenv().SmartTeleportToLobby()
+    end
+
     if not IsInLobby() then
+        -- Wait briefly in case Difficulty hasn't replicated yet
+        local diff = getDifficulty()
+        local deadline = os.clock() + 5
+        while not diff and os.clock() < deadline do
+            task.wait(0.1)
+            diff = getDifficulty()
+        end
+
+        if diff ~= "Fallen" then
+            goToLobby("wrong difficulty (" .. tostring(diff) .. ")")
+            return
+        end
+
         while true do
             local availableMaps = GetAvailableMaps()
-            local availableStrategies = {}
-            for _, strategy in ipairs(FrostStrategies) do
+            local feasibleStrategies = {}
+
+            for _, strategy in ipairs(FallenStrategies) do
                 if availableMaps[strategy.mapName] then
-                    table.insert(availableStrategies, strategy)
+                                        local reqs = FallenTowerRequirements[strategy.name] or {}
+                    local feasible = true
+                    for _, req in ipairs(reqs) do
+                        if not MeetsRequirement(req) then
+                            feasible = false
+                            break
+                        end
+                    end
+                    if feasible then
+                        table.insert(feasibleStrategies, strategy)
+                    end
                 end
             end
-            if #availableStrategies > 0 then
-                local chosen = availableStrategies[math.random(1, #availableStrategies)]
+
+            if #feasibleStrategies > 0 then
+                table.sort(feasibleStrategies, function(a, b)
+                    local pa = a.priority or 0
+                    local pb = b.priority or 0
+                    if pa ~= pb then return pa > pb end
+                    return (FallenStrategyOrder[a.name] or 999)
+                         < (FallenStrategyOrder[b.name] or 999)
+                end)
+                local chosen = feasibleStrategies[1]
+                local reqs = FallenTowerRequirements[chosen.name] or {}
+
+                if #reqs > 0 then
+                    local buyResult = AutoBuyTowers(reqs)
+                    if buyResult ~= "OK" then
+                        goToLobby("cannot afford " .. chosen.name)
+                        return
+                    end
+                end
+
                 ApplyStrategySettings(chosen)
                 task.wait(0.3)
-                print("[AutoProgression] Selected Frost: " .. chosen.name .. " on " .. chosen.mapName)
-                SetStatus("Loading Frost: " .. chosen.name .. " on " .. chosen.mapName)
+                print("[AutoProgression] Selected Fallen: " .. chosen.name .. " on " .. chosen.mapName)
+                SetStatus("Loading Fallen: " .. chosen.name .. " on " .. chosen.mapName)
                 loadstring(game:HttpGet(chosen.url))()
-                -- No teleport here – main script watcher handles it
-                runningFrost = false
+                runningFallen = false
                 return
             end
+
             local vetoInfo = GetVetoInfo()
             if not vetoInfo then
                 print("[AutoProgression] Could not read veto text – assuming no vetoes.")
                 break
             end
             if vetoInfo.used < vetoInfo.total then
-                print("[AutoProgression] Text: Veto (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ") – vetoing.")
+                print("[AutoProgression] Fallen vetoing map (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ")")
                 VetoMap()
             else
-                print("[AutoProgression] Text: Veto (" .. vetoInfo.used .. "/" .. vetoInfo.total .. ") – no vetoes left.")
+                print("[AutoProgression] Fallen: no vetoes left.")
                 break
             end
         end
-        print("[AutoProgression] No Frost maps available. Teleporting to lobby...")
-        SetStatus("No Frost maps – teleporting to lobby")
-        getgenv().SmartTeleportToLobby()
+
+        goToLobby("no feasible Fallen map in pool")
+        return
     else
-        local chosen = FrostStrategies[math.random(1, #FrostStrategies)]
-        ApplyStrategySettings(chosen)
-        task.wait(0.3)
-        print("[AutoProgression] In lobby, selected Frost: " .. chosen.name)
-        SetStatus("In lobby – loading Frost: " .. chosen.name)
-        loadstring(game:HttpGet(chosen.url))()
-        -- No teleport here
+        -- In lobby: no difficulty check. Pick the best Fallen strategy.
+        local chosen = nil
+        local fallback = nil
+
+        for _, strategy in ipairs(FallenStrategies) do
+                        local reqs = FallenTowerRequirements[strategy.name] or {}
+            local feasible = true
+            local needsBuying = false
+
+            for _, req in ipairs(reqs) do
+                if not OwnsTower(req[1]) then needsBuying = true end
+                if not MeetsRequirement(req) then
+                    feasible = false
+                    break
+                end
+            end
+
+            if feasible then
+                if needsBuying then
+                    chosen = strategy
+                    break
+                else
+                    fallback = strategy
+                end
+            end
+        end
+
+        if not chosen then chosen = fallback end
+
+        if chosen then
+            local reqs = FallenTowerRequirements[chosen.name] or {}
+            if #reqs > 0 then AutoBuyTowers(reqs) end
+            ApplyStrategySettings(chosen)
+            task.wait(0.3)
+            print("[AutoProgression] In lobby, selected Fallen: " .. chosen.name)
+            SetStatus("In lobby – loading Fallen: " .. chosen.name)
+            loadstring(game:HttpGet(chosen.url))()
+        else
+            SetStatus("Cannot afford Fallen towers – farming Easy")
+            runningFallen = false
+            RunYeetEasy()
+            return
+        end
+        runningFallen = false
     end
-    runningFrost = false
 end
 local APR_HandlingGameOver = false
 
@@ -1636,6 +1855,35 @@ local function APR_RequeueEasy()
     return ok
 end
 
+local function APR_IsFallenSurvival()
+    if APR_IsTrial() then return false end
+    local rep = APR_GetGameStateReplicator()
+    if not rep then return false end
+    return rep:GetAttribute("Difficulty") == "Fallen"
+end
+
+local function APR_RequeueFallen()
+    local remote = ReplicatedStorage:WaitForChild("RemoteFunction", 10)
+    if not remote then return false end
+    local ok, attempts = false, 0
+    while not ok and attempts < 30 do
+        attempts = attempts + 1
+        local success, result = pcall(function()
+            return remote:InvokeServer("Multiplayer", "v2:start", {
+                difficulty = "Fallen",
+                mode       = "survival",
+                count      = 1,
+            })
+        end)
+        if success and result then
+            ok = true
+        else
+            task.wait(0.5)
+        end
+    end
+    return ok
+end
+
 local function APR_TeleportLobby()
     local tp = getgenv().SmartTeleportToLobby
     if type(tp) == "function" then
@@ -1668,6 +1916,10 @@ local function APR_HandleGameOver()
             SetStatus("Easy – requeueing...")
             print("[AutoProgression] Easy match ended, requeueing directly...")
             APR_RequeueEasy()
+            elseif APR_IsFallenSurvival() then
+    SetStatus("Fallen – requeueing...")
+    print("[AutoProgression] Fallen match ended, requeueing directly...")
+    APR_RequeueFallen()
         else
             SetStatus("Match ended – returning to lobby...")
             print("[AutoProgression] Match ended, teleporting to lobby...")
@@ -1719,7 +1971,7 @@ local function RunAutoProgression()
     end
 
     local forceEasy = _G.AutoProgSettings.ForceEasy or false
-    local forceFrost = _G.AutoProgSettings.ForceFrost or false
+    local forceFallen = _G.AutoProgSettings.ForceFallen or false
     local forceHcUnevo = _G.AutoProgSettings.ForceHardcoreUnevo or false
     local forceHcEvo = _G.AutoProgSettings.ForceHardcoreEvo or false
     local forceBootCamp = _G.AutoProgSettings.ForceBootCamp or false
@@ -1740,33 +1992,9 @@ local function RunAutoProgression()
         RunYeetEasy()
         AutoProgressionRunning = false
         return
-    elseif forceFrost then
-        SetStatus("Force mode: Frost")
-        local haveRocketeer = OwnsTower("Rocketeer")
-        local haveGatling = OwnsTower("Gatling Gun")
-        local haveTrapper = OwnsTower("Trapper")
-        local haveHacker = OwnsTower("Hacker")
-        if haveGatling and haveTrapper and haveHacker and haveRocketeer then
-            RunFrostStrategy()
-        else
-            local result = AutoBuyTowers({
-                {"Gatling Gun", 35000, "Coins"},
-                {"Trapper", 3000, "Coins"},
-                {"Hacker", 5500, "Gems"},
-                {"Rocketeer", 2500, "Coins"},
-            })
-            if result == "OK" then
-                RunFrostStrategy()
-            elseif result == "Coins" then
-                print("[AutoProgression] Not enough Coins for Frost – farming Easy.")
-                SetStatus("Not enough Coins for Frost – farming Easy")
-                RunYeetEasy()
-            elseif result == "Gems" then
-                print("[AutoProgression] Not enough Gems for Frost – farming UNEVO.")
-                SetStatus("Not enough Gems for Frost – farming UNEVO")
-                RunHardcoreUnevo()
-            end
-        end
+        elseif forceFallen then
+        SetStatus("Force mode: Fallen")
+        RunFallenStrategy()
         AutoProgressionRunning = false
         return
     --[[elseif forceHcUnevo then
@@ -1782,53 +2010,10 @@ local function RunAutoProgression()
     end
 
     local level = GetStat("Level")
-    local currentDifficulty = (ReplicatedStorage:FindFirstChild("State") and ReplicatedStorage.State:FindFirstChild("Difficulty")) and ReplicatedStorage.State.Difficulty.Value or nil
 
-    if level >= 176 then
-        SetStatus("Level " .. level .. " → Frost path")
-        local haveRocketeer = OwnsTower("Rocketeer")
-        local haveGatling = OwnsTower("Gatling Gun")
-        local haveTrapper = OwnsTower("Trapper")
-        local haveHacker = OwnsTower("Hacker")
-        if haveGatling and haveTrapper and haveHacker and haveRocketeer then
-            if IsInLobby() or currentDifficulty == "Frost" then
-                RunFrostStrategy()
-            else
-                print("[AutoProgression] In non-Frost match, teleporting to lobby to run Frost.")
-                SetStatus("Not Frost match – teleporting to lobby")
-                getgenv().SmartTeleportToLobby()
-            end
-        else
-            local result = AutoBuyTowers({
-                {"Gatling Gun", 35000, "Coins"},
-                {"Trapper", 3000, "Coins"},
-                {"Hacker", 5500, "Gems"},
-                {"Rocketeer", 2500, "Coins"},
-            })
-            if result == "OK" then
-                RunFrostStrategy()
-            elseif result == "Coins" then
-                if currentDifficulty == "Frost" then
-                    print("[AutoProgression] In Frost match but need Coins – teleporting to lobby.")
-                    SetStatus("In Frost match, need Coins – teleporting to lobby")
-                    getgenv().SmartTeleportToLobby()
-                else
-                    print("[AutoProgression] Not enough Coins for Frost – farming Easy.")
-                    SetStatus("Not enough Coins for Frost – farming Easy")
-                    RunYeetEasy()
-                end
-            elseif result == "Gems" then
-                if currentDifficulty == "Frost" then
-                    print("[AutoProgression] In Frost match but need Gems – teleporting to lobby.")
-                    SetStatus("In Frost match, need Gems – teleporting to lobby")
-                    getgenv().SmartTeleportToLobby()
-                else
-                    print("[AutoProgression] Not enough Gems for Frost – farming UNEVO.")
-                    SetStatus("Not enough Gems for Frost – farming UNEVO")
-                    RunHardcoreUnevo()
-                end
-            end
-        end
+        if level >= 176 then
+        SetStatus("Level " .. level .. " → Fallen path")
+        RunFallenStrategy()
     elseif level >= 120 then
         SetStatus("Level " .. level .. " → Hardcore EVO path")
         RunHardcoreEvo()
@@ -2063,12 +2248,12 @@ local function CreateUI()
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
         return btn
     end
-    local easyBtn = CreateModeToggle(208, "Easy", "ForceEasy")
-    local frostBtn = CreateModeToggle(234, "Frost", "ForceFrost")
-    local hcUnevoBtn = CreateModeToggle(260, "HC Unevo", "ForceHardcoreUnevo")
-    local hcEvoBtn = CreateModeToggle(286, "HC Evo", "ForceHardcoreEvo")
-    local bootCampBtn = CreateModeToggle(312, "Boot Camp", "ForceBootCamp")
-    local pizzaPartyBtn = CreateModeToggle(338, "Pizza Party", "ForcePizzaParty")
+
+    -- ═══ Mode buttons now generated from MODE_REGISTRY ═══
+    local modeButtons = {}   -- key -> button instance
+    for _, m in ipairs(MODE_REGISTRY) do
+        modeButtons[m.key] = CreateModeToggle(m.y, m.label, m.key)
+    end
 
     local function updateModeButton(btn, settingKey)
         if _G.AutoProgSettings[settingKey] then
@@ -2080,28 +2265,24 @@ local function CreateUI()
         end
     end
 
+    local function updateAllModeButtons()
+        for _, m in ipairs(MODE_REGISTRY) do
+            updateModeButton(modeButtons[m.key], m.key)
+        end
+    end
+
     local function saveSettings()
         if writefile then
-            local saveData = {
-                AutoProgressionEnabled = _G.AutoProgSettings.AutoProgressionEnabled,
-                ForceEasy = _G.AutoProgSettings.ForceEasy,
-                ForceFrost = _G.AutoProgSettings.ForceFrost,
-                ForceHardcoreUnevo = _G.AutoProgSettings.ForceHardcoreUnevo,
-                ForceHardcoreEvo = _G.AutoProgSettings.ForceHardcoreEvo,
-                ForceBootCamp = _G.AutoProgSettings.ForceBootCamp,
-                ForcePizzaParty = _G.AutoProgSettings.ForcePizzaParty,
-            }
+            local saveData = { AutoProgressionEnabled = _G.AutoProgSettings.AutoProgressionEnabled }
+            for _, m in ipairs(MODE_REGISTRY) do
+                saveData[m.key] = _G.AutoProgSettings[m.key]
+            end
             writefile(SETTINGS_FILE, HttpService:JSONEncode(saveData))
         end
     end
 
     local function updateMainUI()
-        local anyForceOn = _G.AutoProgSettings.ForceEasy or
-                       _G.AutoProgSettings.ForceFrost or
-                       _G.AutoProgSettings.ForceHardcoreUnevo or
-                       _G.AutoProgSettings.ForceHardcoreEvo or
-                       _G.AutoProgSettings.ForceBootCamp or
-                       _G.AutoProgSettings.ForcePizzaParty
+        local anyForceOn = IsAnyForceOn()
         local isRunning = AutoProgressionEnabled or anyForceOn
         if isRunning then
             toggle.Text = "ON"
@@ -2128,19 +2309,9 @@ local function CreateUI()
     local function toggleMode(settingKey, btn)
         getgenv().HcEvoActive = false
         getgenv().HcUnevoActive = false
-        local forceKeys = {"ForceEasy", "ForceFrost", "ForceHardcoreUnevo", "ForceHardcoreEvo", "ForceBootCamp","ForcePizzaParty"}
-        for _, key in ipairs(forceKeys) do
-            if key ~= settingKey then
-                _G.AutoProgSettings[key] = false
-            end
-        end
+        ClearAllForceModes(settingKey)
         _G.AutoProgSettings[settingKey] = not _G.AutoProgSettings[settingKey]
-        updateModeButton(easyBtn, "ForceEasy")
-        updateModeButton(frostBtn, "ForceFrost")
-        updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
-        updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
-        updateModeButton(bootCampBtn, "ForceBootCamp")
-        updateModeButton(pizzaPartyBtn, "ForcePizzaParty")
+        updateAllModeButtons()
         if _G.AutoProgSettings[settingKey] then
             AutoProgressionEnabled = true
             _G.AutoProgSettings.AutoProgressionEnabled = true
@@ -2157,20 +2328,10 @@ local function CreateUI()
         AutoProgressionEnabled = not AutoProgressionEnabled
         _G.AutoProgSettings.AutoProgressionEnabled = AutoProgressionEnabled
         if not AutoProgressionEnabled then
-            _G.AutoProgSettings.ForceEasy = false
-            _G.AutoProgSettings.ForceFrost = false
-            _G.AutoProgSettings.ForceHardcoreUnevo = false
-            _G.AutoProgSettings.ForceHardcoreEvo = false
-            _G.AutoProgSettings.ForceBootCamp = false
-            _G.AutoProgSettings.ForcePizzaParty = false
+            ClearAllForceModes(nil)
             getgenv().HcEvoActive = false
             getgenv().HcUnevoActive = false
-            updateModeButton(easyBtn, "ForceEasy")
-            updateModeButton(frostBtn, "ForceFrost")
-            updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
-            updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
-            updateModeButton(bootCampBtn, "ForceBootCamp")
-            updateModeButton(pizzaPartyBtn, "ForcePizzaParty")
+            updateAllModeButtons()
             SetStatus("Stopped")
         else
             SetStatus("Starting...")
@@ -2184,12 +2345,12 @@ local function CreateUI()
         end
     end)
 
-    easyBtn.MouseButton1Click:Connect(function() toggleMode("ForceEasy", easyBtn) end)
-    frostBtn.MouseButton1Click:Connect(function() toggleMode("ForceFrost", frostBtn) end)
-    hcUnevoBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreUnevo", hcUnevoBtn) end)
-    hcEvoBtn.MouseButton1Click:Connect(function() toggleMode("ForceHardcoreEvo", hcEvoBtn) end)
-    bootCampBtn.MouseButton1Click:Connect(function() toggleMode("ForceBootCamp", bootCampBtn) end)
-    pizzaPartyBtn.MouseButton1Click:Connect(function() toggleMode("ForcePizzaParty", pizzaPartyBtn) end)
+    -- ═══ Mode button connections, driven by MODE_REGISTRY ═══
+    for _, m in ipairs(MODE_REGISTRY) do
+        modeButtons[m.key].MouseButton1Click:Connect(function()
+            toggleMode(m.key, modeButtons[m.key])
+        end)
+    end
 
     if isfile and isfile(SETTINGS_FILE) then
         local success, data = pcall(function()
@@ -2207,22 +2368,12 @@ local function CreateUI()
     getgenv().AutoUpgradeSelected = false
     getgenv().AutoUpgradeAll = false
     AutoProgressionEnabled = _G.AutoProgSettings.AutoProgressionEnabled or false
-    local anyForceOn = _G.AutoProgSettings.ForceEasy or
-                       _G.AutoProgSettings.ForceFrost or
-                       _G.AutoProgSettings.ForceHardcoreUnevo or
-                       _G.AutoProgSettings.ForceHardcoreEvo or
-                       _G.AutoProgSettings.ForceBootCamp
-    if anyForceOn then
+    if IsAnyForceOn() then
         AutoProgressionEnabled = true
         _G.AutoProgSettings.AutoProgressionEnabled = true
     end
     updateMainUI()
-    updateModeButton(easyBtn, "ForceEasy")
-    updateModeButton(frostBtn, "ForceFrost")
-    updateModeButton(hcUnevoBtn, "ForceHardcoreUnevo")
-    updateModeButton(hcEvoBtn, "ForceHardcoreEvo")
-    updateModeButton(bootCampBtn, "ForceBootCamp")
-    updateModeButton(pizzaPartyBtn, "ForcePizzaParty")
+    updateAllModeButtons()
     if AutoProgressionEnabled then
         task.spawn(RunAutoProgression)
     end
@@ -2263,31 +2414,24 @@ local function CreateUI()
         end
     end)
 
-    return {
+    local out = {
         title = title,
         status = statusDisplay,
         toggle = toggle,
         levelDisplay = levelDisplay,
         coinsDisplay = coinsDisplay,
         gemsDisplay = gemsDisplay,
-        easyBtn = easyBtn,
-        frostBtn = frostBtn,
-        hcUnevoBtn = hcUnevoBtn,
-        hcEvoBtn = hcEvoBtn,
-        bootCampBtn = bootCampBtn,
-        pizzaPartyBtn = pizzaPartyBtn,
     }
+    -- Return the mode buttons under their Force* keys
+    for _, m in ipairs(MODE_REGISTRY) do
+        out[m.key] = modeButtons[m.key]
+    end
+    return out
 end
 
 task.spawn(function()
     while task.wait(5) do
-        local anyForceOn = _G.AutoProgSettings.ForceEasy or
-                           _G.AutoProgSettings.ForceFrost or
-                           _G.AutoProgSettings.ForceHardcoreUnevo or
-                           _G.AutoProgSettings.ForceHardcoreEvo or
-                           _G.AutoProgSettings.ForceBootCamp or 
-                           _G.AutoProgSettings.ForcePizzaParty
-        if (AutoProgressionEnabled or anyForceOn) and not CoreGui:FindFirstChild("AutoProgressionUI") then
+        if (AutoProgressionEnabled or IsAnyForceOn()) and not CoreGui:FindFirstChild("AutoProgressionUI") then
             print("[AutoProgression] UI was destroyed, recreating...")
             local newUI = CreateUI()
             getgenv().AutoProgressionUI = newUI
@@ -2304,6 +2448,7 @@ getgenv().RunHardcoreUnevo = RunHardcoreUnevo
 getgenv().RunHardcoreEvo = RunHardcoreEvo
 getgenv().RunPizzaParty = RunPizzaParty
 getgenv().RunBootCamp = RunBootCamp
+getgenv().RunFallenStrategy = RunFallenStrategy
 
 task.spawn(function()
     task.wait(1)
