@@ -1695,7 +1695,7 @@ local function RunAutoProgression()
     --[[elseif level >= 51 then
         SetStatus("Level " .. level .. " → Hardcore UNEVO path")
         RunHardcoreUnevo()]]
-    elseif level >= 26 then
+    elseif level >= 50 then
         SetStatus("Level " .. level .. " → Pizza Party path")
         RunPizzaParty()
     else
