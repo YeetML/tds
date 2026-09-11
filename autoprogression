@@ -75,6 +75,36 @@ local function SetStatus(text)
 end
 getgenv().SetStatus = SetStatus
 
+-- Keys AutoProgression is allowed to lock
+local APR_LOCKED_KEYS = {
+    AutoProgressionEnabled  = true,
+    ForceEasy               = true,
+    ForceFrost              = true,
+    ForceHardcoreUnevo      = true,
+    ForceHardcoreEvo        = true,
+    ForcePizzaParty         = true,
+    ForceBootCamp           = true,
+    AutoSkip                = true,
+    AutoPremium             = true,
+    AutoReady               = true,
+    AutoRejoin              = true,
+    AutoRestart             = true,
+    AutoUpgradeSelected     = true,
+    AutoUpgradeAll          = true,
+    __locked                = true,
+}
+
+local function ScrubForeignSettings()
+    if not (_G.AutoProgSettings and _G.AutoProgSettings.__locked) then return end
+    for k in pairs(_G.AutoProgSettings) do
+        if not APR_LOCKED_KEYS[k] then
+            _G.AutoProgSettings[k] = nil
+        end
+    end
+end
+
+getgenv().ScrubForeignSettings = ScrubForeignSettings
+
 local function ApplyStrategySettings(strategy)
     local MainGlobals = getgenv().Globals or _G.Globals or getgenv()
     local settings = {
@@ -93,11 +123,13 @@ local function ApplyStrategySettings(strategy)
         if MainGlobals then MainGlobals[key] = value end
     end
     _G.AutoProgSettings.__locked = true
+    ScrubForeignSettings()
     print("[AutoProgression] ✅ SETTINGS LOCKED:")
     for key, value in pairs(settings) do
         print("   → " .. key .. " = " .. tostring(value))
     end
 end
+
 
 local function BuyTower(towerName)
     SetStatus("Buying " .. towerName .. "...")
@@ -2143,6 +2175,24 @@ task.spawn(function()
         if IsInLobby() then
             pcall(ClaimAchievements)
         end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        ScrubForeignSettings()          -- ← your addition
+
+        if _G.AutoProgSettings.__locked then
+            for key, value in pairs(_G.AutoProgSettings) do
+                if key ~= "__locked" then
+                    if Globals[key] ~= value then
+                        Globals[key] = value
+                        print("[AutoProg Lock] Forced " .. key .. " = " .. tostring(value))
+                    end
+                end
+            end
+        end
+        task.wait(1)
     end
 end)
 
