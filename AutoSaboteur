@@ -103,7 +103,7 @@ function AutoSaboteur.Start()
             end
 
             task.wait(0.5)
-            ::continue::
+            continue
         end
     end)
 end
