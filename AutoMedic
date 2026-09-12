@@ -692,65 +692,183 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
         activeChainThread = nil
     end
     chainCleanup()
-    if toggle == false then
-        return
-    end
+    if toggle == false then return end
+
     activeChainThread = task.spawn(function()
-        local nextIdx = 1
+        local anchorUID = nil
+        local rotation  = nil
+
+        local function uidOf(m) return getTowerUID(m) end
+
+        local function medicUsable(m)
+            if not IsAlive(m) then return false end
+            if not getUberData(m) then return false end
+            local rep = GetReplicator(m)
+            if not rep then return false end
+            local oid = rep:GetAttribute("OwnerId")
+            local onm = rep:GetAttribute("OwnerName")
+            return (oid and oid == PlayerUserId) or (onm and onm == PlayerName)
+        end
+
+        local function gatherTargets(m)
+            local t, md, tw = getCurrentSettings()
+            return getTargetTowersForMedic(m, t, tw, getMedicCapacity(m), md)
+        end
+
+        -- Attach + ONE fire attempt. No retry. Returns true if uber fired.
+        local function fireOnce(m)
+            local targets = gatherTargets(m)
+            if #targets == 0 then return false end
+
+            clearAllSelected(m)
+            local attached = attachTargets(m, targets)
+            activeChainMedic = m
+            if #attached == 0 then
+                clearAllSelected(m)
+                activeChainMedic = nil
+                return false
+            end
+
+            activeChainStopWatch = startReattachWatch(m, attached)
+            local started, baseline, ud, at, saw = TryStartUber(m, attached)
+            if started and baseline and ud and at then
+                WaitForUberEnd(attached, baseline, ud, at, saw)
+            end
+            if activeChainStopWatch then pcall(activeChainStopWatch) end
+            activeChainStopWatch = nil
+            clearAllSelected(m)
+            activeChainMedic = nil
+            return started and true or false
+        end
+
+        -- Attach + wait-until-ready + fire. Used ONLY for the anchor.
+        -- Anchor fired first, so when we come back to it the cooldown
+        -- should already be over. If not, we wait without spamming.
+        local function fireAnchor(m)
+            local targets = {}
+            repeat
+                if not medicUsable(m) then return false end
+                targets = gatherTargets(m)
+                if #targets == 0 then task.wait(0.3) end
+            until #targets > 0 or not medicUsable(m)
+            if not medicUsable(m) then return false end
+
+            clearAllSelected(m)
+            local attached = attachTargets(m, targets)
+            activeChainMedic = m
+            if #attached == 0 then
+                clearAllSelected(m)
+                activeChainMedic = nil
+                return false
+            end
+            activeChainStopWatch = startReattachWatch(m, attached)
+
+            local started, baseline, ud, at, saw
+            while medicUsable(m) do
+                started, baseline, ud, at, saw = TryStartUber(m, attached)
+                if started then break end
+                if not medicUsable(m) then break end
+                task.wait(1.5)              -- let the cooldown tick down
+                local refreshed = gatherTargets(m)
+                if #refreshed == 0 then break end
+                attached = attachTargets(m, refreshed)
+                if #attached == 0 then break end
+            end
+
+            if started and baseline and ud and at then
+                WaitForUberEnd(attached, baseline, ud, at, saw)
+            end
+            if activeChainStopWatch then pcall(activeChainStopWatch) end
+            activeChainStopWatch = nil
+            clearAllSelected(m)
+            activeChainMedic = nil
+            return started and true or false
+        end
+
         while true do
             local medics = getMyMedics()
-            local usable = {}
+            if #medics == 0 then task.wait(0.5); continue end
+
+            local uidToTower = {}
             for _, m in ipairs(medics) do
-                if IsAlive(m) and getUberData(m) then
-                    table.insert(usable, m)
+                local u = uidOf(m)
+                if u then uidToTower[u] = m end
+            end
+
+            -- =====================================================
+            -- ANCHOR DISCOVERY
+            -- Find the first medic that actually fires, lock onto it,
+            -- build rotation as [anchor, everyone else in order].
+            -- Then fire the REST of the rotation on this same pass
+            -- (anchor was just fired, so skip it — it will start
+            -- the next lap).
+            -- =====================================================
+            if not anchorUID or not uidToTower[anchorUID] then
+                anchorUID = nil
+                rotation  = nil
+
+                local found = nil
+                for _, m in ipairs(medics) do
+                    if not medicUsable(m) then continue end
+                    if fireAnchor(m) then
+                        found = m
+                        break
+                    end
+                end
+                if not found then
+                    task.wait(0.5)
+                    continue
+                end
+                anchorUID = uidOf(found)
+
+                rotation = { anchorUID }
+                for _, m in ipairs(medics) do
+                    local u = uidOf(m)
+                    if u and u ~= anchorUID then
+                        table.insert(rotation, u)
+                    end
+                end
+
+                -- Fire the rest of this lap (anchor already just fired).
+                for i = 2, #rotation do
+                    local m = uidToTower[rotation[i]]
+                    if m and medicUsable(m) then
+                        fireOnce(m)
+                    end
+                end
+                -- Restart outer loop; next lap begins with the anchor.
+                continue
+            end
+
+            -- =====================================================
+            -- REFRESH ROTATION (prune dead, add newly placed medics)
+            -- =====================================================
+            local newRot = {}
+            for _, u in ipairs(rotation) do
+                if uidToTower[u] then table.insert(newRot, u) end
+            end
+            for _, m in ipairs(medics) do
+                local u = uidOf(m)
+                if u and not table.find(newRot, u) then
+                    table.insert(newRot, u)
                 end
             end
-            if #usable == 0 then
-                task.wait(0.05)
-                continue
-            end
-            if nextIdx > #usable then
-                nextIdx = 1
-            end
-            local medic = usable[nextIdx]
-            if not medic or not IsAlive(medic) then
-                nextIdx += 1
-                task.wait(0.05)
-                continue
-            end
-            local liveTarget, liveMode, liveTowers = getCurrentSettings()
-            local capacity = getMedicCapacity(medic)
-            local targets  = getTargetTowersForMedic(medic, liveTarget, liveTowers, capacity, liveMode)
-            if #targets == 0 then
-                task.wait(0.05)
-                continue
-            end
-            -- wipe ghosts so capacity is free and claims clear
-            clearAllSelected(medic)
-            local attached = attachTargets(medic, targets)
-            activeChainMedic = medic
-            if #attached > 0 then
-                -- create the reattach-watch here and store its disconnector
-                -- immediately, BEFORE calling TryStartUber (which can block
-                -- for a while). This way, no matter where task.cancel
-                -- interrupts this thread, chainCleanup() always has a valid
-                -- reference to disconnect it.
-                activeChainStopWatch = startReattachWatch(medic, attached)
-                local started, baseline, ud, at, saw = TryStartUber(medic, attached)
-                if started and baseline and ud and at then
-                    WaitForUberEnd(attached, baseline, ud, at, saw)
+            rotation = newRot
+
+            -- =====================================================
+            -- WALK THE ROTATION
+            --   i == 1 → anchor   → fireAnchor (blocking wait)
+            --   i  > 1 → the rest → fireOnce (single attempt)
+            -- =====================================================
+            for i, u in ipairs(rotation) do
+                local m = uidToTower[u]
+                if not m or not medicUsable(m) then continue end
+                if i == 1 then
+                    fireAnchor(m)
+                else
+                    fireOnce(m)
                 end
-                if activeChainStopWatch then pcall(activeChainStopWatch) end
-                activeChainStopWatch = nil
-            else
-                -- attach failed (or was rejected server-side) - skip the
-                -- uber attempt entirely instead of handing TryStartUber a
-                -- phantom target list it can never satisfy.
-                warn("[AutoMedic] attach failed for this medic, skipping cycle")
             end
-            clearAllSelected(medic)
-            activeChainMedic = nil
-            nextIdx += 1
         end
     end)
 end
