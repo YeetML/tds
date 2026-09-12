@@ -1901,6 +1901,28 @@ local function APR_HandleGameOver()
         else
             warn("[AutoProgression] ❌ Webhook skipped: " .. tostring(reason))
         end
+
+        -- Update session win/loss tracker
+        do
+            local pg = LocalPlayer:FindFirstChild("PlayerGui")
+            local root = pg and pg:FindFirstChild("ReactGameNewRewards")
+            local frame = root and root:FindFirstChild("Frame")
+            local go = frame and frame:FindFirstChild("gameOver")
+            local rs = go and go:FindFirstChild("RewardsScreen")
+            local banner = rs and rs:FindFirstChild("RewardBanner")
+            if banner and banner:FindFirstChild("textLabel") then
+                local txt = banner.textLabel.Text:upper()
+                if txt:find("TRIUMPH") then
+                    Session.Wins = Session.Wins + 1
+                    print("[AutoProgression] 🏆 Win recorded (session: " .. Session.Wins .. ")")
+                elseif txt:find("LOST") then
+                    Session.Losses = Session.Losses + 1
+                    print("[AutoProgression] 💀 Loss recorded (session: " .. Session.Losses .. ")")
+                end
+                Session.Matches = Session.Matches + 1
+            end
+        end
+
         task.wait(0.5) 
 
         if APR_IsEasySurvival() then
@@ -2118,305 +2140,591 @@ local function redeemCodesFromBeebom()
     SetStatus("Code redemption complete")
 end
 
+-- ═══════════════════════════════════════════════════════════════════════════
+--  APEX UI — external load
+-- ═══════════════════════════════════════════════════════════════════════════
+
+local APEX_URL = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/apex.lua"
+
+-- Load with fallback safety net
+local Apex
+do
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet(APEX_URL))()
+    end)
+    if ok and type(result) == "table" and result.Window then
+        Apex = result
+        print("[AutoProgression] ✅ Apex UI v" .. tostring(Apex.Version) .. " loaded")
+    else
+        warn("[AutoProgression] ❌ Apex UI failed to load — using fallback stub")
+        Apex = {
+            Version = "fallback",
+            Themes = { Obsidian = {
+                Accent = Color3.fromRGB(126,92,255), AccentAlt = Color3.fromRGB(255,100,200),
+                Surface = Color3.fromRGB(23,23,34), Surface2 = Color3.fromRGB(30,30,44),
+                Text = Color3.new(1,1,1), TextDim = Color3.fromRGB(160,160,180),
+                TextMute = Color3.fromRGB(108,108,130), Success = Color3.fromRGB(52,211,130),
+                Danger = Color3.fromRGB(240,75,95), Warn = Color3.fromRGB(245,190,70),
+                Coin = Color3.fromRGB(255,200,70), Gem = Color3.fromRGB(100,220,255),
+                Xp = Color3.fromRGB(150,240,130),
+            }},
+            GetTheme = function() return Apex.Themes.Obsidian end,
+            ApplyTheme = function() end,
+            formatNumber = function(n) return tostring(n or 0) end,
+            UILib = setmetatable({}, {__index = function(_, _name)
+    return function()
+        return {
+            Frame = Instance.new("Frame"),
+            Set   = function() end,
+            Get   = function() return nil end,
+            Toggle= function() end,
+            Push  = function() end,
+            SetValue  = function() end,
+            SetColor  = function() end,
+            SetProgress = function() end,
+            SetFilter = function() end,
+            SetSearch = function() end,
+            Export    = function() return "" end,
+            Clear     = function() end,
+            Append    = function() end,
+            SetOptions= function() end,
+        }
+    end
+end}),
+                        Window = function()
+                local stub = {
+                    Screen      = Instance.new("ScreenGui"),
+                    TitleLabel  = Instance.new("TextLabel"),
+                    StatusLabel = Instance.new("TextLabel"),
+                    Frame       = Instance.new("Frame"),
+                    Notif       = { Push = function() end },
+                }
+                function stub:SetTitle() end
+                function stub:SetStatus() end
+                function stub:SetOpacity() end
+                function stub:_setPos() end
+                function stub:AddTab()
+                    local page = Instance.new("ScrollingFrame")
+                    return {
+                        Content   = page,
+                        Page      = page,
+                        Button    = Instance.new("TextButton"),
+                        ActiveBar = Instance.new("Frame"),
+                    }
+                end
+                return stub
+            end,
+        }
+    end
+end
+
+local UILib = Apex.UILib
+local Themes = Apex.Themes
+
+-- Session tracker (kept local — uses this script's globals)
+local Session = {
+    StartLevel = 0, StartCoins = 0, StartGems = 0,
+    Wins = 0, Losses = 0, Matches = 0,
+}
+
+local function formatNumber(n) return Apex.formatNumber(n) end
+
+local function GetExpInfo()
+    local expObj = LocalPlayer:FindFirstChild("Experience")
+    local exp    = expObj and tonumber(expObj.Value) or nil
+    local maxExp = expObj and tonumber(expObj:GetAttribute("Max")) or nil
+    return exp, maxExp
+end
+
 local function CreateUI()
-    local oldGui = CoreGui:FindFirstChild("AutoProgressionUI")
-    if oldGui then oldGui:Destroy() end
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "AutoProgressionUI"
-    gui.ResetOnSpawn = false
-    gui.Parent = CoreGui
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 300, 0, 460)
-    frame.Position = UDim2.new(0.5, -150, 0.7, -210)
-    frame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
-    frame.BorderSizePixel = 0
-    frame.Parent = gui
-    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 14)
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(60, 60, 80)
-    stroke.Thickness = 2
-    stroke.Parent = frame
-    local header = Instance.new("Frame")
-    header.Size = UDim2.new(1, -24, 0, 38)
-    header.Position = UDim2.new(0, 12, 0, 12)
-    header.BackgroundColor3 = Color3.fromRGB(70, 130, 255)
-    header.BorderSizePixel = 0
-    header.Parent = frame
-    Instance.new("UICorner", header).CornerRadius = UDim.new(0, 12)
-    local gradient = Instance.new("UIGradient")
-    gradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 150, 255)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(170, 80, 220))
+    local old = CoreGui:FindFirstChild("AutoProgressionUI")
+    if old then old:Destroy() end
+
+    local win = Apex.Window({
+        ScreenGuiName = "AutoProgressionUI",
+        Title = "Auto Progression",
+        Subtitle = "Apex v" .. tostring(Apex.Version),
+        Logo = "⚡",
+        Width = 660, Height = 500,
     })
-    gradient.Parent = header
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 1, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "Auto Progression OFF"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.TextScaled = true
-    title.Font = Enum.Font.GothamBold
-    title.TextXAlignment = Enum.TextXAlignment.Center
-    title.Parent = header
-    local titleConstraint = Instance.new("UITextSizeConstraint")
-    titleConstraint.MaxTextSize = 22
-    titleConstraint.MinTextSize = 15
-    titleConstraint.Parent = title
-    local levelDisplay = Instance.new("TextLabel")
-    levelDisplay.Size = UDim2.new(1, 0, 0, 20)
-    levelDisplay.Position = UDim2.new(0, 0, 0, 58)
-    levelDisplay.BackgroundTransparency = 1
-    levelDisplay.Text = "Level: 0"
-    levelDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
-    levelDisplay.TextScaled = true
-    levelDisplay.Font = Enum.Font.GothamBold
-    levelDisplay.TextXAlignment = Enum.TextXAlignment.Center
-    levelDisplay.Parent = frame
-    local coinsDisplay = Instance.new("TextLabel")
-    coinsDisplay.Size = UDim2.new(1, 0, 0, 20)
-    coinsDisplay.Position = UDim2.new(0, 0, 0, 78)
-    coinsDisplay.BackgroundTransparency = 1
-    coinsDisplay.Text = "Coins: 0"
-    coinsDisplay.TextColor3 = Color3.fromRGB(255, 215, 0)
-    coinsDisplay.TextScaled = true
-    coinsDisplay.Font = Enum.Font.GothamBold
-    coinsDisplay.TextXAlignment = Enum.TextXAlignment.Center
-    coinsDisplay.Parent = frame
-    local gemsDisplay = Instance.new("TextLabel")
-    gemsDisplay.Size = UDim2.new(1, 0, 0, 20)
-    gemsDisplay.Position = UDim2.new(0, 0, 0, 98)
-    gemsDisplay.BackgroundTransparency = 1
-    gemsDisplay.Text = "Gems: 0"
-    gemsDisplay.TextColor3 = Color3.fromRGB(0, 255, 255)
-    gemsDisplay.TextScaled = true
-    gemsDisplay.Font = Enum.Font.GothamBold
-    gemsDisplay.TextXAlignment = Enum.TextXAlignment.Center
-    gemsDisplay.Parent = frame
-    local statusDisplay = Instance.new("TextLabel")
-    statusDisplay.Size = UDim2.new(1, 0, 0, 20)
-    statusDisplay.Position = UDim2.new(0, 0, 0, 118)
-    statusDisplay.BackgroundTransparency = 1
-    statusDisplay.Text = "Status: Idle"
-    statusDisplay.TextColor3 = Color3.fromRGB(200, 200, 200)
-    statusDisplay.TextScaled = true
-    statusDisplay.Font = Enum.Font.GothamBold
-    statusDisplay.TextXAlignment = Enum.TextXAlignment.Center
-    statusDisplay.Parent = frame
-    if _G._pendingStatus then
-        statusDisplay.Text = "Status: " .. _G._pendingStatus
-        _G._pendingStatus = nil
-    end
-    local toggle = Instance.new("TextButton")
-    toggle.Size = UDim2.new(0, 90, 0, 30)
-    toggle.Position = UDim2.new(0.5, -45, 0, 148)
-    toggle.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
-    toggle.Text = "OFF"
-    toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    toggle.TextScaled = true
-    toggle.Font = Enum.Font.GothamBold
-    toggle.Parent = frame
-    Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 10)
-    local modeLabel = Instance.new("TextLabel")
-    modeLabel.Size = UDim2.new(1, -20, 0, 18)
-    modeLabel.Position = UDim2.new(0, 10, 0, 186)
-    modeLabel.BackgroundTransparency = 1
-    modeLabel.Text = "Force Mode:"
-    modeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    modeLabel.TextScaled = true
-    modeLabel.Font = Enum.Font.GothamBold
-    modeLabel.TextXAlignment = Enum.TextXAlignment.Left
-    modeLabel.Parent = frame
-    local function CreateModeToggle(yOffset, label, settingKey)
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, 130, 0, 22)
-        btn.Position = UDim2.new(0, 10, 0, yOffset)
-        btn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-        btn.Text = label .. ": OFF"
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.TextScaled = true
-        btn.Font = Enum.Font.GothamBold
-        btn.Parent = frame
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-        return btn
-    end
 
-    -- ═══ Mode buttons now generated from MODE_REGISTRY ═══
-    local modeButtons = {}   -- key -> button instance
-    for _, m in ipairs(MODE_REGISTRY) do
-        modeButtons[m.key] = CreateModeToggle(m.y, m.label, m.key)
-    end
-
-    local function updateModeButton(btn, settingKey)
-        if _G.AutoProgSettings[settingKey] then
-            btn.Text = btn.Text:gsub(": OFF", ": ON")
-            btn.BackgroundColor3 = Color3.fromRGB(0, 170, 80)
-        else
-            btn.Text = btn.Text:gsub(": ON", ": OFF")
-            btn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-        end
-    end
-
-    local function updateAllModeButtons()
-        for _, m in ipairs(MODE_REGISTRY) do
-            updateModeButton(modeButtons[m.key], m.key)
-        end
-    end
+    local modeButtons = {}
+    local masterToggle
 
     local function saveSettings()
         if writefile then
-            local saveData = { AutoProgressionEnabled = _G.AutoProgSettings.AutoProgressionEnabled }
-            for _, m in ipairs(MODE_REGISTRY) do
-                saveData[m.key] = _G.AutoProgSettings[m.key]
-            end
-            writefile(SETTINGS_FILE, HttpService:JSONEncode(saveData))
+            local sd = { AutoProgressionEnabled = _G.AutoProgSettings.AutoProgressionEnabled }
+            for _, m in ipairs(MODE_REGISTRY) do sd[m.key] = _G.AutoProgSettings[m.key] end
+            sd.__theme = Apex.GetTheme().Name
+            pcall(function() writefile(SETTINGS_FILE, HttpService:JSONEncode(sd)) end)
         end
     end
 
-    local function updateMainUI()
-        local anyForceOn = IsAnyForceOn()
-        local isRunning = AutoProgressionEnabled or anyForceOn
-        if isRunning then
-            toggle.Text = "ON"
-            toggle.BackgroundColor3 = Color3.fromRGB(0, 170, 80)
-            if anyForceOn then
-                title.Text = "Auto Progression (Forced)"
-                if statusDisplay.Text:find("Status: Idle") or statusDisplay.Text:find("Status: Stopped") then
-                    statusDisplay.Text = "Status: Forcing Mode"
+    local function updateMainTitle()
+        local any = IsAnyForceOn()
+        if AutoProgressionEnabled or any then
+            win:SetTitle(any and "Auto Progression · FORCED" or "Auto Progression")
+        else
+            win:SetTitle("Auto Progression · OFF")
+        end
+    end
+
+    -- ═══════════════════════ TAB 1 — MAIN ═══════════════════════
+    local mainTab = win:AddTab({ Title = "Main", Icon = "🏠", Tooltip = "Dashboard & master control" })
+    UILib.Section(mainTab.Content, "Master Control")
+
+    masterToggle = UILib.Toggle(mainTab.Content, {
+        Title = "Auto Progression",
+        Desc = "Automatic match running based on your level",
+        Value = AutoProgressionEnabled,
+        Tooltip = "When enabled, the script will run matches automatically.",
+        Callback = function(v)
+            AutoProgressionEnabled = v
+            _G.AutoProgSettings.AutoProgressionEnabled = v
+            if not v then
+                ClearAllForceModes(nil)
+                getgenv().HcEvoActive = false
+                getgenv().HcUnevoActive = false
+                for _, m in ipairs(MODE_REGISTRY) do
+                    if modeButtons[m.key] and modeButtons[m.key].Set then modeButtons[m.key].Set(false) end
                 end
+                SetStatus("Stopped")
+                win:SetStatus("Idle", Apex.GetTheme().TextMute)
             else
-                title.Text = "Auto Progression Running"
-                if statusDisplay.Text:find("Status: Idle") or statusDisplay.Text:find("Status: Stopped") then
-                    statusDisplay.Text = "Status: Running..."
-                end
+                SetStatus("Starting...")
+                win:SetStatus("Running", Apex.GetTheme().Success)
+                win.Notif:Push({ Title = "Auto Progression", Desc = "Enabled", Type = "success" })
             end
-        else
-            toggle.Text = "OFF"
-            toggle.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
-            title.Text = "Auto Progression OFF"
-            statusDisplay.Text = "Status: Stopped"
-        end
-    end
-
-    local function toggleMode(settingKey, btn)
-        getgenv().HcEvoActive = false
-        getgenv().HcUnevoActive = false
-        ClearAllForceModes(settingKey)
-        _G.AutoProgSettings[settingKey] = not _G.AutoProgSettings[settingKey]
-        updateAllModeButtons()
-        if _G.AutoProgSettings[settingKey] then
-            AutoProgressionEnabled = true
-            _G.AutoProgSettings.AutoProgressionEnabled = true
-            updateMainUI()
+            updateMainTitle()
             saveSettings()
-            task.spawn(RunAutoProgression)
-        else
-            updateMainUI()
-            saveSettings()
-        end
-    end
+            if v then task.spawn(RunAutoProgression) end
+        end,
+    })
 
-    toggle.MouseButton1Click:Connect(function()
-        AutoProgressionEnabled = not AutoProgressionEnabled
-        _G.AutoProgSettings.AutoProgressionEnabled = AutoProgressionEnabled
-        if not AutoProgressionEnabled then
-            ClearAllForceModes(nil)
-            getgenv().HcEvoActive = false
-            getgenv().HcUnevoActive = false
-            updateAllModeButtons()
-            SetStatus("Stopped")
-        else
-            SetStatus("Starting...")
-        end
-        updateMainUI()
-        saveSettings()
-        if AutoProgressionEnabled then
+    UILib.Section(mainTab.Content, "Quick Actions")
+
+    local actionsRow = Instance.new("Frame")
+    actionsRow.BackgroundTransparency = 1
+    actionsRow.Size = UDim2.new(1, 0, 0, 40)
+    actionsRow.LayoutOrder = -100
+    actionsRow.Parent = mainTab.Content
+
+    local runBtn = UILib.Button(actionsRow, {
+        Title = "🚀  Force Run Now",
+        Variant = "primary",
+        Tooltip = "Immediately triggers the auto-progression logic.",
+        Callback = function()
+            if not AutoProgressionEnabled then
+                AutoProgressionEnabled = true
+                _G.AutoProgSettings.AutoProgressionEnabled = true
+                if masterToggle then masterToggle.Set(true) end
+                updateMainTitle()
+            end
             task.spawn(RunAutoProgression)
-        else
-            _G.AutoProgSettings.__locked = false
+            win.Notif:Push({ Title = "Progression", Desc = "Running now", Type = "success" })
+        end,
+    })
+    runBtn.Frame.Size = UDim2.new(0.5, -5, 1, 0)
+    runBtn.Frame.Position = UDim2.new(0, 0, 0, 0)
+    runBtn.Frame.Parent = actionsRow
+
+    local lobbyBtn = UILib.Button(actionsRow, {
+        Title = "↺  Return to Lobby",
+        Tooltip = "Uses SmartTeleportToLobby to return to the main hub.",
+        Callback = function()
+            local tp = getgenv().SmartTeleportToLobby
+            if type(tp) == "function" then
+                pcall(tp)
+                win.Notif:Push({ Title = "Teleport", Desc = "Returning to lobby", Type = "warn" })
+            end
+        end,
+    })
+    lobbyBtn.Frame.Size = UDim2.new(0.5, -5, 1, 0)
+    lobbyBtn.Frame.Position = UDim2.new(0.5, 0, 0, 0)
+    lobbyBtn.Frame.Parent = actionsRow
+
+    UILib.Section(mainTab.Content, "Current Activity")
+
+    local activityCard = Instance.new("Frame")
+    activityCard.BackgroundColor3 = Apex.GetTheme().Surface
+    activityCard.BackgroundTransparency = 0.3
+    activityCard.BorderSizePixel = 0
+    activityCard.Size = UDim2.new(1, 0, 0, 76)
+    activityCard.LayoutOrder = -100
+    activityCard.Parent = mainTab.Content
+    Instance.new("UICorner", activityCard).CornerRadius = UDim.new(0, 12)
+
+    local actIcon = Instance.new("Frame")
+    actIcon.BackgroundColor3 = Apex.GetTheme().Accent
+    actIcon.BorderSizePixel = 0
+    actIcon.Size = UDim2.fromOffset(44, 44)
+    actIcon.Position = UDim2.new(0, 16, 0.5, -22)
+    actIcon.Parent = activityCard
+    Instance.new("UICorner", actIcon).CornerRadius = UDim.new(0, 10)
+
+    local actIconLbl = Instance.new("TextLabel")
+    actIconLbl.Text = "⚡"; actIconLbl.Font = Enum.Font.GothamBlack; actIconLbl.TextSize = 22
+    actIconLbl.TextColor3 = Color3.new(1,1,1); actIconLbl.BackgroundTransparency = 1
+    actIconLbl.Size = UDim2.new(1, 0, 1, 0); actIconLbl.Parent = actIcon
+
+    local actTitle = Instance.new("TextLabel")
+    actTitle.Text = "Idle"; actTitle.Font = Enum.Font.GothamBold; actTitle.TextSize = 15
+    actTitle.TextColor3 = Apex.GetTheme().Text; actTitle.BackgroundTransparency = 1
+    actTitle.TextXAlignment = Enum.TextXAlignment.Left
+    actTitle.Size = UDim2.new(1, -80, 0, 18); actTitle.Position = UDim2.new(0, 72, 0, 14)
+    actTitle.Parent = activityCard
+
+    local actDesc = Instance.new("TextLabel")
+    actDesc.Text = "Waiting for instructions..."
+    actDesc.Font = Enum.Font.Gotham; actDesc.TextSize = 11
+    actDesc.TextColor3 = Apex.GetTheme().TextMute; actDesc.BackgroundTransparency = 1
+    actDesc.TextXAlignment = Enum.TextXAlignment.Left
+    actDesc.TextTruncate = Enum.TextTruncate.AtEnd
+    actDesc.Size = UDim2.new(1, -80, 0, 16); actDesc.Position = UDim2.new(0, 72, 0, 36)
+    actDesc.Parent = activityCard
+
+    local pulseDot = Instance.new("Frame")
+    pulseDot.BackgroundColor3 = Apex.GetTheme().TextMute
+    pulseDot.BorderSizePixel = 0
+    pulseDot.Size = UDim2.fromOffset(8, 8)
+    pulseDot.Position = UDim2.new(1, -22, 0.5, -4)
+    pulseDot.Parent = activityCard
+    Instance.new("UICorner", pulseDot).CornerRadius = UDim.new(0, 4)
+
+    task.spawn(function()
+        local t = 0
+        while activityCard.Parent do
+            if win.Screen and win.Screen.Parent then
+                t = t + 0.1
+                pulseDot.BackgroundTransparency = 0.7 + math.sin(t * 3) * 0.3
+            end
+            task.wait(0.1)
         end
     end)
 
-    -- ═══ Mode button connections, driven by MODE_REGISTRY ═══
+    -- ═══════════════════════ TAB 2 — MODES ═══════════════════════
+    local modesTab = win:AddTab({ Title = "Modes", Icon = "⚔️", Tooltip = "Force a specific difficulty" })
+    UILib.Section(modesTab.Content, "Forced Difficulty")
+
+    local modeDesc = Instance.new("TextLabel")
+    modeDesc.Text = "Forcing a mode overrides level-based selection. Only one can be active at once."
+    modeDesc.Font = Enum.Font.Gotham; modeDesc.TextSize = 11
+    modeDesc.TextColor3 = Apex.GetTheme().TextMute; modeDesc.BackgroundTransparency = 1
+    modeDesc.TextXAlignment = Enum.TextXAlignment.Left
+    modeDesc.TextWrapped = true
+    modeDesc.Size = UDim2.new(1, 0, 0, 30); modeDesc.LayoutOrder = -1000
+    modeDesc.Parent = modesTab.Content
+
     for _, m in ipairs(MODE_REGISTRY) do
-        modeButtons[m.key].MouseButton1Click:Connect(function()
-            toggleMode(m.key, modeButtons[m.key])
-        end)
+        modeButtons[m.key] = UILib.Toggle(modesTab.Content, {
+            Title = m.label,
+            Desc = "Force " .. m.label .. " on next match",
+            Value = _G.AutoProgSettings[m.key] or false,
+            Callback = function(v)
+                getgenv().HcEvoActive = false
+                getgenv().HcUnevoActive = false
+                ClearAllForceModes(m.key)
+                _G.AutoProgSettings[m.key] = v
+                for _, other in ipairs(MODE_REGISTRY) do
+                    if other.key ~= m.key and modeButtons[other.key] then
+                        modeButtons[other.key].Set(false)
+                    end
+                end
+                if v then
+                    if not AutoProgressionEnabled then
+                        AutoProgressionEnabled = true
+                        _G.AutoProgSettings.AutoProgressionEnabled = true
+                        if masterToggle then masterToggle.Set(true) end
+                        updateMainTitle()
+                    end
+                    saveSettings()
+                    task.spawn(RunAutoProgression)
+                    win.Notif:Push({ Title = "Force Mode", Desc = m.label .. " enabled", Type = "warn" })
+                else
+                    saveSettings()
+                end
+            end,
+        })
     end
 
-    if isfile and isfile(SETTINGS_FILE) then
-        local success, data = pcall(function()
-            return HttpService:JSONDecode(readfile(SETTINGS_FILE))
-        end)
-        if success and type(data) == "table" then
-            for k, v in pairs(data) do
-                _G.AutoProgSettings[k] = v
-            end
-        end
-    end
+    -- ═══════════════════════ TAB 3 — STATS ═══════════════════════
+    local statsTab = win:AddTab({ Title = "Stats", Icon = "📊", Tooltip = "Account & session statistics" })
+    UILib.Section(statsTab.Content, "Account")
 
-    _G.AutoProgSettings.AutoUpgradeSelected = false
-    _G.AutoProgSettings.AutoUpgradeAll = false
-    getgenv().AutoUpgradeSelected = false
-    getgenv().AutoUpgradeAll = false
-    AutoProgressionEnabled = _G.AutoProgSettings.AutoProgressionEnabled or false
-    if IsAnyForceOn() then
-        AutoProgressionEnabled = true
-        _G.AutoProgSettings.AutoProgressionEnabled = true
-    end
-    updateMainUI()
-    updateAllModeButtons()
-    if AutoProgressionEnabled then
-        task.spawn(RunAutoProgression)
-    end
+    local r1 = Instance.new("Frame")
+    r1.BackgroundTransparency = 1; r1.Size = UDim2.new(1, 0, 0, 68); r1.LayoutOrder = -100
+    r1.Parent = statsTab.Content
+    local l1 = Instance.new("UIListLayout", r1)
+    l1.FillDirection = Enum.FillDirection.Horizontal; l1.Padding = UDim.new(0, 10)
 
-    local dragging = false
-    local dragInput, dragStart, startPos
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
-            end)
-        end
-    end)
-    frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
-                                       startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    local cardLevel = UILib.StatCard(r1, { Icon="⭐", Label="Level", Value="0", Color=Apex.GetTheme().Accent, Tooltip="Your current account level" })
+    local cardCoins = UILib.StatCard(r1, { Icon="🪙", Label="Coins", Value="0", Color=Apex.GetTheme().Coin, Tooltip="Total coins" })
+
+    local r2 = Instance.new("Frame")
+    r2.BackgroundTransparency = 1; r2.Size = UDim2.new(1, 0, 0, 68); r2.LayoutOrder = -99
+    r2.Parent = statsTab.Content
+    local l2 = Instance.new("UIListLayout", r2)
+    l2.FillDirection = Enum.FillDirection.Horizontal; l2.Padding = UDim.new(0, 10)
+
+    local cardGems = UILib.StatCard(r2, { Icon="💎", Label="Gems", Value="0", Color=Apex.GetTheme().Gem, Tooltip="Total gems" })
+    local cardTix  = UILib.StatCard(r2, { Icon="🎫", Label="Timescale", Value="0", Color=Apex.GetTheme().AccentAlt, Tooltip="Timescale tickets" })
+
+    UILib.Section(statsTab.Content, "Experience")
+    local progress = UILib.Progress(statsTab.Content, { Label="Progress to next level", Color=Apex.GetTheme().Xp, Order=-90 })
+
+    UILib.Section(statsTab.Content, "This Session")
+    local r3 = Instance.new("Frame")
+    r3.BackgroundTransparency = 1; r3.Size = UDim2.new(1, 0, 0, 68); r3.LayoutOrder = -80
+    r3.Parent = statsTab.Content
+    local l3 = Instance.new("UIListLayout", r3)
+    l3.FillDirection = Enum.FillDirection.Horizontal; l3.Padding = UDim.new(0, 10)
+
+    local cardSC = UILib.StatCard(r3, { Icon="📈", Label="Coins Earned", Value="+0", Color=Apex.GetTheme().Success, Tooltip="Coins gained this session" })
+    local cardSG = UILib.StatCard(r3, { Icon="📈", Label="Gems Earned", Value="+0", Color=Apex.GetTheme().Success, Tooltip="Gems gained this session" })
+
+    local r4 = Instance.new("Frame")
+    r4.BackgroundTransparency = 1; r4.Size = UDim2.new(1, 0, 0, 68); r4.LayoutOrder = -79
+    r4.Parent = statsTab.Content
+    local l4 = Instance.new("UIListLayout", r4)
+    l4.FillDirection = Enum.FillDirection.Horizontal; l4.Padding = UDim.new(0, 10)
+
+    local cardWins   = UILib.StatCard(r4, { Icon="🏆", Label="Wins", Value="0", Color=Apex.GetTheme().Success })
+    local cardLosses = UILib.StatCard(r4, { Icon="💀", Label="Losses", Value="0", Color=Apex.GetTheme().Danger })
+
+    UILib.Section(statsTab.Content, "Rate Tracking (last 5 min)")
+    local coinGraph = UILib.Graph(statsTab.Content, {
+        Label = "Coins / min", Color = Apex.GetTheme().Coin, Order = -50,
+        Format = function(v) return formatNumber(v) .. " c/m" end,
+    })
+    local gemGraph = UILib.Graph(statsTab.Content, {
+        Label = "Gems / min", Color = Apex.GetTheme().Gem, Order = -49,
+        Format = function(v) return formatNumber(v) .. " g/m" end,
+    })
+
+    task.spawn(function()
+        Session.StartLevel = GetStat("Level")
+        Session.StartCoins = GetStat("Coins")
+        Session.StartGems  = GetStat("Gems")
+        while statsTab.Page.Parent do
+            local lvl   = GetStat("Level")
+            local coins = GetStat("Coins")
+            local gems  = GetStat("Gems")
+            local tix   = GetStat("TimescaleTickets"); if tix == 0 then tix = GetStat("Tickets") end
+            cardLevel:SetValue(lvl)
+            cardCoins:SetValue(formatNumber(coins))
+            cardGems:SetValue(formatNumber(gems))
+            cardTix:SetValue(tix)
+            cardSC:SetValue("+" .. formatNumber(math.max(0, coins - Session.StartCoins)))
+            cardSG:SetValue("+" .. formatNumber(math.max(0, gems - Session.StartGems)))
+            cardWins:SetValue(Session.Wins)
+            cardLosses:SetValue(Session.Losses)
+            local exp, mx = GetExpInfo()
+            if exp and mx and mx > 0 then progress.SetProgress(exp, mx)
+            else progress.SetProgress(lvl, math.max(lvl + 1, 175)) end
+            task.wait(1)
         end
     end)
 
     task.spawn(function()
-        while task.wait(1) do
-            local level = GetStat("Level")
-            local coins = GetStat("Coins")
-            local gems = GetStat("Gems")
-            levelDisplay.Text = "Level: " .. tostring(level)
-            coinsDisplay.Text = "Coins: " .. tostring(coins)
-            gemsDisplay.Text = "Gems: " .. tostring(gems)
+        local lastC, lastG = GetStat("Coins"), GetStat("Gems")
+        while statsTab.Page.Parent do
+            task.wait(6)
+            local c, g = GetStat("Coins"), GetStat("Gems")
+            coinGraph.Push(math.max(0, c - lastC) * 10)
+            gemGraph.Push(math.max(0, g - lastG) * 10)
+            lastC, lastG = c, g
         end
     end)
 
-    local out = {
-        title = title,
-        status = statusDisplay,
-        toggle = toggle,
-        levelDisplay = levelDisplay,
-        coinsDisplay = coinsDisplay,
-        gemsDisplay = gemsDisplay,
-    }
-    -- Return the mode buttons under their Force* keys
-    for _, m in ipairs(MODE_REGISTRY) do
-        out[m.key] = modeButtons[m.key]
+    -- ═══════════════════════ TAB 4 — ACTIVITY ═══════════════════════
+    local actTab = win:AddTab({ Title = "Activity", Icon = "📜", Tooltip = "Live activity feed" })
+    local logView, logScroll = UILib.LogView(actTab.Content)
+    logScroll.Size = UDim2.new(1, 0, 1, -90)
+    logScroll.LayoutOrder = -800
+
+    local filterRow = Instance.new("Frame")
+    filterRow.BackgroundTransparency = 1
+    filterRow.Size = UDim2.new(1, 0, 0, 30)
+    filterRow.LayoutOrder = -900
+    filterRow.Parent = actTab.Content
+    local frl = Instance.new("UIListLayout", filterRow)
+    frl.FillDirection = Enum.FillDirection.Horizontal; frl.Padding = UDim.new(0, 6)
+
+    local function mkFilter(title, key, color)
+        local b = Instance.new("TextButton")
+        b.Text = title; b.Font = Enum.Font.GothamBold; b.TextSize = 11
+        b.TextColor3 = color or Apex.GetTheme().TextDim
+        b.BackgroundColor3 = Apex.GetTheme().Surface2; b.BackgroundTransparency = 0.4
+        b.BorderSizePixel = 0; b.AutoButtonColor = false
+        b.Size = UDim2.fromOffset(60, 26)
+        b.Parent = filterRow
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+        b.MouseButton1Click:Connect(function()
+            logView.SetFilter(key)
+            for _, other in ipairs(filterRow:GetChildren()) do
+                if other:IsA("TextButton") then other.BackgroundTransparency = 0.4 end
+            end
+            b.BackgroundTransparency = 0
+        end)
+        return b
     end
+    mkFilter("All", "all")
+    mkFilter("Info", "info")
+    mkFilter("Win", "success", Apex.GetTheme().Success)
+    mkFilter("Err", "error", Apex.GetTheme().Danger)
+    mkFilter("Warn", "warn", Apex.GetTheme().Warn)
+
+    UILib.Textbox(actTab.Content, {
+        Title = "Search", Placeholder = "Type to filter...", Order = -850,
+        Callback = function(v) logView.SetSearch(v) end,
+    })
+
+    UILib.Button(actTab.Content, {
+        Title = "📄  Export Log to Clipboard", Order = -840,
+        Callback = function()
+            if setclipboard then
+                setclipboard(logView.Export())
+                win.Notif:Push({ Title="Export", Desc="Log copied", Type="success" })
+            end
+        end,
+    })
+
+    -- ═══════════════════════ TAB 5 — SETTINGS ═══════════════════════
+    local setTab = win:AddTab({ Title = "Settings", Icon = "⚙️", Tooltip = "Configuration" })
+
+    UILib.Section(setTab.Content, "Appearance")
+
+    local themeNames = {}
+    for k in pairs(Themes) do table.insert(themeNames, k) end
+    table.sort(themeNames)
+
+    UILib.Dropdown(setTab.Content, {
+        Title = "Theme", Options = themeNames, Value = "Obsidian",
+        Callback = function(choice)
+            Apex.ApplyTheme(choice)
+            saveSettings()
+            win.Notif:Push({ Title = "Theme", Desc = choice .. " applied", Type = "success" })
+        end,
+    })
+
+    UILib.Slider(setTab.Content, {
+        Title = "Window Opacity", Min = 0, Max = 70, Value = 0,
+        Format = function(v) return v .. "%" end,
+        Callback = function(v) win:SetOpacity(v / 100) end,
+    })
+
+    UILib.Section(setTab.Content, "Window Controls")
+    UILib.Button(setTab.Content, {
+        Title = "🎯  Reset Window Position",
+        Callback = function()
+            local w = win.Frame.AbsoluteSize.X
+            local h = win.Frame.AbsoluteSize.Y
+            win._setPos((1920 - w) / 2, (1080 - h) / 2)
+        end,
+    })
+    UILib.Button(setTab.Content, {
+        Title = "🔔  Test Notification",
+        Callback = function()
+            win.Notif:Push({ Title = "Test", Desc = "Hello from Apex!", Type = "success" })
+        end,
+    })
+
+    UILib.Section(setTab.Content, "Configuration")
+    UILib.Button(setTab.Content, {
+        Title = "💾  Save Settings",
+        Callback = function() saveSettings(); win.Notif:Push({Title="Config",Desc="Saved",Type="success"}) end,
+    })
+    UILib.Button(setTab.Content, {
+        Title = "🔄  Reload Settings",
+        Callback = function()
+            if isfile and isfile(SETTINGS_FILE) then
+                local ok, data = pcall(function() return HttpService:JSONDecode(readfile(SETTINGS_FILE)) end)
+                if ok and type(data) == "table" then
+                    for k, v in pairs(data) do _G.AutoProgSettings[k] = v end
+                    for _, m in ipairs(MODE_REGISTRY) do
+                        if modeButtons[m.key] and modeButtons[m.key].Set then
+                            modeButtons[m.key].Set(_G.AutoProgSettings[m.key] == true)
+                        end
+                    end
+                    win.Notif:Push({Title="Config",Desc="Loaded",Type="success"})
+                end
+            end
+        end,
+    })
+
+    -- ═══════════════════════ HOTKEY — RightShift ═══════════════════════
+    local uiVisible = true
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.KeyCode == Enum.KeyCode.RightShift then
+            uiVisible = not uiVisible
+            win.Screen.Enabled = uiVisible
+            if uiVisible then
+                win.Notif:Push({ Title = "UI", Desc = "Visible", Type = "info", Duration = 1.5 })
+            end
+        end
+    end)
+
+    -- ═══════════════════════ STATUS → ACTIVITY LOG HOOK ═══════════════════════
+    local lastStatus = ""
+    task.spawn(function()
+        while win.Screen and win.Screen.Parent do
+            local s = getgenv().AutoProgressionUI
+            if s and s.status and s.status.Text then
+                local text = s.status.Text:gsub("^Status:%s*", "")
+                if text ~= lastStatus and text ~= "" and text ~= "Stopped" then
+                    lastStatus = text
+                    local lower = text:lower()
+                    local kind = "info"
+                    if lower:find("error") or lower:find("fail") or lower:find("not enough") then kind = "error"
+                    elseif lower:find("bought") or lower:find("complete") or lower:find("success") or lower:find("win") then kind = "success"
+                    elseif lower:find("warn") or lower:find("skip") or lower:find("fallback") then kind = "warn" end
+                    logView.Append(text, Apex.GetTheme().Text, kind)
+                end
+            end
+            task.wait(0.4)
+        end
+    end)
+
+    -- ═══════════════════════ RETURN API ═══════════════════════
+    local out = {
+        _window = win,
+        _ui = UILib,
+        _log = logView,
+        title  = win.TitleLabel,
+        status = win.StatusLabel,
+        toggle = masterToggle.Frame,
+        levelDisplay = cardLevel.Frame,
+        coinsDisplay = cardCoins.Frame,
+        gemsDisplay  = cardGems.Frame,
+        Notify = function(cfg) win.Notif:Push(cfg) end,
+    }
+    for _, m in ipairs(MODE_REGISTRY) do
+        out[m.key] = modeButtons[m.key] and modeButtons[m.key].Frame or nil
+    end
+
+    -- Replace global SetStatus (keeps `ui.status.Text` in sync)
+    getgenv().SetStatus = function(text)
+        win:SetStatus(text, Apex.GetTheme().Success)
+        if _G.AutoProgressionUI and _G.AutoProgressionUI.status then
+            _G.AutoProgressionUI.status.Text = "Status: " .. text
+        end
+    end
+
+    if AutoProgressionEnabled or IsAnyForceOn() then
+        win:SetStatus("Running", Apex.GetTheme().Success)
+    else
+        win:SetStatus("Idle", Apex.GetTheme().TextMute)
+    end
+
+    task.delay(0.6, function()
+        win.Notif:Push({
+            Title = "Apex UI v" .. tostring(Apex.Version),
+            Desc = "Loaded externally. RightShift to hide.",
+            Type = "info", Duration = 5,
+        })
+    end)
+
     return out
 end
 
