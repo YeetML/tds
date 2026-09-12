@@ -11,8 +11,8 @@ local Globals        = getgenv()
 local AutoMedic = {}
 local activeLoops       = {}
 local activeChainThread = nil
-local activeChainMedic     = nil -- medic currently mid-cycle in Chain, if any
-local activeChainStopWatch = nil -- its reattach-watch disconnector, if any
+local activeChainMedic     = nil 
+local activeChainStopWatch = nil 
 local RANGE_SLACK        = 0.5
 local CAPACITY_BY_LEVEL = {
     [0] = 1, [1] = 2, [2] = 3, [3] = 3, [4] = 4, [5] = 5
@@ -574,7 +574,7 @@ end
 -- shared, wrong-medic panel described above) - it just tries, and relies
 -- on MAX_UBER_ATTEMPTS + the caller's round-robin to space out real
 -- per-medic cooldowns instead of an unreliable proxy for them.
-local MAX_UBER_ATTEMPTS = 5
+local MAX_UBER_ATTEMPTS = 1
 local function TryStartUber(medic, targets)
     local uberData = getUberData(medic)
     if not uberData then
