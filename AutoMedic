@@ -410,13 +410,19 @@ local function clearAllSelected(medic)
     runToggleBatch(medic, items)
 end
 
+-- PATCHED: only report targets that were actually confirmed selected
+-- server-side. The original version unconditionally inserted every
+-- candidate into `attached` before runToggleBatch even ran, so a
+-- silently-rejected toggle (out of range, capacity/claim race, etc.)
+-- would hand TryStartUber a phantom target list. With nothing really
+-- selected, Ubercharge activation does nothing, no damage-buff signal
+-- ever appears, and (combined with the old unbounded retry loop) the
+-- medic would get stuck retrying forever.
 local function attachTargets(medic, targets)
-    local attached = {}
     local selected = getSelectedUIDs(medic)
     local items = {}
     for _, t in ipairs(targets) do
         if IsAlive(t) then
-            table.insert(attached, t)
             local uid = getTowerUID(t)
             if not uid or not selected[uid] then
                 table.insert(items, { tower = t, want = true })
@@ -424,6 +430,17 @@ local function attachTargets(medic, targets)
         end
     end
     runToggleBatch(medic, items)
+
+    local confirmed = getSelectedUIDs(medic)
+    local attached = {}
+    for _, t in ipairs(targets) do
+        if IsAlive(t) then
+            local uid = getTowerUID(t)
+            if uid and confirmed[uid] then
+                table.insert(attached, t)
+            end
+        end
+    end
     return attached
 end
 
@@ -593,28 +610,54 @@ local function WaitForUberEnd(targets, baseline, uberData, activationAt, sawDama
         task.wait(0.05)
     end
 end
+
+-- PATCHED: TryStartUber no longer creates or owns the reattach-watch
+-- connection, and no longer retries forever. Two fixes here:
+--
+-- 1. MAX_UBER_ATTEMPTS caps the retry loop. The original had no bound at
+--    all - if activation never registered as started (e.g. targets that
+--    looked attached but weren't, or any other silent server rejection),
+--    this would retry every ~1.65s forever, and since Chain is a single
+--    sequential thread, that permanently blocked every other medic too.
+--
+-- 2. The reattach-watch is now created by the CALLER (Chain/Function),
+--    not here, and its disconnector is stored in the caller's tracking
+--    variable immediately - not only returned at the end of this
+--    function. Previously, if this coroutine got task.cancel'd anywhere
+--    inside this loop (which is exactly what happens when Auto Medic is
+--    toggled off mid-cycle, or Chain is restarted), the `stopWatch` local
+--    was never returned and became permanently unreachable - leaking a
+--    live AttributeChangedSignal connection that would fight forever to
+--    re-select any target toggled off it. That was the actual
+--    "won't detach" bug: verified live by catching a medic mid-attach and
+--    killing the chain, which left exactly one orphaned connection on the
+--    tower's TowersSelected signal with no way to disconnect it.
+local MAX_UBER_ATTEMPTS = 5
 local function TryStartUber(medic, targets)
     local uberData = getUberData(medic)
     if not uberData then
-        return false, nil, nil, nil, false, function() end
+        return false, nil, nil, nil, false
     end
-    local stopWatch = startReattachWatch(medic, targets)
+    local attempts = 0
     while IsAlive(medic) do
         if not WaitForReady(medic) then
-            stopWatch()
-            return false, nil, nil, nil, false, function() end
+            return false, nil, nil, nil, false
         end
         local baseline = CaptureDamageBuffs(targets)
         local activationAt = os.clock()
         activateUbercharge(medic)
         local started, saw = WaitForUberStart(medic, targets, baseline, uberData, 1.6)
         if started then
-            return true, baseline, uberData, activationAt, saw, stopWatch
+            return true, baseline, uberData, activationAt, saw
+        end
+        attempts += 1
+        if attempts >= MAX_UBER_ATTEMPTS then
+            warn("[AutoMedic] giving up on this medic after " .. attempts .. " failed Ubercharge attempts")
+            return false, nil, nil, nil, false
         end
         task.wait(0.05)
     end
-    stopWatch()
-    return false, nil, nil, nil, false, function() end
+    return false, nil, nil, nil, false
 end
 ----------------------------------------------------------------
 -- Public: Function
@@ -622,11 +665,21 @@ end
 function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
     medicIndex = medicIndex or 1
     if not activeLoops[medicIndex] then
-        activeLoops[medicIndex] = { thread = nil, lastTargets = {} }
+        activeLoops[medicIndex] = { thread = nil, lastTargets = {}, stopWatch = nil, medic = nil }
     end
     if activeLoops[medicIndex].thread then
         task.cancel(activeLoops[medicIndex].thread)
         activeLoops[medicIndex].thread = nil
+    end
+    -- PATCHED: clean up whatever the cancelled thread left mid-flight,
+    -- same leak this function had as Chain.
+    if activeLoops[medicIndex].stopWatch then
+        pcall(activeLoops[medicIndex].stopWatch)
+        activeLoops[medicIndex].stopWatch = nil
+    end
+    if activeLoops[medicIndex].medic then
+        clearAllSelected(activeLoops[medicIndex].medic)
+        activeLoops[medicIndex].medic = nil
     end
     local myMedics = getMyMedics()
     local selected = myMedics[medicIndex]
@@ -655,14 +708,22 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
             clearAllSelected(selected)
             local attached = attachTargets(selected, targets)
             activeLoops[medicIndex].lastTargets = attached
-            local started, baseline, uberData, at, saw, stopWatch = TryStartUber(selected, attached)
-            if started and baseline and uberData and at then
-                WaitForUberEnd(attached, baseline, uberData, at, saw)
+            if #attached > 0 then
+                activeLoops[medicIndex].medic = selected
+                activeLoops[medicIndex].stopWatch = startReattachWatch(selected, attached)
+                local started, baseline, uberData, at, saw = TryStartUber(selected, attached)
+                if started and baseline and uberData and at then
+                    WaitForUberEnd(attached, baseline, uberData, at, saw)
+                end
+                if activeLoops[medicIndex].stopWatch then
+                    pcall(activeLoops[medicIndex].stopWatch)
+                    activeLoops[medicIndex].stopWatch = nil
+                end
             else
                 task.wait(0.05)
             end
-            stopWatch()
             clearAllSelected(selected)
+            activeLoops[medicIndex].medic = nil
             activeLoops[medicIndex].lastTargets = {}
             task.wait(0.05)
         end
@@ -731,13 +792,26 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
             clearAllSelected(medic)
             local attached = attachTargets(medic, targets)
             activeChainMedic = medic
-            local started, baseline, ud, at, saw, stopWatch = TryStartUber(medic, attached)
-            activeChainStopWatch = stopWatch
-            if started and baseline and ud and at then
-                WaitForUberEnd(attached, baseline, ud, at, saw)
+            if #attached > 0 then
+                -- PATCHED: create the reattach-watch here and store its
+                -- disconnector immediately, BEFORE calling TryStartUber
+                -- (which can block for a while). This way, no matter where
+                -- task.cancel interrupts this thread, chainCleanup() always
+                -- has a valid reference to disconnect - closing the leak
+                -- that used to strand this connection forever.
+                activeChainStopWatch = startReattachWatch(medic, attached)
+                local started, baseline, ud, at, saw = TryStartUber(medic, attached)
+                if started and baseline and ud and at then
+                    WaitForUberEnd(attached, baseline, ud, at, saw)
+                end
+                if activeChainStopWatch then pcall(activeChainStopWatch) end
+                activeChainStopWatch = nil
+            else
+                -- PATCHED: attach failed (or was rejected server-side) -
+                -- skip the uber attempt entirely instead of handing
+                -- TryStartUber a phantom target list it can never satisfy.
+                warn("[AutoMedic] attach failed for this medic, skipping cycle")
             end
-            if stopWatch then pcall(stopWatch) end
-            activeChainStopWatch = nil
             clearAllSelected(medic)
             activeChainMedic = nil
             nextIdx += 1
