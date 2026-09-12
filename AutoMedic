@@ -767,7 +767,7 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
                 started, baseline, ud, at, saw = TryStartUber(m, attached)
                 if started then break end
                 if not medicUsable(m) then break end
-                task.wait(0.2)              -- let the cooldown tick down
+                task.wait(0.05)              -- let the cooldown tick down
                 local refreshed = gatherTargets(m)
                 if #refreshed == 0 then break end
                 attached = attachTargets(m, refreshed)
