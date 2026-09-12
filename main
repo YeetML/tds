@@ -5526,37 +5526,56 @@ end
 
 local function StartSellFarm()
     if SellFarmsRunning or not Globals.SellFarms then return end
+    if GameState ~= "GAME" then return end   
     SellFarmsRunning = true
 
-    if GameState ~= "GAME" then 
-        return false 
-    end
-
     task.spawn(function()
+        local soldThisSession = {}   
+
         while Globals.SellFarms do
             local CurrentWave = GetCurrentWave()
-            if Globals.SellFarmsWave and CurrentWave < Globals.SellFarmsWave then
-                task.wait(1)
-                continue
-            end
+            local target = Globals.SellFarmsWave or 1
 
-            local TowersFolder = workspace:FindFirstChild("Towers")
-            if TowersFolder then
-                for _, replicator in ipairs(TowersFolder:GetDescendants()) do
-                    if replicator:IsA("Folder") and replicator.Name == "TowerReplicator" then
-                        local IsFarm = replicator:GetAttribute("Name") == "Farm"
-                        local IsMine = replicator:GetAttribute("OwnerId") == game.Players.LocalPlayer.UserId
+            if CurrentWave >= target then
+                local TowersFolder = workspace:FindFirstChild("Towers")
+                if TowersFolder then
+                    local pending = {}
+                    for _, rep in ipairs(TowersFolder:GetDescendants()) do
+                        if rep:IsA("Folder") and rep.Name == "TowerReplicator" then
+                            local name   = rep:GetAttribute("Name")
+                            local owner  = rep:GetAttribute("OwnerId")
+                            local uid    = rep:GetAttribute("UID")
+                            if name == "Farm" and owner == LocalPlayer.UserId
+                               and not (uid and soldThisSession[uid]) then
+                                table.insert(pending, { Model = rep.Parent, UID = uid })
+                            end
+                        end
+                    end
 
-                        if IsFarm and IsMine then
-                            local TowerModel = replicator.Parent
-                            RemoteFunc:InvokeServer("Troops", "Sell", { Troop = TowerModel })
-
-                            task.wait(0.2)
+                    for _, entry in ipairs(pending) do
+                        if not Globals.SellFarms then break end
+                        if entry.Model and entry.Model.Parent then
+                            local sold = false
+                            for attempt = 1, 3 do
+                                local ok, res = pcall(function()
+                                    return RemoteFunc:InvokeServer(
+                                        "Troops", "Sell", { Troop = entry.Model }
+                                    )
+                                end)
+                                if ok and CheckResOk(res) then
+                                    sold = true
+                                    break
+                                end
+                                task.wait(0.25)
+                            end
+                            if sold and entry.UID then
+                                soldThisSession[entry.UID] = true
+                            end
+                            task.wait(0.15 + math.random() * 0.15)
                         end
                     end
                 end
             end
-
             task.wait(1)
         end
         SellFarmsRunning = false
