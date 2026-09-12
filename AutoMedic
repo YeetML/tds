@@ -13,7 +13,6 @@ local activeLoops       = {}
 local activeChainThread = nil
 local activeChainMedic     = nil -- medic currently mid-cycle in Chain, if any
 local activeChainStopWatch = nil -- its reattach-watch disconnector, if any
-local MEDIC_ABILITY_ICON = "rbxassetid://231100685"
 local RANGE_SLACK        = 0.5
 local CAPACITY_BY_LEVEL = {
     [0] = 1, [1] = 2, [2] = 3, [3] = 3, [4] = 4, [5] = 5
@@ -410,14 +409,8 @@ local function clearAllSelected(medic)
     runToggleBatch(medic, items)
 end
 
--- PATCHED: only report targets that were actually confirmed selected
--- server-side. The original version unconditionally inserted every
--- candidate into `attached` before runToggleBatch even ran, so a
--- silently-rejected toggle (out of range, capacity/claim race, etc.)
--- would hand TryStartUber a phantom target list. With nothing really
--- selected, Ubercharge activation does nothing, no damage-buff signal
--- ever appears, and (combined with the old unbounded retry loop) the
--- medic would get stuck retrying forever.
+-- Only reports targets that were actually confirmed selected server-side
+-- (checked against getSelectedUIDs after the toggle batch, not assumed).
 local function attachTargets(medic, targets)
     local selected = getSelectedUIDs(medic)
     local items = {}
@@ -490,31 +483,19 @@ local function startReattachWatch(medic, attached)
     end
 end
 ----------------------------------------------------------------
--- Icon + DamageBuff + Uber
+-- DamageBuff + Uber
 ----------------------------------------------------------------
-local function GetMedicAbilityContent()
-    local gui = PlayerGui:FindFirstChild("ReactGameAbilities")
-    local frame = gui and gui:FindFirstChild("Frame")
-    if not frame then return nil end
-    for _, obj in ipairs(frame:GetDescendants()) do
-        if obj:IsA("ImageButton")
-            and obj.Name == "imageButton"
-            and obj.Image == MEDIC_ABILITY_ICON then
-            return obj.Parent
-        end
-    end
-    return nil
-end
-local function IsMedicReady()
-    local content = GetMedicAbilityContent()
-    if not content then return true end
-    local label = content:FindFirstChild("timeLeftAbility")
-    if not label then return true end
-    local text = tostring(label.Text or "")
-    if text == "" then return true end
-    local value = tonumber(text)
-    return value == nil or value <= 0
-end
+-- NOTE: this used to also check a shared "Medic ability ready" UI panel
+-- (GetMedicAbilityContent/IsMedicReady, reading ReactGameAbilities). That
+-- panel is ONE slot per tower TYPE, not per tower instance - with multiple
+-- medics it only ever reflects whichever medic last fired, not the one
+-- TryStartUber is currently trying. That caused medics further down the
+-- round-robin to block on WaitForReady() waiting for a cooldown that
+-- wasn't even theirs, then fire in a burst once the wrong medic's cooldown
+-- (which the panel was actually showing) finally cleared. Removed entirely -
+-- readiness/success is now determined purely by the per-tower DamageBuff
+-- signal below, which is the only thing that's actually specific to the
+-- medic being processed.
 local function GetDamageBuff(tower)
     local rep = GetReplicator(tower)
     if not rep then return 0 end
@@ -536,31 +517,9 @@ local function HasMedicDamageSignal(tower, baselineValue, expectedBuff)
     if current - baselineValue >= expectedBuff - 0.001 then return true end
     return false
 end
-local function WaitForReady(medic)
-    while IsAlive(medic) do
-        if IsMedicReady() then
-            return true
-        end
-        task.wait(0.05)
-    end
-    return false
-end
 local function WaitForUberStart(medic, targets, baseline, uberData, timeout)
     local deadline = os.clock() + (timeout or 1.5)
     while os.clock() < deadline and IsAlive(medic) do
-        if not IsMedicReady() then
-            local saw = false
-            for _, t in ipairs(targets) do
-                if IsAlive(t) then
-                    local before = baseline[t] or 0
-                    if HasMedicDamageSignal(t, before, uberData.DamageBuff) then
-                        saw = true
-                        break
-                    end
-                end
-            end
-            return true, saw
-        end
         for _, t in ipairs(targets) do
             if IsAlive(t) then
                 local before = baseline[t] or 0
@@ -571,7 +530,7 @@ local function WaitForUberStart(medic, targets, baseline, uberData, timeout)
         end
         task.wait(0.05)
     end
-    return not IsMedicReady(), false
+    return false, false
 end
 local function WaitForUberEnd(targets, baseline, uberData, activationAt, sawDamageIncrease)
     local multiplier = getTimescaleMultiplier()
@@ -611,27 +570,10 @@ local function WaitForUberEnd(targets, baseline, uberData, activationAt, sawDama
     end
 end
 
--- PATCHED: TryStartUber no longer creates or owns the reattach-watch
--- connection, and no longer retries forever. Two fixes here:
---
--- 1. MAX_UBER_ATTEMPTS caps the retry loop. The original had no bound at
---    all - if activation never registered as started (e.g. targets that
---    looked attached but weren't, or any other silent server rejection),
---    this would retry every ~1.65s forever, and since Chain is a single
---    sequential thread, that permanently blocked every other medic too.
---
--- 2. The reattach-watch is now created by the CALLER (Chain/Function),
---    not here, and its disconnector is stored in the caller's tracking
---    variable immediately - not only returned at the end of this
---    function. Previously, if this coroutine got task.cancel'd anywhere
---    inside this loop (which is exactly what happens when Auto Medic is
---    toggled off mid-cycle, or Chain is restarted), the `stopWatch` local
---    was never returned and became permanently unreachable - leaking a
---    live AttributeChangedSignal connection that would fight forever to
---    re-select any target toggled off it. That was the actual
---    "won't detach" bug: verified live by catching a medic mid-attach and
---    killing the chain, which left exactly one orphaned connection on the
---    tower's TowersSelected signal with no way to disconnect it.
+-- No longer gates on a "ready" check before each attempt (that was the
+-- shared, wrong-medic panel described above) - it just tries, and relies
+-- on MAX_UBER_ATTEMPTS + the caller's round-robin to space out real
+-- per-medic cooldowns instead of an unreliable proxy for them.
 local MAX_UBER_ATTEMPTS = 5
 local function TryStartUber(medic, targets)
     local uberData = getUberData(medic)
@@ -640,9 +582,6 @@ local function TryStartUber(medic, targets)
     end
     local attempts = 0
     while IsAlive(medic) do
-        if not WaitForReady(medic) then
-            return false, nil, nil, nil, false
-        end
         local baseline = CaptureDamageBuffs(targets)
         local activationAt = os.clock()
         activateUbercharge(medic)
@@ -671,8 +610,6 @@ function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
         task.cancel(activeLoops[medicIndex].thread)
         activeLoops[medicIndex].thread = nil
     end
-    -- PATCHED: clean up whatever the cancelled thread left mid-flight,
-    -- same leak this function had as Chain.
     if activeLoops[medicIndex].stopWatch then
         pcall(activeLoops[medicIndex].stopWatch)
         activeLoops[medicIndex].stopWatch = nil
@@ -793,12 +730,11 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
             local attached = attachTargets(medic, targets)
             activeChainMedic = medic
             if #attached > 0 then
-                -- PATCHED: create the reattach-watch here and store its
-                -- disconnector immediately, BEFORE calling TryStartUber
-                -- (which can block for a while). This way, no matter where
-                -- task.cancel interrupts this thread, chainCleanup() always
-                -- has a valid reference to disconnect - closing the leak
-                -- that used to strand this connection forever.
+                -- create the reattach-watch here and store its disconnector
+                -- immediately, BEFORE calling TryStartUber (which can block
+                -- for a while). This way, no matter where task.cancel
+                -- interrupts this thread, chainCleanup() always has a valid
+                -- reference to disconnect it.
                 activeChainStopWatch = startReattachWatch(medic, attached)
                 local started, baseline, ud, at, saw = TryStartUber(medic, attached)
                 if started and baseline and ud and at then
@@ -807,9 +743,9 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
                 if activeChainStopWatch then pcall(activeChainStopWatch) end
                 activeChainStopWatch = nil
             else
-                -- PATCHED: attach failed (or was rejected server-side) -
-                -- skip the uber attempt entirely instead of handing
-                -- TryStartUber a phantom target list it can never satisfy.
+                -- attach failed (or was rejected server-side) - skip the
+                -- uber attempt entirely instead of handing TryStartUber a
+                -- phantom target list it can never satisfy.
                 warn("[AutoMedic] attach failed for this medic, skipping cycle")
             end
             clearAllSelected(medic)
