@@ -2140,84 +2140,8 @@ local function redeemCodesFromBeebom()
     SetStatus("Code redemption complete")
 end
 
--- ═══════════════════════════════════════════════════════════════════════════
---  APEX UI — external load
--- ═══════════════════════════════════════════════════════════════════════════
-
 local APEX_URL = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/apex.lua"
-
--- Load with fallback safety net
-local Apex
-do
-    local ok, result = pcall(function()
-        return loadstring(game:HttpGet(APEX_URL))()
-    end)
-    if ok and type(result) == "table" and result.Window then
-        Apex = result
-        print("[AutoProgression] ✅ Apex UI v" .. tostring(Apex.Version) .. " loaded")
-    else
-        warn("[AutoProgression] ❌ Apex UI failed to load — using fallback stub")
-        Apex = {
-            Version = "fallback",
-            Themes = { Obsidian = {
-                Accent = Color3.fromRGB(126,92,255), AccentAlt = Color3.fromRGB(255,100,200),
-                Surface = Color3.fromRGB(23,23,34), Surface2 = Color3.fromRGB(30,30,44),
-                Text = Color3.new(1,1,1), TextDim = Color3.fromRGB(160,160,180),
-                TextMute = Color3.fromRGB(108,108,130), Success = Color3.fromRGB(52,211,130),
-                Danger = Color3.fromRGB(240,75,95), Warn = Color3.fromRGB(245,190,70),
-                Coin = Color3.fromRGB(255,200,70), Gem = Color3.fromRGB(100,220,255),
-                Xp = Color3.fromRGB(150,240,130),
-            }},
-            GetTheme = function() return Apex.Themes.Obsidian end,
-            ApplyTheme = function() end,
-            formatNumber = function(n) return tostring(n or 0) end,
-            UILib = setmetatable({}, {__index = function(_, _name)
-    return function()
-        return {
-            Frame = Instance.new("Frame"),
-            Set   = function() end,
-            Get   = function() return nil end,
-            Toggle= function() end,
-            Push  = function() end,
-            SetValue  = function() end,
-            SetColor  = function() end,
-            SetProgress = function() end,
-            SetFilter = function() end,
-            SetSearch = function() end,
-            Export    = function() return "" end,
-            Clear     = function() end,
-            Append    = function() end,
-            SetOptions= function() end,
-        }
-    end
-end}),
-                        Window = function()
-                local stub = {
-                    Screen      = Instance.new("ScreenGui"),
-                    TitleLabel  = Instance.new("TextLabel"),
-                    StatusLabel = Instance.new("TextLabel"),
-                    Frame       = Instance.new("Frame"),
-                    Notif       = { Push = function() end },
-                }
-                function stub:SetTitle() end
-                function stub:SetStatus() end
-                function stub:SetOpacity() end
-                function stub:_setPos() end
-                function stub:AddTab()
-                    local page = Instance.new("ScrollingFrame")
-                    return {
-                        Content   = page,
-                        Page      = page,
-                        Button    = Instance.new("TextButton"),
-                        ActiveBar = Instance.new("Frame"),
-                    }
-                end
-                return stub
-            end,
-        }
-    end
-end
-
+local Apex = loadstring(game:HttpGet(APEX_URL))()
 local UILib = Apex.UILib
 local Themes = Apex.Themes
 
