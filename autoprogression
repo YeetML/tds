@@ -551,10 +551,10 @@ local function IsInLobby()
 end
 
 local SKILL_TARGETS = {
-    { name = "Enhanced Optics", maxLevel = 10 },
-    { name = "Resourcefulness", maxLevel = 10 },
-    { name = "Stonks",          maxLevel = 10 },
-    { name = "Bigger Budget",   maxLevel = 10 },
+    { name = "Enhanced Optics", maxLevel = 20 },
+    { name = "Resourcefulness", maxLevel = 25 },
+    { name = "Bigger Budget",   maxLevel = 25 },
+    { name = "Stonks",          maxLevel = 20 },
 }
 
 local function ParseSkillLevel(text)
