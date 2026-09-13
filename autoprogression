@@ -22,9 +22,93 @@ local ALL_TOWERS = {
     "Rocketeer", "Trapper", "Military Base", "Mercenary Base", "Mortar", "Turret",
     "Commander", "Cowboy", "Warden", "DJ Booth", "Tesla", "Saboteur",
     "Minigunner", "Ranger", "Pursuit", "Gatling Gun", "Brawler", "Necromancer",
-    "Accelerator", "Engineer", "Hacker",
+    "Accelerator", "Engineer", "Hacker", "Pulse Trooper",
     "EvolvedOperator", "EvolvedEnforcer", "EvolvedKingpin", "EvolvedJuggernaut"
 }
+
+local TOWER_PRICES = {
+    ["Paintballer"]        = 100,
+    ["Demoman"]            = 200,
+    ["Boomerang"]          = 300,
+    ["Slime Trooper"]      = 300,
+    ["Soldier"]            = 350,
+    ["Freezer"]            = 650,
+    ["Assassin"]           = 800,
+    ["Militant"]           = 800,
+    ["Shotgunner"]         = 850,
+    ["Hunter"]             = 1000,
+    ["Pyromancer"]         = 1250,
+    ["Ace Pilot"]          = 1500,
+    ["Farm"]               = 2000,
+    ["Medic"]              = 2000,
+    ["Electroshocker"]     = 2500,
+    ["Rocketeer"]          = 2500,
+    ["Trapper"]            = 3000,
+    ["Pulse Trooper"]      = 3250,
+    ["Military Base"]      = 4000,
+    ["Warden"]             = 4000,
+    ["Cowboy"]             = 4000,
+    ["Commander"]          = 4000,
+    ["DJ Booth"]           = 5000,
+    ["Tesla"]              = 6000,
+    ["Saboteur"]           = 7500,
+    ["Minigunner"]         = 8000,
+    ["Ranger"]             = 12000,
+    ["Pursuit"]            = 15000,
+    ["Gatling Gun"]        = 35000,
+    ["Brawler"]            = {Gems = 1250},
+    ["Necromancer"]        = {Gems = 2250},
+    ["Accelerator"]        = {Gems = 2500},
+    ["Engineer"]           = {Gems = 4500},
+    ["Hacker"]             = {Gems = 5500},
+    ["EvolvedOperator"]    = {Coins = 15000, Gems = 4500},
+    ["EvolvedEnforcer"]    = {Coins = 15000, Gems = 4750},
+    ["EvolvedKingpin"]     = {Coins = 15000, Gems = 5500},
+    ["EvolvedJuggernaut"]  = {Coins = 15000, Gems = 6000},
+}
+
+local function ResolveTowerReq(req)
+    local entry = (type(req) == "string") and {req} or req
+    if type(entry) ~= "table" or entry[1] == nil then
+        return nil, 0, 0
+    end
+
+    local name = entry[1]
+    local coins, gems = 0, 0
+    local explicit = false
+
+    if #entry == 2 then
+        if type(entry[2]) == "table" then
+            coins = tonumber(entry[2].Coins) or 0
+            gems  = tonumber(entry[2].Gems)  or 0
+        else
+            coins = tonumber(entry[2]) or 0
+        end
+        explicit = true
+    elseif #entry == 3 then
+        local cost = tonumber(entry[2]) or 0
+        if entry[3] == "Gems" then gems = cost else coins = cost end
+        explicit = true
+    elseif #entry >= 5 then
+        local c1, cur1 = tonumber(entry[2]) or 0, entry[3]
+        local c2, cur2 = tonumber(entry[4]) or 0, entry[5]
+        if cur1 == "Coins" then coins = coins + c1 elseif cur1 == "Gems" then gems = gems + c1 end
+        if cur2 == "Coins" then coins = coins + c2 elseif cur2 == "Gems" then gems = gems + c2 end
+        explicit = true
+    end
+
+    if not explicit then
+        local p = TOWER_PRICES[name]
+        if type(p) == "table" then
+            coins = p.Coins or 0
+            gems  = p.Gems  or 0
+        elseif type(p) == "number" then
+            coins = p
+        end
+    end
+
+    return name, coins, gems
+end
 local function GetAllTowers()
     return ALL_TOWERS
 end
@@ -250,29 +334,9 @@ local function OwnsTower(towerName)
     return OwnsTowerCache(towerName)
 end
 local function MeetsRequirement(req)
-    local towerName = req[1]
+    local towerName, needCoins, needGems = ResolveTowerReq(req)
+    if not towerName then return false end
     if OwnsTower(towerName) then return true end
-
-    local needCoins, needGems = 0, 0
-
-    if #req == 2 then
-        needCoins = tonumber(req[2]) or 0
-    elseif #req == 3 then
-        local cost = tonumber(req[2]) or 0
-        local currency = req[3]
-        if currency == "Gems" then needGems = cost else needCoins = cost end
-    elseif #req == 5 then
-        local cost1, cur1 = tonumber(req[2]) or 0, req[3]
-        local cost2, cur2 = tonumber(req[4]) or 0, req[5]
-        if cur1 == "Coins" then needCoins = needCoins + cost1
-        elseif cur1 == "Gems" then needGems = needGems + cost1 end
-        if cur2 == "Coins" then needCoins = needCoins + cost2
-        elseif cur2 == "Gems" then needGems = needGems + cost2 end
-    elseif type(req[2]) == "table" then
-        needCoins = req[2].Coins or 0
-        needGems  = req[2].Gems  or 0
-    end
-
     return GetStat("Coins") >= needCoins and GetStat("Gems") >= needGems
 end
 local APR_SessionCoins = 0
@@ -476,27 +540,11 @@ local function AutoBuyTowers(towerList)
         print("[AutoProgression] Already own Demoman")
     end
 
-    local function parseTowerData(data)
-        local name = data[1]
-        local requiredCoins = 0
-        local requiredGems = 0
-        if #data == 2 then
-            requiredCoins = data[2]
-        elseif #data == 3 then
-            local cost = data[2]
-            local currency = data[3]
-            if currency == "Gems" then requiredGems = cost else requiredCoins = cost end
-        elseif #data == 5 then
-            local cost1 = data[2]; local cur1 = data[3]
-            local cost2 = data[4]; local cur2 = data[5]
-            if cur1 == "Coins" then requiredCoins = cost1 elseif cur1 == "Gems" then requiredGems = cost1 end
-            if cur2 == "Coins" then requiredCoins = cost2 elseif cur2 == "Gems" then requiredGems = cost2 end
-        elseif type(data[2]) == "table" then
-            local costTable = data[2]
-            requiredCoins = costTable.Coins or 0
-            requiredGems = costTable.Gems or 0
-        else
-            warn("[AutoProgression] Unknown format for tower: " .. name)
+        local function parseTowerData(data)
+        local name, requiredCoins, requiredGems = ResolveTowerReq(data)
+        if not name then
+            warn("[AutoProgression] Unknown format for tower: " .. tostring(data))
+            return nil, 0, 0
         end
         return name, requiredCoins, requiredGems
     end
@@ -538,6 +586,76 @@ local function AutoBuyTowers(towerList)
 
     return "OK"
 end
+local GOLDEN_CRATE_COST  = 50000
+local GOLDEN_CRATE_COUNT = 7
+local GOLDEN_TOTAL_COST  = GOLDEN_CRATE_COST * GOLDEN_CRATE_COUNT   -- 350000
+
+local function PurchaseGoldenCrates()
+    local coins = GetStat("Coins")
+    if coins < GOLDEN_TOTAL_COST then
+        print(("[GoldenCrate] Not enough coins (need %d, have %d) – aborting.")
+            :format(GOLDEN_TOTAL_COST, coins))
+        return false, "NotEnoughCoins"
+    end
+
+    local net      = ReplicatedStorage:FindFirstChild("Network")
+    local newShop  = net and net:FindFirstChild("NewShop")
+    local purchase = newShop and newShop:FindFirstChild("RF:purchaseItem")
+    if not purchase then
+        warn("[GoldenCrate] Network.NewShop['RF:purchaseItem'] not found – aborting.")
+        return false, "NoRemote"
+    end
+
+    print(("[GoldenCrate] Buying %d Golden crates (%d coins each, %d total)…")
+        :format(GOLDEN_CRATE_COUNT, GOLDEN_CRATE_COST, GOLDEN_TOTAL_COST))
+
+    local bought = 0
+    for i = 1, GOLDEN_CRATE_COUNT do
+        local before = GetStat("Coins")
+        local ok, err = pcall(function()
+            return purchase:InvokeServer("crates_1", {
+                name = "Golden",
+                type = "crate",
+            })
+        end)
+        task.wait(1)
+        local after = GetStat("Coins")
+
+        if ok and (before - after) >= GOLDEN_CRATE_COST then
+            bought = bought + 1
+            print(("[GoldenCrate] Bought %d/%d  (coins %d → %d)")
+                :format(bought, GOLDEN_CRATE_COUNT, before, after))
+        else
+            warn(("[GoldenCrate] Purchase %d did not deduct coins (coins %d → %d) err=%s")
+                :format(i, before, after, tostring(err)))
+        end
+        task.wait(1)
+    end
+
+    if bought == 0 then
+        SetStatus("Golden crate: no purchases confirmed")
+        return false, "NoneBought"
+    end
+    print(("[GoldenCrate] Opening %d Golden crate(s)…"):format(bought))
+    local opened = 0
+    for i = 1, bought do
+        local ok, res = pcall(function()
+            return RemoteFunc:InvokeServer("Inventory", "Open", "Crate", "Golden")
+        end)
+        if ok then
+            opened = opened + 1
+            print(("[GoldenCrate] Opened %d/%d"):format(opened, bought))
+        else
+            warn(("[GoldenCrate] Open %d failed: %s"):format(i, tostring(res)))
+        end
+        task.wait(1)
+    end
+
+    SetStatus(("Golden crate: bought %d, opened %d"):format(bought, opened))
+    return true, bought, opened
+end
+
+getgenv().PurchaseGoldenCrates = PurchaseGoldenCrates
 
 local function IsInLobby()
     local placeId = game.PlaceId
@@ -915,22 +1033,22 @@ end
 local EasyTowerRequirements = {
     easy1 = {},
     --easy2 = {{"Soldier", 350}, {"Shotgunner", 850}},
-    easy3 = {{"Militant", 800}},
-    easy4 = {{"Militant", 800}},
+    easy3 = {"Militant"},
+    easy4 = {"Militant"},
     --easy5 = {{"Militant", 800}, {"Shotgunner", 850}},
-    easy6 = {{"Militant", 800}},
-    easy7 = {{"Militant", 800}},
-    easy8 = {{"Militant", 800}},
-    easy9 = {{"Militant", 800}},
-    easy10 = {{"Militant", 800}},
-    easy11 = {{"Militant", 800}},
-    easy12 = {{"Militant", 800}},
-    easy13 = {{"Militant", 800}},
-    easy14 = {{"Militant", 800}},
-    easy15 = {{"Militant", 800}},
-    easy16 = {{"Militant", 800}},
-    easy17 = {{"Militant", 800}},
-    easy18 = {{"Militant", 800}},
+    easy6 = {"Militant"},
+    easy7 = {"Militant"},
+    easy8 = {"Militant"},
+    easy9 = {"Militant"},
+    easy10 = {"Militant"},
+    easy11 = {"Militant"},
+    easy12 = {"Militant"},
+    easy13 = {"Militant"},
+    easy14 = {"Militant"},
+    easy15 = {"Militant"},
+    easy16 = {"Militant"},
+    easy17 = {"Militant"},
+    easy18 = {"Militant"},
 }
 
 local FallenStrategies = {
@@ -975,17 +1093,17 @@ for i, s in ipairs(FallenStrategies) do
 end
 
 local FallenTowerRequirements = {
-    fallen1 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
-    fallen2 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
-    fallen3 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
-    fallen4 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
-    fallen5 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}, {"Rocketeer", 2500}},
-    fallen6 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
-    fallen7 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
-    fallen8 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
-    fallen9 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
-    fallen10 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
-    fallen11 = {{"Gatling Gun", 35000}, {"Hacker", 5500, "Gems"}},
+    fallen1  = {"Gatling Gun", "Hacker"},
+    fallen2  = {"Gatling Gun", "Hacker"},
+    fallen3  = {"Gatling Gun", "Hacker"},
+    fallen4  = {"Gatling Gun", "Hacker"},
+    fallen5  = {"Gatling Gun", "Hacker", "Rocketeer"},
+    fallen6  = {"Gatling Gun", "Hacker"},
+    fallen7  = {"Gatling Gun", "Hacker"},
+    fallen8  = {"Gatling Gun", "Hacker"},
+    fallen9  = {"Gatling Gun", "Hacker"},
+    fallen10 = {"Gatling Gun", "Hacker"},
+    fallen11 = {"Gatling Gun", "Hacker"},
 }
 
 local PizzaPartySettings = {
@@ -1430,14 +1548,9 @@ end
                     local feasible = true
 
                     for _, req in ipairs(reqs) do
-                        local towerName = req[1]
-                        local cost = req[2] or 0
-                        if not OwnsTower(towerName) then
-                            local coins = GetStat("Coins")
-                            if coins < cost then
-                                feasible = false
-                                break
-                            end
+                        if not MeetsRequirement(req) then
+                            feasible = false
+                            break
                         end
                     end
 
@@ -1505,15 +1618,14 @@ end
             local feasible = true
             local needsBuying = false
 
-            for _, req in ipairs(reqs) do
-                local towerName = req[1]
-                local cost = req[2] or 0
-                if not OwnsTower(towerName) then
+                for _, req in ipairs(reqs) do
+                local towerName = ResolveTowerReq(req)
+                if towerName and not OwnsTower(towerName) then
                     needsBuying = true
-                    if GetStat("Coins") < cost then
-                        feasible = false
-                        break
-                    end
+                end
+                if not MeetsRequirement(req) then
+                    feasible = false
+                    break
                 end
             end
 
@@ -1554,15 +1666,7 @@ local function RunPizzaParty()
     SetStatus("Starting Pizza Party strategy...")
     ApplyStrategySettings(PizzaPartySettings)
 
-    local PIZZA_TOWERS = {
-        {"Minigunner", 8000},
-        {"Ranger",     12000},
-        {"DJ Booth",   5000},
-        {"Commander",  4000},
-        {"Trapper",    3000},
-    }
-
-    print("[AutoProgression] Pizza Party – checking tower ownership/costs...")
+local PIZZA_TOWERS = {"Minigunner", "Ranger", "DJ Booth", "Commander", "Trapper"}
     SetStatus("Pizza Party: checking towers...")
 
     local result = AutoBuyTowers(PIZZA_TOWERS)
@@ -1702,8 +1806,9 @@ local function RunFallenStrategy()
             local feasible = true
             local needsBuying = false
 
-            for _, req in ipairs(reqs) do
-                if not OwnsTower(req[1]) then needsBuying = true end
+                for _, req in ipairs(reqs) do
+                local towerName = ResolveTowerReq(req)
+                if towerName and not OwnsTower(towerName) then needsBuying = true end
                 if not MeetsRequirement(req) then
                     feasible = false
                     break
@@ -1859,11 +1964,7 @@ local function APR_RequeueHardcore()
     return ok
 end
 
-local HC_REQUIRED_TOWERS = {
-    {"Pyromancer", 1250},
-    {"Farm",       2000},
-    {"Shotgunner", 850},
-}
+local HC_REQUIRED_TOWERS = {"Pyromancer", "Farm", "Shotgunner"}
 
 local HC_STRATEGY_SETTINGS = {
     autoSkip    = false,  
