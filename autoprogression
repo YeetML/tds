@@ -547,7 +547,7 @@ end
 
 local SKILL_TARGETS = {
     { name = "Enhanced Optics", maxLevel = 20 },
-    { name = "Resourcefulness", maxLevel = 15 },
+    { name = "Resourcefulness", maxLevel = 10 },
     { name = "Bigger Budget",   maxLevel = 20 },
     { name = "Stonks",          maxLevel = 15 },
 }
