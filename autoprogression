@@ -1865,6 +1865,14 @@ local HC_REQUIRED_TOWERS = {
     {"Shotgunner", 850},
 }
 
+local HC_STRATEGY_SETTINGS = {
+    autoSkip    = false,  
+    autoReady   = true,   
+    autoPremium = false,   
+    autoRejoin  = false,   
+    autoRestart = false,
+}
+
 function RunHardcore()
     if runningHardcore then return end
     runningHardcore = true
@@ -1896,7 +1904,6 @@ function RunHardcore()
         end)
     else
         task.spawn(function()
-            -- Buy the towers the strategy needs before fetching/running it
             print("[APR-HC] Checking required towers...")
             SetStatus("Hardcore: checking towers...")
             local buyResult = AutoBuyTowers(HC_REQUIRED_TOWERS)
@@ -1914,7 +1921,7 @@ function RunHardcore()
                 RunYeetEasy()
                 return
             end
-
+            ApplyStrategySettings(HC_STRATEGY_SETTINGS)
             if not APR_HcRunFull() then
                 SetStatus("Hardcore: failed to load strategy")
             end
