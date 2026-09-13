@@ -31,8 +31,6 @@ end
 
 getgenv().GetAllTowers = GetAllTowers
 
-getgenv().HcEvoActive = getgenv().HcEvoActive or false
-getgenv().HcUnevoActive = getgenv().HcUnevoActive or false
 getgenv().AutoUpgradeSelected = false
 getgenv().AutoUpgradeAll = false
 if Globals then
@@ -44,8 +42,7 @@ _G.AutoProgSettings = _G.AutoProgSettings or {
     AutoProgressionEnabled = false,
     ForceEasy = false,
     ForceFallen = false,
-    ForceHardcoreUnevo = false,
-    ForceHardcoreEvo = false,
+    ForceHardcore = false,
     ForcePizzaParty = false,
     ForceBootCamp = false,
     __locked = false,
@@ -63,8 +60,7 @@ _G.AutoProgSettings = _G.AutoProgSettings or {
 local MODE_REGISTRY = {
     { key = "ForceEasy",          label = "Easy",        y = 208 },
     { key = "ForceFallen",        label = "Fallen",      y = 234 },
-    { key = "ForceHardcoreUnevo", label = "HC Unevo",    y = 260 },
-    { key = "ForceHardcoreEvo",   label = "HC Evo",      y = 286 },
+    { key = "ForceHardcore",      label = "Hardcore",    y = 260 },
     { key = "ForceBootCamp",      label = "Boot Camp",   y = 312 },
     { key = "ForcePizzaParty",    label = "Pizza Party", y = 338 },
 }
@@ -113,8 +109,7 @@ local APR_LOCKED_KEYS = {
     AutoProgressionEnabled  = true,
     ForceEasy               = true,
     ForceFallen             = true,
-    ForceHardcoreUnevo      = true,
-    ForceHardcoreEvo        = true,
+    ForceHardcore           = true,
     ForcePizzaParty         = true,
     ForceBootCamp           = true,
     AutoSkip                = true,
@@ -552,9 +547,9 @@ end
 
 local SKILL_TARGETS = {
     { name = "Enhanced Optics", maxLevel = 20 },
-    { name = "Resourcefulness", maxLevel = 25 },
-    { name = "Bigger Budget",   maxLevel = 25 },
-    { name = "Stonks",          maxLevel = 20 },
+    { name = "Resourcefulness", maxLevel = 15 },
+    { name = "Bigger Budget",   maxLevel = 20 },
+    { name = "Stonks",          maxLevel = 15 },
 }
 
 local function ParseSkillLevel(text)
@@ -999,58 +994,7 @@ local PizzaPartySettings = {
     autoPremium = false,
 }
 local RunYeetEasy
-
-local function RunHardcoreUnevo()
-    if getgenv().HcUnevoActive then
-        print("[AutoProgression] Hardcore UNEVO already running, skipping duplicate load.")
-        SetStatus("Hardcore UNEVO already running")
-        return
-    end
-    getgenv().AutoRejoin = false
-    getgenv().AutoUpgradeSelected = false
-    getgenv().AutoUpgradeAll = false
-    print("[AutoProgression] Running Hardcore UNEVO strategy")
-    SetStatus("Running Hardcore UNEVO strategy...")
-    local result = AutoBuyTowers({
-        {"Minigunner", 8000},
-        {"Boomerang", 300},
-    })
-    if result == "OK" then
-        SetStatus("Loading Hardcore UNEVO strategy...")
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreunevo"))()
-    else
-        print("[AutoProgression] Not enough coins for UNEVO towers, farming Easy.")
-        SetStatus("Not enough coins for UNEVO – farming Easy")
-        RunYeetEasy()
-    end
-end
-
-local function RunHardcoreEvo()
-    if getgenv().HcEvoActive then
-        print("[AutoProgression] Hardcore EVO already running, skipping duplicate load.")
-        SetStatus("Hardcore EVO already running")
-        return
-    end
-    getgenv().AutoRejoin = false
-    getgenv().AutoUpgradeSelected = false
-    getgenv().AutoUpgradeAll = false
-    print("[AutoProgression] Running Hardcore EVO strategy")
-    SetStatus("Running Hardcore EVO strategy...")
-    local result = AutoBuyTowers({
-        {"EvolvedOperator", 15000, "Coins", 4500, "Gems"},
-        {"EvolvedJuggernaut", 15000, "Coins", 6000, "Gems"},
-        {"EvolvedKingpin", 15000, "Coins", 5500, "Gems"},
-        {"Ace Pilot", 1500, "Coins"}
-    })
-    if result == "OK" then
-        SetStatus("Loading Hardcore EVO strategy...")
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcoreevo"))()
-    else
-        print("[AutoProgression] Not enough resources for EVO towers, falling back to UNEVO.")
-        SetStatus("Not enough resources for EVO – falling back to UNEVO")
-        RunHardcoreUnevo()
-    end
-end
+local RunHardcore
 
 local BootCampRunning = false
 local function RunBootCamp()
@@ -1709,9 +1653,15 @@ local function RunFallenStrategy()
                 local chosen = feasibleStrategies[1]
                 local reqs = FallenTowerRequirements[chosen.name] or {}
 
-                if #reqs > 0 then
+                                if #reqs > 0 then
                     local buyResult = AutoBuyTowers(reqs)
-                    if buyResult ~= "OK" then
+                    if buyResult == "Gems" then
+                        print("[AutoProgression] Fallen – not enough gems for Hacker – going to lobby for Hardcore")
+                        SetStatus("Fallen: no gems for Hacker – lobby → Hardcore")
+                        runningFallen = false
+                        getgenv().SmartTeleportToLobby()
+                        return
+                    elseif buyResult ~= "OK" then
                         goToLobby("cannot afford " .. chosen.name)
                         return
                     end
@@ -1772,21 +1722,204 @@ local function RunFallenStrategy()
 
         if not chosen then chosen = fallback end
 
-        if chosen then
+                if chosen then
             local reqs = FallenTowerRequirements[chosen.name] or {}
-            if #reqs > 0 then AutoBuyTowers(reqs) end
+            if #reqs > 0 then
+                local buyResult = AutoBuyTowers(reqs)
+                if buyResult == "Gems" then
+                    print("[AutoProgression] Fallen – not enough gems for Hacker – falling back to Hardcore")
+                    SetStatus("Fallen: no gems for Hacker – Hardcore fallback")
+                    runningFallen = false
+                    RunHardcore()
+                    return
+                elseif buyResult ~= "OK" then
+                    print("[AutoProgression] Fallen – cannot afford " .. chosen.name .. " – farming Easy")
+                    SetStatus("Fallen: cannot afford – farming Easy")
+                    runningFallen = false
+                    RunYeetEasy()
+                    return
+                end
+            end
             ApplyStrategySettings(chosen)
             task.wait(0.3)
             print("[AutoProgression] In lobby, selected Fallen: " .. chosen.name)
             SetStatus("In lobby – loading Fallen: " .. chosen.name)
             loadstring(game:HttpGet(chosen.url))()
-        else
+                else
+            -- Determine *why* Fallen isn't feasible
+            local hasGatling = OwnsTower("Gatling Gun") or GetStat("Coins") >= 35000
+            local hasHacker  = OwnsTower("Hacker")      or GetStat("Gems")  >= 5500
+
+            if hasGatling and not hasHacker then
+                print("[AutoProgression] Fallen – no gems for Hacker – falling back to Hardcore")
+                SetStatus("Fallen: no gems for Hacker – Hardcore fallback")
+                runningFallen = false
+                RunHardcore()
+                return
+            end
+
             SetStatus("Cannot afford Fallen towers – farming Easy")
             runningFallen = false
             RunYeetEasy()
             return
         end
         runningFallen = false
+    end
+end
+local APR_HC_URL            = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"
+local APR_HC_LOSS_THRESHOLD = 30
+local APR_HcLossCount       = 0
+local APR_HcContent         = nil
+local APR_HcStrategySrc     = nil
+local runningHardcore       = false
+
+local function APR_HcFetch()
+    local ok, content = pcall(game.HttpGet, game, APR_HC_URL)
+    if ok and type(content) == "string" and #content > 0 then
+        return content
+    end
+    return nil
+end
+
+local function APR_HcSplit(content)
+    local setup, strategy = {}, {}
+    local inStrategy = false
+    for line in content:gmatch("[^\r\n]+") do
+        if not inStrategy and
+           (line:match("TDS:Place") or line:match("TDS:VoteSkip")) then
+            inStrategy = true
+        end
+        if inStrategy then
+            table.insert(strategy, line)
+        else
+            table.insert(setup, line)
+        end
+    end
+    return table.concat(setup, "\n"), table.concat(strategy, "\n")
+end
+
+local function APR_HcRunFull()
+    APR_HcContent = APR_HcFetch()
+    if not APR_HcContent then
+        warn("[APR-HC] Failed to fetch: " .. APR_HC_URL)
+        return false
+    end
+    local _, strat = APR_HcSplit(APR_HcContent)
+    APR_HcStrategySrc = strat
+
+    local fn = loadstring(APR_HcContent)
+    if not fn then return false end
+    local ok, err = pcall(fn)
+    if not ok then
+        warn("[APR-HC] Full exec error: " .. tostring(err))
+        return false
+    end
+    return true
+end
+
+local function APR_HcRunStrategyOnly()
+    if not APR_HcStrategySrc then
+        if not APR_HcContent then
+            APR_HcContent = APR_HcFetch()
+            if APR_HcContent then
+                local _, strat = APR_HcSplit(APR_HcContent)
+                APR_HcStrategySrc = strat
+            end
+        end
+    end
+    if not APR_HcStrategySrc then return false end
+
+    -- Wipe stale tower indexes before re-placing
+    local prefixed = "TDS:RemoveIndex()\n" .. APR_HcStrategySrc
+    local fn = loadstring(prefixed)
+    if not fn then return false end
+    local ok, err = pcall(fn)
+    if not ok then
+        warn("[APR-HC] Strategy re-run error: " .. tostring(err))
+        return false
+    end
+    return true
+end
+
+local function APR_RequeueHardcore()
+    local remote = ReplicatedStorage:WaitForChild("RemoteFunction", 10)
+    if not remote then return false end
+    local ok, attempts = false, 0
+    while not ok and attempts < 30 do
+        attempts = attempts + 1
+        local success, result = pcall(function()
+            return remote:InvokeServer("Multiplayer", "v2:start", {
+                mode       = "hardcore",
+                difficulty = "Easy",
+                count      = 1,
+            })
+        end)
+        if success and result then ok = true else task.wait(0.5) end
+    end
+    return ok
+end
+
+local HC_REQUIRED_TOWERS = {
+    {"Pyromancer", 1250},
+    {"Farm",       2000},
+    {"Shotgunner", 850},
+}
+
+function RunHardcore()
+    if runningHardcore then return end
+    runningHardcore = true
+    getgenv().TimeScaleEnabled = false
+    SetStatus("Starting Hardcore strategy...")
+
+    if not IsInLobby() then
+        -- In-match gate: verify via DifficultyDisplayName
+        local sr  = ReplicatedStorage:FindFirstChild("StateReplicators")
+        local rep = sr and sr:FindFirstChild("GameStateReplicator")
+        local deadline = os.clock() + 5
+        while rep and rep:GetAttribute("DifficultyDisplayName") == nil
+              and os.clock() < deadline do
+            task.wait(0.1)
+        end
+        local display = rep and rep:GetAttribute("DifficultyDisplayName")
+        local isHc = display and display ~= ""
+            and tostring(display):lower():find("hardcore", 1, true) ~= nil
+        if not isHc then
+            SetStatus("Hardcore: wrong mode – going to lobby")
+            runningHardcore = false
+            getgenv().SmartTeleportToLobby()
+            return
+        end
+
+        task.spawn(function()
+            APR_HcRunStrategyOnly()
+            runningHardcore = false
+        end)
+    else
+        task.spawn(function()
+            -- Buy the towers the strategy needs before fetching/running it
+            print("[APR-HC] Checking required towers...")
+            SetStatus("Hardcore: checking towers...")
+            local buyResult = AutoBuyTowers(HC_REQUIRED_TOWERS)
+
+            if buyResult == "Coins" then
+                print("[APR-HC] Not enough coins for required towers – falling back to Easy")
+                SetStatus("Hardcore: no coins – Easy fallback")
+                runningHardcore = false
+                RunYeetEasy()
+                return
+            elseif buyResult == "Gems" then
+                print("[APR-HC] Not enough gems for required towers – falling back to Easy")
+                SetStatus("Hardcore: no gems – Easy fallback")
+                runningHardcore = false
+                RunYeetEasy()
+                return
+            end
+
+            if not APR_HcRunFull() then
+                SetStatus("Hardcore: failed to load strategy")
+            end
+            runningHardcore = false
+        end)
     end
 end
 local APR_HandlingGameOver = false
@@ -1915,15 +2048,71 @@ local function APR_HandleGameOver()
             warn("[AutoProgression] ❌ Webhook skipped: " .. tostring(reason))
         end
         task.wait(0.5) 
+        if APR_IsHardcoreDisplay() then
+            -- Read win/loss banner of the match that just ended
+            local status = nil
+            pcall(function()
+                local pg = LocalPlayer:FindFirstChild("PlayerGui")
+                local root = pg and pg:FindFirstChild("ReactGameNewRewards")
+                local f = root and root:FindFirstChild("Frame")
+                local go = f and f:FindFirstChild("gameOver")
+                local rs = go and go:FindFirstChild("RewardsScreen")
+                local banner = rs and rs:FindFirstChild("RewardBanner")
+                local lbl = banner and banner:FindFirstChild("textLabel")
+                if lbl then
+                    local t = lbl.Text:upper()
+                    if t:find("TRIUMPH") or t:find("VICTORY") or t:find("WIN") then
+                        status = "WIN"
+                    elseif t:find("LOST") or t:find("DEFEAT") or t:find("FAIL") then
+                        status = "LOSS"
+                    end
+                end
+            end)
 
-        if APR_IsEasySurvival() then
+            if status == "WIN" then
+                if APR_HcLossCount > 0 then
+                    print("[APR-HC] Win — counter reset")
+                end
+                APR_HcLossCount = 0
+                SetStatus("Hardcore WIN — counter reset")
+            elseif status == "LOSS" then
+                APR_HcLossCount = APR_HcLossCount + 1
+                print(string.format("[APR-HC] Loss %d/%d",
+                    APR_HcLossCount, APR_HC_LOSS_THRESHOLD))
+            end
+
+            if APR_HcLossCount >= APR_HC_LOSS_THRESHOLD then
+                print("[APR-HC] Threshold reached — returning to lobby")
+                APR_HcLossCount = 0
+                SetStatus("HC threshold — lobby")
+                APR_TeleportLobby()
+            else
+                SetStatus("HC restart " .. APR_HcLossCount ..
+                          "/" .. APR_HC_LOSS_THRESHOLD)
+                APR_RequeueHardcore()
+                task.spawn(function()
+                    local deadline = os.clock() + 90
+                    while os.clock() < deadline do
+                        task.wait(0.5)
+                        local r = APR_GetGameStateReplicator()
+                        if not r or r:GetAttribute("GameOver") ~= true then
+                            break
+                        end
+                    end
+                    task.wait(3)
+                    print("[APR-HC] Re-running strategy...")
+                    pcall(APR_HcRunStrategyOnly)
+                end)
+            end
+
+        elseif APR_IsEasySurvival() then
             SetStatus("Easy – requeueing...")
             print("[AutoProgression] Easy match ended, requeueing directly...")
             APR_RequeueEasy()
-            elseif APR_IsFallenSurvival() then
-    SetStatus("Fallen – requeueing...")
-    print("[AutoProgression] Fallen match ended, requeueing directly...")
-    APR_RequeueFallen()
+        elseif APR_IsFallenSurvival() then
+            SetStatus("Fallen – requeueing...")
+            print("[AutoProgression] Fallen match ended, requeueing directly...")
+            APR_RequeueFallen()
         else
             SetStatus("Match ended – returning to lobby...")
             print("[AutoProgression] Match ended, teleporting to lobby...")
@@ -1976,8 +2165,7 @@ local function RunAutoProgression()
 
     local forceEasy = _G.AutoProgSettings.ForceEasy or false
     local forceFallen = _G.AutoProgSettings.ForceFallen or false
-    local forceHcUnevo = _G.AutoProgSettings.ForceHardcoreUnevo or false
-    local forceHcEvo = _G.AutoProgSettings.ForceHardcoreEvo or false
+    local forceHardcore = _G.AutoProgSettings.ForceHardcore or false
     local forceBootCamp = _G.AutoProgSettings.ForceBootCamp or false
     local forcePizzaParty = _G.AutoProgSettings.ForcePizzaParty or false
 
@@ -1996,21 +2184,16 @@ local function RunAutoProgression()
         RunYeetEasy()
         AutoProgressionRunning = false
         return
-        elseif forceFallen then
+    elseif forceFallen then
         SetStatus("Force mode: Fallen")
         RunFallenStrategy()
         AutoProgressionRunning = false
         return
-    --[[elseif forceHcUnevo then
-        SetStatus("Force mode: Hardcore UNEVO")
-        RunHardcoreUnevo()
+    elseif forceHardcore then
+        SetStatus("Force mode: Hardcore")
+        RunHardcore()
         AutoProgressionRunning = false
         return
-    elseif forceHcEvo then
-        SetStatus("Force mode: Hardcore EVO")
-        RunHardcoreEvo()
-        AutoProgressionRunning = false
-        return]]
     end
 
     local level = GetStat("Level")
@@ -2018,12 +2201,9 @@ local function RunAutoProgression()
         if level >= 176 then
         SetStatus("Level " .. level .. " → Fallen path")
         RunFallenStrategy()
-    elseif level >= 120 then
-        SetStatus("Level " .. level .. " → Hardcore EVO path")
-        RunHardcoreEvo()
-    --[[elseif level >= 51 then
-        SetStatus("Level " .. level .. " → Hardcore UNEVO path")
-        RunHardcoreUnevo()]]
+        elseif level >= 125 then
+        SetStatus("Level " .. level .. " → Hardcore path")
+        RunHardcore()
     elseif level >= 50 then
         SetStatus("Level " .. level .. " → Pizza Party path")
         RunPizzaParty()
@@ -2311,8 +2491,6 @@ local function CreateUI()
     end
 
     local function toggleMode(settingKey, btn)
-        getgenv().HcEvoActive = false
-        getgenv().HcUnevoActive = false
         ClearAllForceModes(settingKey)
         _G.AutoProgSettings[settingKey] = not _G.AutoProgSettings[settingKey]
         updateAllModeButtons()
@@ -2333,8 +2511,6 @@ local function CreateUI()
         _G.AutoProgSettings.AutoProgressionEnabled = AutoProgressionEnabled
         if not AutoProgressionEnabled then
             ClearAllForceModes(nil)
-            getgenv().HcEvoActive = false
-            getgenv().HcUnevoActive = false
             updateAllModeButtons()
             SetStatus("Stopped")
         else
@@ -2448,11 +2624,10 @@ getgenv().AutoProgressionUI = ui
 getgenv().BuyTower = BuyTower
 getgenv().RunYeetEasy = RunYeetEasy
 getgenv().RunAutoProgression = RunAutoProgression
-getgenv().RunHardcoreUnevo = RunHardcoreUnevo
-getgenv().RunHardcoreEvo = RunHardcoreEvo
 getgenv().RunPizzaParty = RunPizzaParty
 getgenv().RunBootCamp = RunBootCamp
 getgenv().RunFallenStrategy = RunFallenStrategy
+getgenv().RunHardcore = RunHardcore
 
 task.spawn(function()
     task.wait(1)
