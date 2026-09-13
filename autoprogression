@@ -1456,21 +1456,25 @@ RunYeetEasy = function()
     end
 
     if not IsInLobby() then
-        -- Wait briefly in case Difficulty hasn't replicated yet
         local diff = getDifficulty()
-        local deadline = os.clock() + 5
-        while not diff and os.clock() < deadline do
-            task.wait(0.1)
-            diff = getDifficulty()
-        end
+local deadline = os.clock() + 5
+while not diff and os.clock() < deadline do
+    task.wait(0.1)
+    diff = getDifficulty()
+end
 
-        if diff ~= "Easy" then
-            print("[AutoProgression] Easy – wrong difficulty (" .. tostring(diff) .. ") – returning to lobby.")
-            SetStatus("Easy: wrong difficulty – going to lobby")
-            runningEasy = false
-            getgenv().SmartTeleportToLobby()
-            return
-        end
+local rep = ReplicatedStorage:FindFirstChild("StateReplicators")
+    and ReplicatedStorage.StateReplicators:FindFirstChild("GameStateReplicator")
+local display = rep and rep:GetAttribute("DifficultyDisplayName")
+local isHardcore = display and display ~= ""
+    and tostring(display):lower():find("hardcore", 1, true) ~= nil
+
+if diff ~= "Easy" or isHardcore then
+    SetStatus("Easy: wrong difficulty – going to lobby")
+    runningEasy = false
+    getgenv().SmartTeleportToLobby()
+    return
+end
 
         while true do
             local availableMaps = GetAvailableMaps()
@@ -1799,8 +1803,17 @@ local function APR_IsTrial()
     return t and t ~= ""
 end
 
+local function APR_IsHardcoreDisplay()
+    local rep = APR_GetGameStateReplicator()
+    if not rep then return false end
+    local display = rep:GetAttribute("DifficultyDisplayName")
+    if not display or display == "" then return false end
+    return tostring(display):lower():find("hardcore", 1, true) ~= nil
+end
+
 local function APR_IsEasySurvival()
     if APR_IsTrial() then return false end
+    if APR_IsHardcoreDisplay() then return false end
     local rep = APR_GetGameStateReplicator()
     if not rep then return false end
     return rep:GetAttribute("Difficulty") == "Easy"
