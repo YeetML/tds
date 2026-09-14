@@ -1876,7 +1876,6 @@ local APR_HC_LOSS_THRESHOLD = 30
 local APR_HcLossCount       = 0
 local APR_HcContent         = nil
 local APR_HcStrategySrc     = nil
-local APR_HcSetupDone       = false
 local runningHardcore       = false
 
 local function APR_HcFetch()
@@ -1892,7 +1891,7 @@ local function APR_HcSplit(content)
     local inStrategy = false
     for line in content:gmatch("[^\r\n]+") do
         if not inStrategy and
-           (line:match("TDS:Place") or line:match("TDS:VoteSkip") or line:match("TDS:RemoveIndex")) then
+           (line:match("TDS:Place") or line:match("TDS:VoteSkip")) then
             inStrategy = true
         end
         if inStrategy then
@@ -1905,21 +1904,19 @@ local function APR_HcSplit(content)
 end
 
 local function APR_HcRunFull()
-    if not APR_HcContent then
-        APR_HcContent = APR_HcFetch()
-    end
+    APR_HcContent = APR_HcFetch()
     if not APR_HcContent then
         warn("[APR-HC] Failed to fetch: " .. APR_HC_URL)
         return false
     end
-    local setup, strat = APR_HcSplit(APR_HcContent)
+    local _, strat = APR_HcSplit(APR_HcContent)
     APR_HcStrategySrc = strat
 
-    local fn = loadstring(setup)         
+    local fn = loadstring(APR_HcContent)
     if not fn then return false end
     local ok, err = pcall(fn)
     if not ok then
-        warn("[APR-HC] Setup exec error: " .. tostring(err))
+        warn("[APR-HC] Full exec error: " .. tostring(err))
         return false
     end
     return true
@@ -1947,23 +1944,6 @@ local function APR_HcRunStrategyOnly()
         return false
     end
     return true
-end
-
-local function APR_FireSkipVote()
-    local remote = ReplicatedStorage:WaitForChild("RemoteFunction", 10)
-    if not remote then return false end
-    local attempts = 0
-    while attempts < 30 do
-        attempts = attempts + 1
-        local success, result = pcall(function()
-            return remote:InvokeServer("Voting", "Skip")
-        end)
-        if success and result == true then
-            return true
-        end
-        task.wait(0.1)
-    end
-    return false
 end
 
 local function APR_RequeueHardcore()
@@ -2020,11 +2000,6 @@ function RunHardcore()
         end
 
         task.spawn(function()
-            if not APR_HcSetupDone then
-                APR_HcSetupDone = true
-                APR_HcRunFull()
-                task.wait(1)
-            end
             APR_HcRunStrategyOnly()
             runningHardcore = false
         end)
@@ -2048,15 +2023,9 @@ function RunHardcore()
                 return
             end
             ApplyStrategySettings(HC_STRATEGY_SETTINGS)
-            if not APR_HcContent then
-                APR_HcContent = APR_HcFetch()
+            if not APR_HcRunFull() then
+                SetStatus("Hardcore: failed to load strategy")
             end
-            if APR_HcContent then
-                local _, strat = APR_HcSplit(APR_HcContent)
-                APR_HcStrategySrc = strat
-            end
-
-            SetStatus("Hardcore: queued – waiting for match")
             runningHardcore = false
         end)
     end
@@ -2161,7 +2130,6 @@ local function APR_RequeueFallen()
 end
 
 local function APR_TeleportLobby()
-    APR_HcSetupDone = false 
     local tp = getgenv().SmartTeleportToLobby
     if type(tp) == "function" then
         pcall(tp)
@@ -2229,17 +2197,7 @@ local function APR_HandleGameOver()
             else
                 SetStatus("HC restart " .. APR_HcLossCount ..
                           "/" .. APR_HC_LOSS_THRESHOLD)
-
-                if status == "LOSS" then
-                    -- Loss screen: acknowledge defeat + restart via Skip vote
-                    print("[APR-HC] Loss – firing skip vote to restart")
-                    APR_FireSkipVote()
-                else
-                    -- Win screen: multi-player start works normally
-                    print("[APR-HC] Win – requeueing via Multiplayer v2:start")
-                    APR_RequeueHardcore()
-                end
-
+                APR_RequeueHardcore()
                 task.spawn(function()
                     local deadline = os.clock() + 90
                     while os.clock() < deadline do
@@ -2822,22 +2780,5 @@ end)
 
 getgenv().RunSkillPurchases   = RunSkillPurchases
 getgenv().SkillBuyingRunning  = function() return SkillBuyingRunning end
-
-task.spawn(function()
-    while true do
-        task.wait(1)
-        if APR_IsHardcoreDisplay() then
-            if not APR_HcSetupDone and APR_HcContent then
-                APR_HcSetupDone = true
-                print("[APR-HC] Match detected – running setup + strategy.")
-                pcall(APR_HcRunFull)
-                task.wait(1)
-                pcall(APR_HcRunStrategyOnly)
-            end
-        else
-            APR_HcSetupDone = false
-        end
-    end
-end)
 
 APR_StartMatchWatcher()
