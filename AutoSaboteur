@@ -55,13 +55,13 @@ function AutoSaboteur.Start()
             local saboteurs = getSaboteurs()
             if #saboteurs == 0 then
                 task.wait(0.5)
-                goto continue
+                continue
             end
 
             local enemyPositions = getEnemyPositions()
             if #enemyPositions == 0 then
                 task.wait(0.5)
-                goto continue
+                continue
             end
 
             for _, saboteur in ipairs(saboteurs) do
@@ -75,9 +75,11 @@ function AutoSaboteur.Start()
                         if part then towerPos = part.Position end
                     end
                 end
-                if not towerPos then goto nextSaboteur end
+                if not towerPos then
+                    continue
+                end
 
-                local range = rep and (rep:GetAttribute("Range") or 16.5) or 16.5
+                local range = rep and (rep:GetAttribute("Range") or rep:GetAttribute("TowerRange") or 16.5) or 16.5
                 range = tonumber(range) or 16.5
 
                 local targetPos = nil
@@ -99,11 +101,9 @@ function AutoSaboteur.Start()
                         })
                     end)
                 end
-                ::nextSaboteur::
             end
 
             task.wait(0.5)
-            continue
         end
     end)
 end
