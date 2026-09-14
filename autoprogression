@@ -1891,7 +1891,7 @@ local function APR_HcSplit(content)
     local inStrategy = false
     for line in content:gmatch("[^\r\n]+") do
         if not inStrategy and
-           (line:match("TDS:Place") or line:match("TDS:VoteSkip")) then
+           (line:match("TDS:Place") or line:match("TDS:VoteSkip") or line:match("TDS:RemoveIndex")) then
             inStrategy = true
         end
         if inStrategy then
@@ -1909,14 +1909,14 @@ local function APR_HcRunFull()
         warn("[APR-HC] Failed to fetch: " .. APR_HC_URL)
         return false
     end
-    local _, strat = APR_HcSplit(APR_HcContent)
+    local setup, strat = APR_HcSplit(APR_HcContent)
     APR_HcStrategySrc = strat
 
-    local fn = loadstring(APR_HcContent)
+    local fn = loadstring(setup)         
     if not fn then return false end
     local ok, err = pcall(fn)
     if not ok then
-        warn("[APR-HC] Full exec error: " .. tostring(err))
+        warn("[APR-HC] Setup exec error: " .. tostring(err))
         return false
     end
     return true
