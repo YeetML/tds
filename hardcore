@@ -1,74 +1,191 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local activeStratThread = nil
+local LOSS_THRESHOLD = 30
+local lossCount = 0
+local LOBBY_ID = 3260590327
+
 local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
 
 TDS:Loadout("Pyromancer", "Farm", "Shotgunner", "None", "None")
 TDS:Mode("Hardcore")
 TDS:GameInfo("Wretched Front", {})
 
-TDS:VoteSkip(1,30)
-TDS:Place("Pyromancer", -7.560023307800293, 0.9769434928894043, -32.62907409667969)
-TDS:Ready()
-TDS:Place("Farm", -10.435867309570312, 1.541428804397583, 24.208038330078125)
-TDS:Upgrade(2)
-TDS:Place("Farm", -10.435850143432617, 1.5392794609069824, 27.748016357421875)
-TDS:Upgrade(3)
-TDS:Place("Farm", -10.435850143432617, 1.4847712516784668, 31.28801727294922)
-TDS:Upgrade(4)
-TDS:Place("Farm", -13.738049507141113, 1.5940845012664795, 25.483652114868164)
-TDS:Upgrade(5)
-TDS:Place("Farm", -13.501580238342285, 1.5563569068908691, 29.518016815185547)
-TDS:Upgrade(6)
-TDS:Upgrade(1)
-TDS:Upgrade(1)
-TDS:Upgrade(6)
-TDS:Upgrade(5)
-TDS:Upgrade(4)
-TDS:Upgrade(3)
-TDS:Upgrade(2)
-TDS:Place("Shotgunner", 7.135066032409668, 0.5286891460418701, -13.992563247680664)
-TDS:Upgrade(7)
-TDS:Upgrade(4)
-TDS:Upgrade(6)
-TDS:Upgrade(5)
-TDS:Upgrade(3)
-TDS:Upgrade(2)
-TDS:Upgrade(7)
-TDS:Place("Shotgunner", 9.030866622924805, 0.4974568486213684, -14.745914459228516)
-TDS:Upgrade(8)
-TDS:Upgrade(8)
-TDS:Place("Shotgunner", 8.735387802124023, 0.46087655425071716, -12.727426528930664)
-TDS:Upgrade(9)
-TDS:Upgrade(9)
-TDS:Upgrade(1)
-TDS:Upgrade(1)
-TDS:Place("Shotgunner", 8.579944610595703, 0.5235110521316528, -16.735454559326172)
-TDS:Upgrade(10)
-TDS:Upgrade(10)
-TDS:Place("Shotgunner", 6.695230484008789, 0.5660558342933655, -15.954780578613281)
-TDS:Upgrade(11)
-TDS:Upgrade(11)
-TDS:Place("Shotgunner", 6.8395867347717285, 0.4524146020412445, -11.974075317382812)
-TDS:Upgrade(12)
-TDS:Upgrade(12)
-TDS:Place("Shotgunner", 4.9548726081848145, 0.43411096930503845, -12.754749298095703)
-TDS:Upgrade(13)
-TDS:Upgrade(13)
-TDS:Place("Shotgunner", 5.01784610748291, 0.5347641706466675, -14.762955665588379)
-TDS:Upgrade(14)
-TDS:Upgrade(14)
-TDS:Place("Shotgunner", 4.8362321853637695, 0.6103012561798096, -16.79485511779785)
-TDS:Upgrade(15)
-TDS:Upgrade(15)
-TDS:Place("Pyromancer", 0.5457625389099121, 1.4532248973846436, 31.472179412841797)
-TDS:Upgrade(16)
-TDS:Upgrade(16)
-TDS:Upgrade(16)
-TDS:Upgrade(10)
-TDS:Upgrade(8)
-TDS:Upgrade(9)
-TDS:Upgrade(7)
-TDS:Upgrade(11)
-TDS:Upgrade(15)
-TDS:Upgrade(14)
-TDS:Upgrade(13)
-TDS:Upgrade(12)
-TDS:Upgrade(16)
+local function SmartTeleportToLobby()
+    local isMobile = (UserInputService:GetPlatform() == Enum.Platform.IOS or
+                      UserInputService:GetPlatform() == Enum.Platform.Android)
+    pcall(function()
+        if not isMobile and getgenv().PrivateCode and getgenv().PrivateCode ~= "" then
+            game:GetService("ExperienceService"):LaunchExperience({
+                placeId = LOBBY_ID,
+                linkCode = getgenv().PrivateCode
+            })
+        else
+            TeleportService:Teleport(LOBBY_ID)
+        end
+    end)
+end
+
+local function StartStrategy()
+    wait(0.1)
+    TDS:RemoveIndex()
+
+    TDS:VoteSkip(1, 30)
+    TDS:Place("Pyromancer", -7.560023307800293, 0.9769434928894043, -32.62907409667969)
+    TDS:Ready()
+    TDS:Place("Farm", -10.435867309570312, 1.541428804397583, 24.208038330078125)
+    TDS:Upgrade(2)
+    TDS:Place("Farm", -10.435850143432617, 1.5392794609069824, 27.748016357421875)
+    TDS:Upgrade(3)
+    TDS:Place("Farm", -10.435850143432617, 1.4847712516784668, 31.28801727294922)
+    TDS:Upgrade(4)
+    TDS:Place("Farm", -13.738049507141113, 1.5940845012664795, 25.483652114868164)
+    TDS:Upgrade(5)
+    TDS:Place("Farm", -13.501580238342285, 1.5563569068908691, 29.518016815185547)
+    TDS:Upgrade(6)
+    TDS:Upgrade(1)
+    TDS:Upgrade(1)
+    TDS:Upgrade(6)
+    TDS:Upgrade(5)
+    TDS:Upgrade(4)
+    TDS:Upgrade(3)
+    TDS:Upgrade(2)
+    TDS:Place("Shotgunner", 7.135066032409668, 0.5286891460418701, -13.992563247680664)
+    TDS:Upgrade(7)
+    TDS:Upgrade(4)
+    TDS:Upgrade(6)
+    TDS:Upgrade(5)
+    TDS:Upgrade(3)
+    TDS:Upgrade(2)
+    TDS:Upgrade(7)
+    TDS:Place("Shotgunner", 9.030866622924805, 0.4974568486213684, -14.745914459228516)
+    TDS:Upgrade(8)
+    TDS:Upgrade(8)
+    TDS:Place("Shotgunner", 8.735387802124023, 0.46087655425071716, -12.727426528930664)
+    TDS:Upgrade(9)
+    TDS:Upgrade(9)
+    TDS:Upgrade(1)
+    TDS:Upgrade(1)
+    TDS:Place("Shotgunner", 8.579944610595703, 0.5235110521316528, -16.735454559326172)
+    TDS:Upgrade(10)
+    TDS:Upgrade(10)
+    TDS:Place("Shotgunner", 6.695230484008789, 0.5660558342933655, -15.954780578613281)
+    TDS:Upgrade(11)
+    TDS:Upgrade(11)
+    TDS:Place("Shotgunner", 6.8395867347717285, 0.4524146020412445, -11.974075317382812)
+    TDS:Upgrade(12)
+    TDS:Upgrade(12)
+    TDS:Place("Shotgunner", 4.9548726081848145, 0.43411096930503845, -12.754749298095703)
+    TDS:Upgrade(13)
+    TDS:Upgrade(13)
+    TDS:Place("Shotgunner", 5.01784610748291, 0.5347641706466675, -14.762955665588379)
+    TDS:Upgrade(14)
+    TDS:Upgrade(14)
+    TDS:Place("Shotgunner", 4.8362321853637695, 0.6103012561798096, -16.79485511779785)
+    TDS:Upgrade(15)
+    TDS:Upgrade(15)
+    TDS:Place("Pyromancer", 0.5457625389099121, 1.4532248973846436, 31.472179412841797)
+    TDS:Upgrade(16)
+    TDS:Upgrade(16)
+    TDS:Upgrade(16)
+    TDS:Upgrade(10)
+    TDS:Upgrade(8)
+    TDS:Upgrade(9)
+    TDS:Upgrade(7)
+    TDS:Upgrade(11)
+    TDS:Upgrade(15)
+    TDS:Upgrade(14)
+    TDS:Upgrade(13)
+    TDS:Upgrade(12)
+    TDS:Upgrade(16)
+end
+
+local function GetMatchStatus()
+    local success, status = pcall(function()
+        local uiRoot = PlayerGui:FindFirstChild("ReactGameNewRewards")
+        if not uiRoot then return nil end
+        local mainFrame = uiRoot:FindFirstChild("Frame")
+        if not mainFrame or not mainFrame.Visible then return nil end
+        local gameOver = mainFrame:FindFirstChild("gameOver")
+        if not gameOver or not gameOver.Visible then return nil end
+        local rewardsScreen = gameOver:FindFirstChild("RewardsScreen")
+        if not rewardsScreen or not rewardsScreen.Visible then return nil end
+        local topBanner = rewardsScreen:FindFirstChild("RewardBanner")
+        if not topBanner then return nil end
+        local label = topBanner:FindFirstChild("textLabel") or topBanner:FindFirstChildOfClass("TextLabel")
+        if not label then return nil end
+        local txt = label.Text:upper()
+        if txt == "" then return nil end
+        if txt:find("TRIUMPH") or txt:find("VICTORY") or txt:find("WIN") then
+            return "WIN"
+        elseif txt:find("LOST") or txt:find("DEFEAT") or txt:find("FAIL") then
+            return "LOSS"
+        end
+        return nil
+    end)
+    if success then return status end
+    return nil
+end
+
+local function fireSkipVote()
+    local Event = ReplicatedStorage:WaitForChild("RemoteFunction")
+    while true do
+        local success, result = pcall(function()
+            return Event:InvokeServer("Voting", "Skip")
+        end)
+        if success and result == true then
+            print("Skip vote successful!")
+            break
+        else
+            print("Skip vote failed or rejected. Retrying...")
+            task.wait(0.1)
+        end
+    end
+end
+
+task.spawn(function()
+    activeStratThread = task.spawn(StartStrategy)
+
+    while true do
+        task.wait(0.1)
+        local currentStatus = GetMatchStatus()
+
+        if currentStatus == "LOSS" then
+            lossCount = lossCount + 1
+            print(string.format("Loss #%d / %d detected.", lossCount, LOSS_THRESHOLD))
+
+            if lossCount >= LOSS_THRESHOLD then
+                print("Reached loss threshold! Teleporting to lobby.")
+                SmartTeleportToLobby()
+                break
+            end
+
+            if activeStratThread and coroutine.status(activeStratThread) ~= "dead" then
+                task.cancel(activeStratThread)
+                activeStratThread = nil
+            end
+
+            print("Firing restart remote...")
+            fireSkipVote()
+
+            print("Waiting for match screen to clear...")
+            repeat task.wait(0.1) until GetMatchStatus() == nil
+            task.wait(0.1)
+
+            print("Starting new strategy match!")
+            activeStratThread = task.spawn(StartStrategy)
+
+        elseif currentStatus == "WIN" then
+            if lossCount > 0 then
+                print("Win detected! Resetting loss counter.")
+                lossCount = 0
+            end
+        end
+    end
+end)
