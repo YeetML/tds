@@ -1,11 +1,18 @@
 local Globals = getgenv()
 
+_G.AutoProgSettings = _G.AutoProgSettings or {}
+
+if shared.TDSTable then
+    return shared.TDSTable
+end
+
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
+local Window
 local function SmartTeleportToLobby()
     local lobbyId = 3260590327
     pcall(function()
@@ -21,13 +28,39 @@ local function SmartTeleportToLobby()
             TeleportService:Teleport(lobbyId)
         end
     end)
+
+    task.spawn(function()
+        task.wait(10)
+        if Window then
+            Window:Notify({
+                Title = "Teleport Failed",
+                Desc = "It looks like you're stuck! If you are using Delta, please ensure that 'Verify Teleports' is disabled in your settings.",
+                Time = 9999,
+                Type = "error"
+            })
+            task.wait(5)
+            Window:Notify({
+                Title = "Fixing Delta Teleport Issues",
+                Desc = "1. Disconnect from the game\n" ..
+                       "2. Completely empty your 'autoexecute' folder\n" ..
+                       "3. Reopen Roblox and join the game\n" ..
+                       "4. Go to Delta settings and disable 'Verify Teleports'\n" ..
+                       "5. Disconnect and rejoin to confirm 'Verify Teleports' remains OFF\n" ..
+                       "6. Once verified, restore your files to 'autoexecute' and rejoin",
+                Time = 9999,
+                Type = "normal"
+            })
+        end
+    end)
 end
 
 local function Reconnect()
-    local initial = GuiService:GetErrorMessage()
-    if initial and initial ~= "" then
+    local initialCode = GuiService:GetErrorCode()
+    
+    if initialCode and initialCode ~= Enum.ConnectionError.OK then
         task.wait(5)
-        if GuiService:GetErrorMessage() == initial then
+        
+        if GuiService:GetErrorCode() == initialCode then
             pcall(function()
                 TeleportService:TeleportReconnect()
             end)
@@ -84,6 +117,8 @@ local mouse = LocalPlayer:GetMouse()
 local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
 local RemoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent")
 local FileName = "YEETMLPRO_Config.json"
+local Logger
+local StartBackToLobby
 local platform = UserInputService:GetPlatform()
 local IsMobile = (platform == Enum.Platform.IOS or platform == Enum.Platform.Android)
 
@@ -96,7 +131,7 @@ end)
 
 task.spawn(function()
     pcall(function()
-        RemoteFunc:InvokeServer("Settings", "Update", "Show Nametags", false)
+        RemoteFunc:InvokeServer("Settings", "Update", "Show Nametags", true)
     end)
 end)
 
@@ -156,11 +191,27 @@ local AutoMilitaryBaseRunning = false
 local SellFarmsRunning = false
 local AutoGatlingRunning = false
 local GatlingExecuted = false
+local GatlifyRunning = false
+local GatlifyExecuted = false
+local IsCurrentlyLoading = false
+local LastLoadTime = 0
 local AutoPremiumRunning = false
 local StackerErrorShown = false
 local PremiumLoaded = false
+local AutoMedicRunning = false
+local AutoBountyRunning = false
+local AutoRedeemRunning = false
+local CodesRedeemed = false
+local AutoDJ = nil
+local AutoUpgradeSelectedRunning = false
+local AutoUpgradeAllRunning = false
+local AutoFreezerRunning = false
+local AutoSaboteurRunning = false
+local AutoBrawlerRunning = false
+local AutoTrialsRunning = false
+local AutoReadyRunning = false
 
-local MaxPathDistance = 300 -- default
+local MaxPathDistance = 300 
 local MilMarker = nil
 local MercMarker = nil
 
@@ -170,6 +221,19 @@ local StackEnabled = false
 local SelectedTower = nil
 local StackSphere = nil
 
+local AllTowers = {
+    "Scout", "Sniper", "Paintballer", "Demoman", "Boomerang", "Slime Trooper", "Soldier",
+    "Freezer", "Assassin", "Militant", "Shotgunner", "Hunter", "Pyromancer", "Ace Pilot", 
+    "Electroshocker", "Rocketeer", "Trapper", "Crook Boss", "Warden", "Cowboy", "Tesla", 
+    "Saboteur", "Minigunner", "Ranger", "Pursuit", "Gatling Gun", "Turret", "Mortar",
+    "Brawler", "Necromancer", "Accelerator", "Engineer", "Hacker", "EvolvedOperator", 
+    "EvolvedKingpin", "EvolvedJuggernaut", "EvolvedEnforcer", "Gladiator","Commando","Slasher",
+    "Frost Blaster", "Archer", "Swarmer", "Toxic Gunner", "Sledger", "Executioner",
+    "Elf Camp", "Jester", "Cryomancer", "Hallow Punk", "Harvester", "Snowballer",
+    "Elementalist", "Firework Technician", "Biologist", "Warlock", "Spotlight Tech",
+    "Mecha Base"
+}
+
 local AllModifiers = {
     "HiddenEnemies", "Glass", "ExplodingEnemies", "Limitation", 
     "Committed", "HealthyEnemies", "Fog", "FlyingEnemies", 
@@ -177,45 +241,59 @@ local AllModifiers = {
 }
 
 local DefaultSettings = {
-    HardcoreMinigunner = false,
-    PathVisuals = false,
-    MilitaryPath = false,
-    MercenaryPath = false,
+    PathVisuals = true,
+    AutoUpgradeSelected = false,
+    AutoUpgradeAll = false,
+    MilitaryPath = 0,
+    MercenaryPath = 0,
     AutoSkip = false,
     AutoOpenCrates = false,
     SelectedCrate = "All",
     AutoReady = false,
-    AutoChain = false,
-    AutoGatling = false,
+    AutoChain = true,
+    AutoGatling = true,
+    Gatlify = false,
     AutoPremium = false,
-    SupportCaravan = false,
-    AutoDJ = false,
+    SupportCaravan = true,
+    AutoDJ = true,
     DJCustomSongID = "",
-    AutoNecro = false,
-    AutoRejoin = true,
+    AutoNecro = true,
+    AutoRejoin = false,
+    AutoRestart = false,
     PrivateCode = "",
     TimeScaleEnabled = false,
     TimeScaleValue = 2,
     SellFarms = false,
-    AutoMercenary = false,
+    AutoMercenary = true,
     AutoMilitary = false,
     Frost = false,
     Fallen = false,
     Easy = false,
-    AntiLag = false,
+    AntiLag = true,
     Disable3DRendering = false,
-    AutoPickups = false,
-    ClaimRewards = false,
-    SendWebhook = false,
+    AutoPickups = true,
+    ClaimRewards = true,
+    SendWebhook = true,
     NoRecoil = false,
     SellFarmsWave = 1,
     WebhookURL = "",
     PickupMethod = "Pathfinding",
     StreamerMode = false,
-    HideUsername = true,
+    HideUsername = false,
     StreamerName = "",
     tagName = "None",
     Modifiers = {},
+    AutoMedic = true,
+    MedicTarget = "Self First",
+    Towerslot = {"Gatling Gun", "EvolvedJuggernaut", "EvolvedKingpin", "Turret", "Accelerator", "Mortar", "Crook Boss", "Ranger"},
+    AutoBounty = true,
+    AutoRedeemCodes = true,
+    MuteOtherDJs = true,
+    RandomDJ = true,
+    AutoTrials = false,
+    AutoFreezer = true,
+    AutoSaboteur = true,
+    AutoBrawler = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -243,12 +321,110 @@ local function GetTimescaleFrame()
     return frame and frame:FindFirstChild("timescale")
 end
 
+local function fetchCodesFromBeebom()
+    local httpRequest = SendRequest
+    if not httpRequest then
+        warn("[CodeRedeemer] No HTTP support – skipping.")
+        return {}
+    end
+    local response = httpRequest({
+        Url = "https://beebom.com/tower-defense-simulator-tds-codes/",
+        Method = "GET",
+        Headers = {
+            ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+    })
+    if response.StatusCode ~= 200 then
+        warn("[CodeRedeemer] Failed to fetch page. Status: " .. tostring(response.StatusCode))
+        return {}
+    end
+    local html = response.Body or ""
+    local codes = {}
+    
+    for code in html:gmatch("<strong>([A-Z0-9]+)</strong>") do
+        local alreadyExists = false
+        for _, existing in ipairs(codes) do
+            if existing == code then
+                alreadyExists = true
+                break
+            end
+        end
+        if not alreadyExists then
+            table.insert(codes, code)
+        end
+    end
+    return codes
+end
+
+local function redeemCodesFromBeebom()
+    if AutoRedeemRunning then return end
+    AutoRedeemRunning = true
+
+    task.spawn(function()
+        print("[CodeRedeemer] Fetching codes from Beebom...")
+        if Window and Window.Notify then
+            Window:Notify({
+                Title = "Auto Redeem Codes",
+                Desc = "Fetching codes from Beebom...",
+                Time = 5,
+                Type = "normal"
+            })
+        end
+
+        local codeList = fetchCodesFromBeebom()
+        if #codeList == 0 then
+            print("[CodeRedeemer] No codes found.")
+            if Window and Window.Notify then
+                Window:Notify({
+                    Title = "Auto Redeem Codes",
+                    Desc = "No codes found.",
+                    Time = 3,
+                    Type = "error"
+                })
+            end
+            AutoRedeemRunning = false
+            return
+        end
+
+        print("[CodeRedeemer] Found codes: " .. table.concat(codeList, ", "))
+        if Window and Window.Notify then
+            Window:Notify({
+                Title = "Auto Redeem Codes",
+                Desc = "Redeeming " .. #codeList .. " codes...",
+                Time = 5,
+                Type = "normal"
+            })
+        end
+
+        local redeemed = 0
+        for _, code in ipairs(codeList) do
+            print("[CodeRedeemer] Redeeming: " .. code)
+            pcall(function()
+                RemoteFunc:InvokeServer("Codes", "Redeem", code)
+                redeemed = redeemed + 1
+            end)
+            task.wait(0.5)
+        end
+
+        print("[CodeRedeemer] Done! Redeemed " .. redeemed .. " codes.")
+        if Window and Window.Notify then
+            Window:Notify({
+                Title = "Auto Redeem Codes",
+                Desc = "Redeemed " .. redeemed .. " codes!",
+                Time = 5,
+                Type = "normal"
+            })
+        end
+        CodesRedeemed = true
+        AutoRedeemRunning = false
+    end)
+end
+
 local StartTimeScale
 local ApplyTimeScaleOnce
 
 local LastState = {}
 
--- // icon item ids ill add more soon arghh
 local ItemNames = {
     ["17447507910"] = "Timescale Ticket(s)",
     ["17438486690"] = "Range Flag(s)",
@@ -271,7 +447,8 @@ local ItemNames = {
     ["139414922355803"] = "Present Clusters(s)"
 }
 
--- // tower management core
+local executed_actions = {}
+
 TDS = {
     PlacedTowers = {},
     ActiveStrat = true,
@@ -288,12 +465,37 @@ TDS["active_strat"] = TDS.ActiveStrat
 TDS["matchmaking_map"] = TDS.MatchmakingMap
 
 local UpgradeHistory = {}
-
--- // shared for addons
 shared.TDSTable = TDS
 shared["TDS_Table"] = TDS
 
--- // load & save
+function TDS:ResetAllStates()
+    table.clear(self.PlacedTowers)
+    table.clear(UpgradeHistory)
+    table.clear(executed_actions)
+    if Logger and Logger.Clear then
+        pcall(function()
+            Logger:Clear()
+            Logger:Log("Restarting strategy...")
+        end)
+    end
+end
+
+function TDS:RunStrategy()
+    if Globals.activeStrategyThread then
+        pcall(task.cancel, Globals.activeStrategyThread)
+        Globals.activeStrategyThread = nil
+    end
+
+    Globals.activeStrategyThread = task.spawn(function()
+        Globals.tdsReplaying = true
+        pcall(function()
+            loadstring(readfile("ADS_LastStrat.lua"))()
+        end)
+        Globals.tdsReplaying = false
+        Globals.activeStrategyThread = nil
+    end)
+end
+
 local function SaveSettings()
     local DataToSave = {}
     for key, _ in pairs(DefaultSettings) do
@@ -325,11 +527,15 @@ end
 
 local function SetSetting(name, value)
     if DefaultSettings[name] ~= nil then
+        if _G.AutoProgSettings.__locked and _G.AutoProgSettings[name] ~= nil and name ~= "WebhookURL" and name ~= "SendWebhook" then
+    return
+end
         if name == "TimeScaleValue" then
             value = CoerceTimeScaleValue(value, Globals.TimeScaleValue or 2)
         end
         Globals[name] = value
         SaveSettings()
+        _G.AutoProgSettings[name] = value
     end
 end
 
@@ -370,8 +576,24 @@ LoadSettings()
 Globals.TimeScaleValue = CoerceTimeScaleValue(Globals.TimeScaleValue, 2)
 Apply3dRendering()
 
-Globals.HideUsername = true
-SetSetting("HideUsername", true)
+if Globals.RandomDJ or Globals.MuteOtherDJs then
+    if not AutoDJ then
+        AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+    end
+    if Globals.RandomDJ and AutoDJ and not AutoDJ.IsRunning() then
+        AutoDJ.Start()
+    end
+    if Globals.MuteOtherDJs and AutoDJ and AutoDJ.StartMuteOthers then
+        AutoDJ.StartMuteOthers()
+    end
+end
+
+Globals.HideUsername = false 
+SetSetting("HideUsername", false)
+Globals.AutoUpgradeSelected = false
+Globals.AutoUpgradeAll = false
+SetSetting("AutoUpgradeSelected", false)
+SetSetting("AutoUpgradeAll", false)
 
 local isTagChangerRunning = false
 local tagChangerConn = nil
@@ -405,7 +627,6 @@ local function collectTagOptions()
     table.insert(list, 1, "None")
     return list
 end
-
 
 local function stopTagChanger()
     if tagChangerConn then
@@ -786,7 +1007,6 @@ end
 
 UpdatePrivacyState()
 
--- // for calculating path
 local function FindPath()
     local MapFolder = workspace:FindFirstChild("Map")
     if not MapFolder then return nil end
@@ -936,8 +1156,6 @@ local function MissionsUIFix()
     end)
 end
 
-local IsCurrentlyLoading = false
-
 function TDS:Addons()
     if GameState == "LOBBY" then return false end
     if PremiumLoaded then return true end
@@ -952,7 +1170,6 @@ function TDS:Addons()
 
     local url = "https://api.jnkie.com/api/v1/luascripts/public/57fe397f76043ce06afad24f07528c9f93e97730930242f57134d0b60a2d250b/download"
     local success, code = pcall(game.HttpGet, game, url)
-
     if not success or not code then
         IsCurrentlyLoading = false
         return false
@@ -1005,14 +1222,70 @@ end
 
 CurrentEquippedTowers = GetEquippedTowers()
 
-local CrateList = {
-    "All", "Basic", "Premium", "Deluxe", "Golden", "Bunny", "Halloween 2019", 
-    "Party", "Toy", "Valentines", "Xmas 2019", "Spooky", "Pumpkin", "Frost", 
-    "Lovely", "Cold Front", "Ducky", "Vigilante", "Pirate", "Phantom", 
-    "Halloween", "Jolly", "Lunar", "Lovestruck", "UglyCrate", "Coin Crate", 
-    "Banned", "Christmas 2025", "Showtime", "Valentines 2026", "Shamrock",
-    "Low Grade", "Mid Grade", "High Grade"
-}
+local CrateList = {"All"}        
+local CrateDropdown = nil
+
+local function refreshCrateList()
+    local cratesFolder = ReplicatedStorage:FindFirstChild("Assets")
+        and ReplicatedStorage.Assets:FindFirstChild("Crates")
+    
+    if not cratesFolder then
+        return false
+    end
+
+    for i = #CrateList, 1, -1 do
+        table.remove(CrateList, i)
+    end
+    table.insert(CrateList, "All")
+    for _, child in ipairs(cratesFolder:GetChildren()) do
+        if child:IsA("Folder") then
+            table.insert(CrateList, child.Name)
+        end
+    end
+    table.sort(CrateList, function(a, b) return a < b end)
+
+    if CrateDropdown then
+        local current = CrateDropdown:GetValue()
+        CrateDropdown:Clear()
+        for _, name in ipairs(CrateList) do
+            CrateDropdown:Add(name)
+        end
+        if not table.find(CrateList, current) then
+            current = "All"
+            Globals.SelectedCrate = "All"
+            SetSetting("SelectedCrate", "All")
+        end
+        CrateDropdown:SetValue(current)
+    end
+
+    return true
+end
+
+refreshCrateList()
+
+local function watchForCrates()
+    local assets = ReplicatedStorage:FindFirstChild("Assets")
+    if assets then
+        local crates = assets:FindFirstChild("Crates")
+        if crates then
+            refreshCrateList()
+        else
+            assets.ChildAdded:Connect(function(child)
+                if child.Name == "Crates" then
+                    refreshCrateList()
+                end
+            end)
+        end
+    else
+        ReplicatedStorage.ChildAdded:Connect(function(child)
+            if child.Name == "Assets" then
+                watchForCrates()
+            end
+        end)
+    end
+end
+
+task.spawn(watchForCrates)
 
 local AutoOpenRunning = false
 
@@ -1020,42 +1293,35 @@ local function StartAutoOpenCrates()
     if AutoOpenRunning or not Globals.AutoOpenCrates then return end
     AutoOpenRunning = true
 
-    for _, crateName in ipairs(CrateList) do
-        if crateName == "All" then continue end
-
-        task.spawn(function()
-            while Globals.AutoOpenCrates do
+    task.spawn(function()
+        while Globals.AutoOpenCrates do
+            for _, crateName in ipairs(CrateList) do
+                if crateName == "All" then continue end
                 if Globals.SelectedCrate == "All" or Globals.SelectedCrate == crateName then
                     local success, res = pcall(function()
                         return RemoteFunc:InvokeServer("Inventory", "Open", "Crate", crateName)
                     end)
 
                     if success and type(res) == "table" then
-                        task.wait(0.1) 
+                        task.wait(0.1)
                     else
                         task.wait(5)
                     end
-                else
-                    task.wait(1)
                 end
             end
-        end)
-    end
-
-    task.spawn(function()
-        repeat task.wait(1) until not Globals.AutoOpenCrates
+            task.wait(1)
+        end
         AutoOpenRunning = false
     end)
 end
 
--- // voting & map selection
 local function RunVoteSkip()
     while true do
         local success = pcall(function()
             RemoteFunc:InvokeServer("Voting", "Skip")
         end)
         if success then break end
-        task.wait(0.2)
+        task.wait(0.1)
     end
 end
 
@@ -1064,13 +1330,13 @@ local function StartAutoReady()
     AutoReadyRunning = true
 
     task.spawn(function()
-        local VR = ReplicatedStorage:WaitForChild("StateReplicators"):WaitForChild("VoteReplicator")
+        local voteReplicator = ReplicatedStorage:WaitForChild("StateReplicators"):WaitForChild("VoteReplicator")
         
-        repeat task.wait(0.5) until VR:GetAttribute("Enabled") == true and VR:GetAttribute("Title") == "Ready?"
+        repeat task.wait(0.1) until voteReplicator:GetAttribute("Enabled") == true and voteReplicator:GetAttribute("Title") == "Ready?"
         
         RunVoteSkip()
         
-        repeat task.wait(1) until VR:GetAttribute("Enabled") == false
+        repeat task.wait(0.1) until voteReplicator:GetAttribute("Enabled") == false
         
         AutoReadyRunning = false
     end)
@@ -1118,50 +1384,10 @@ local function StartEasyMode()
     end)
 end
 
-local HardcoreMinigunnerRunning = false
-
-local function StartHardcoreMinigunner()
-    if HardcoreMinigunnerRunning then return end
-    HardcoreMinigunnerRunning = true
-
-    task.spawn(function()
-        local content = nil
-
-        while Globals.HardcoreMinigunner and content == nil do
-            local success, res = pcall(function()
-                return game:HttpGet("https://pastebin.com/kicscFFu")
-            end)
-
-            if success and type(res) == "string" then
-                content = res
-            else
-                task.wait(1)
-            end
-        end
-
-        if content then
-            while not (TDS and TDS.Loadout) do 
-                task.wait(0.5) 
-            end
-
-            local func = loadstring(content)
-            if func then
-                pcall(func)
-                Window:Notify({Title = "ADS", Desc = "Hardcore Minigunner Strategy Loaded!", Time = 5})
-            end
-        end
-
-        repeat task.wait(2) until not Globals.HardcoreMinigunner
-        HardcoreMinigunnerRunning = false
-    end)
-end
-
--- // Tower audio control (searches for any of the listed towers owned by you)
-local function AutoSetDJSong(tower)   -- tower param is ignored; we search globally
+local function AutoSetDJSong()
+    if Globals.RandomDJ then return end
     task.spawn(function()
         local ownerId = LocalPlayer.UserId
-
-        -- List of tower names to check
         local towerNames = {
             "Default", "Neon Rave", "Neko", "Ghost", "Plushie",
             "Masquerade", "Mako", "Garage Band", "Ducky", "Seal",
@@ -1170,45 +1396,37 @@ local function AutoSetDJSong(tower)   -- tower param is ignored; we search globa
 
         local songId = Globals.DJCustomSongID
         if not songId or songId == "" then
-            return  -- no ID set, do nothing
+            return
         end
         local fullId = "rbxassetid://" .. songId
 
         while true do
             local towersFolder = workspace:FindFirstChild("Towers")
             if towersFolder then
-                -- Check each tower name in the list
                 for _, name in ipairs(towerNames) do
                     local towerModel = towersFolder:FindFirstChild(name)
                     if towerModel then
-                        -- Check Owner
                         local ownerVal = towerModel:FindFirstChild("Owner")
                         if ownerVal and ownerVal.Value == ownerId then
-                            -- Found it! Set the audio
                             local hrp = towerModel:FindFirstChild("HumanoidRootPart")
                             if hrp then
                                 local audioPlayer = hrp:FindFirstChild("AudioPlayer")
                                 if audioPlayer then
-                                    -- Try AssetId, fallback to SoundId
                                     if pcall(function() return audioPlayer.AssetId end) then
                                         audioPlayer.AssetId = fullId
-                                        print("Audio set for " .. name .. " to " .. fullId)
                                         pcall(function() audioPlayer:Play() end)
                                     elseif pcall(function() return audioPlayer.SoundId end) then
                                         audioPlayer.SoundId = fullId
-                                        print("Audio set for " .. name .. " to " .. fullId)
                                         pcall(function() audioPlayer:Play() end)
-                                    else
-                                        warn("Could not set audio for " .. name .. " – unknown property.")
                                     end
-                                    return  -- exit after setting
+                                    return
                                 end
                             end
                         end
                     end
                 end
             end
-            task.wait(1)  -- wait and retry
+            task.wait(1)
         end
     end)
 end
@@ -1216,16 +1434,13 @@ end
 task.spawn(function()
     local Towers = workspace:WaitForChild("Towers", 10)
     if not Towers then return end
-    -- Apply immediately if your tower already exists
     AutoSetDJSong()
-    -- Re‑apply when any new tower is added
     Towers.ChildAdded:Connect(AutoSetDJSong)
 end)
 
--- // ui
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Sources/UI.lua"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources"))()
 
-local Window = Library:Window({
+Window = Library:Window({
     Title = "Aether Hub",
     Desc = "your #1 hub",
     Theme = "Default",
@@ -1237,13 +1452,138 @@ local Window = Library:Window({
     }
 })
 
-if not LocalPlayer:IsInGroup(4914494) then
-    Window:Notify({
-        Title = "Warning",
-        Desc = "Please consider joining the Paradoxum Group. Otherwise, strategies may not work for you.",
-        Time = 25,
-        Type = "error"
-    })
+-- ═══════════════════════════════════════════════════════════════
+-- Expose Window so external modules (AutoTrials) can Notify
+-- ═══════════════════════════════════════════════════════════════
+getgenv().AetherWindow = Window
+
+task.spawn(function()
+    local retries = 0
+    while retries < 10 do
+        local success, inGroup = pcall(LocalPlayer.IsInGroup, LocalPlayer, 4914494)
+        if success then
+            if not inGroup then
+                Window:Notify({
+                    Title = "Warning",
+                    Desc = "Please consider joining the Paradoxum Group. Otherwise, strategies may not work for you.",
+                    Time = 25,
+                    Type = "error"
+                })
+            end
+            break
+        end
+        retries += 1
+        task.wait(1)
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════
+-- EXTERNAL MODULE LOADERS
+-- ═══════════════════════════════════════════════════════════════
+
+local AutoFreezerLib  = nil
+local AutoSaboteurLib = nil
+local AutoBrawlerLib  = nil
+local AutoTrialsLib   = nil
+
+local moduleURLs = {
+    AutoFreezer  = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoFreezer",
+    AutoSaboteur = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoSaboteur",
+    AutoBrawler  = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoBrawler",
+    AutoTrials   = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoTrials",
+}
+
+local function LoadExternalModule(name)
+    local url = moduleURLs[name]
+    if not url then return nil end
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet(url))()
+    end)
+    if ok and type(result) == "table" then
+        return result
+    end
+    warn(string.format("[%s] Failed to load external module: %s", name, tostring(result)))
+    return nil
+end
+
+local function StartAutoFreezer()
+    if AutoFreezerRunning or not Globals.AutoFreezer then return end
+    AutoFreezerRunning = true
+    if not AutoFreezerLib then
+        AutoFreezerLib = LoadExternalModule("AutoFreezer")
+    end
+    if AutoFreezerLib then
+        AutoFreezerLib.Start()
+    else
+        AutoFreezerRunning = false
+    end
+end
+
+local function StopAutoFreezer()
+    if AutoFreezerLib then
+        AutoFreezerLib.Stop()
+    end
+    AutoFreezerRunning = false
+end
+
+local function StartAutoSaboteur()
+    if AutoSaboteurRunning or not Globals.AutoSaboteur then return end
+    AutoSaboteurRunning = true
+    if not AutoSaboteurLib then
+        AutoSaboteurLib = LoadExternalModule("AutoSaboteur")
+    end
+    if AutoSaboteurLib then
+        AutoSaboteurLib.Start()
+    else
+        AutoSaboteurRunning = false
+    end
+end
+
+local function StopAutoSaboteur()
+    if AutoSaboteurLib then
+        AutoSaboteurLib.Stop()
+    end
+    AutoSaboteurRunning = false
+end
+
+local function StartAutoBrawler()
+    if AutoBrawlerRunning or not Globals.AutoBrawler then return end
+    AutoBrawlerRunning = true
+    if not AutoBrawlerLib then
+        AutoBrawlerLib = LoadExternalModule("AutoBrawler")
+    end
+    if AutoBrawlerLib then
+        AutoBrawlerLib.Start()
+    else
+        AutoBrawlerRunning = false
+    end
+end
+
+local function StopAutoBrawler()
+    if AutoBrawlerLib then
+        AutoBrawlerLib.Stop()
+    end
+    AutoBrawlerRunning = false
+end
+
+local function StartAutoTrials()
+    if AutoTrialsRunning or not Globals.AutoTrials then return end
+    AutoTrialsRunning = true
+    if not AutoTrialsLib then
+        AutoTrialsLib = LoadExternalModule("AutoTrials")
+    end
+    if AutoTrialsLib then
+        AutoTrialsLib.Start()
+    else
+        AutoTrialsRunning = false
+    end
+end
+
+local function StopAutoTrials()
+    if AutoTrialsLib then
+        AutoTrialsLib.Stop()
+    end
+    AutoTrialsRunning = false
 end
 
 local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
@@ -1252,10 +1592,45 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
     
     Automation:Toggle({
         Title = "Auto Rejoin",
-        Desc = "Rejoins the gamemode after you've won and does the strategy again",
+        Desc = "Turn this ON if you are running a WIN strat",
         Value = Globals.AutoRejoin,
         Callback = function(v)
             SetSetting("AutoRejoin", v)
+            if isfile("ADS_LastStrat.lua") then
+                pcall(delfile, "ADS_LastStrat.lua")
+            end
+            if v and GameState == "GAME" then
+                if #executed_actions > 0 then
+                    local content = "local TDS = shared.TDSTable or loadstring(game:HttpGet(\"https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main\"))()\n\n"
+                    content = content .. table.concat(executed_actions, "\n")
+                    writefile("ADS_LastStrat.lua", content)
+                end
+                if not BackToLobbyRunning then
+                    StartBackToLobby()
+                end
+            end
+        end
+    })
+
+    Automation:Toggle({
+        Title = "Auto Restart",
+        Desc = "Turn this ON if you are running a LOSE strat",
+        Value = Globals.AutoRestart,
+        Callback = function(v)
+            SetSetting("AutoRestart", v)
+            if isfile("ADS_LastStrat.lua") then
+                pcall(delfile, "ADS_LastStrat.lua")
+            end
+            if v and GameState == "GAME" then
+                if #executed_actions > 0 then
+                    local content = "local TDS = shared.TDSTable or loadstring(game:HttpGet(\"https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main\"))()\n\n"
+                    content = content .. table.concat(executed_actions, "\n")
+                    writefile("ADS_LastStrat.lua", content)
+                end
+                if not BackToLobbyRunning then
+                    StartBackToLobby()
+                end
+            end
         end
     })
 
@@ -1340,19 +1715,6 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
         end
     })
 
-    Automation:Textbox({
-    Title = "DJ Custom Music",
-    Desc = "Custom audio ID for your DJ Booth and owned tower",
-    Placeholder = "Audio ID",
-    Value = Globals.DJCustomSongID or "",
-    ClearTextOnFocus = false,
-    Callback = function(value)
-        SetSetting("DJCustomSongID", value or "")
-        if not tonumber(value) then return end
-        AutoSetDJSong()   -- this will search for your tower and apply
-    end
-})
-
     Automation:Toggle({
         Title = "Auto Necro",
         Desc = "Uses Necromancer Ability",
@@ -1361,6 +1723,121 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
             SetSetting("AutoNecro", v)
         end
     })
+
+        Automation:Toggle({
+        Title = "Auto Medic",
+        Desc = "Chains Medic Ability",
+        Value = Globals.AutoMedic,
+        Callback = function(v)
+            SetSetting("AutoMedic", v)
+        end
+    })
+
+    Automation:Dropdown({
+    Title = "Medic Target",
+    Desc = "Select which towers to heal: Universal (all players) or Self (only your own towers)",
+    List = {"Universal", "Self", "Self First"},
+    Value = Globals.MedicTarget or "Universal",
+    Callback = function(choice)
+        SetSetting("MedicTarget", choice)
+    end
+})
+
+    local towerDropdown = Automation:Dropdown({
+    Title = "Towers:",
+    Desc = "Selected towers must be near medic!",
+    List = AllTowers,
+    Value = Globals.Towerslot,
+    Multi = true,
+    Callback = function(choice)
+        SetSetting("Towerslot", choice)
+    end
+})
+towerDropdown:SetValue(Globals.Towerslot)
+
+    Automation:Toggle({
+        Title = "Auto Bounty",
+        Desc = "Target The Highest HP Enemy / boss",
+        Value = Globals.AutoBounty,
+        Callback = function(v)
+            SetSetting("AutoBounty", v)
+        end
+    })
+
+    Automation:Toggle({
+    Title = "Auto Freezer",
+    Desc = "Activates Frost Grenade on level 4+ Freezers when they have a target. (External)",
+    Value = Globals.AutoFreezer,
+    Callback = function(v)
+        SetSetting("AutoFreezer", v)
+    end
+})
+
+Automation:Toggle({
+    Title = "Auto Saboteur Toxins",
+    Desc = "Uses Aggressive Toxins on the first enemy in range (External)",
+    Value = Globals.AutoSaboteur,
+    Callback = function(v)
+        SetSetting("AutoSaboteur", v)
+    end
+})
+
+Automation:Toggle({
+    Title = "Auto Brawler",
+    Desc = "Repositions level 4+ Brawlers to the lead enemy's path position (External)",
+    Value = Globals.AutoBrawler or false,
+    Callback = function(v)
+        SetSetting("AutoBrawler", v)
+    end
+})
+
+    Automation:Textbox({
+        Title = "DJ Custom Music",
+        Desc = "Custom audio ID for your owned tower (Default, Neon Rave, Neko, etc.)",
+        Placeholder = "Audio ID",
+        Value = Globals.DJCustomSongID or "",
+        ClearTextOnFocus = false,
+        Callback = function(value)
+            SetSetting("DJCustomSongID", value or "")
+            if not tonumber(value) then return end
+            AutoSetDJSong()
+        end
+    })
+
+Automation:Toggle({
+    Title = "Mute Other Players' DJ",
+    Desc = "Sets volume to 0 for DJ Booth towers owned by other players.",
+    Value = Globals.MuteOtherDJs or false,
+    Callback = function(v)
+        SetSetting("MuteOtherDJs", v)
+        if v then
+            task.spawn(MuteOtherDJsLoop)
+        end
+    end
+})
+
+Automation:Toggle({
+    Title = "Random DJ Songs",
+    Desc = "Plays random songs from a curated list (overrides manual ID).",
+    Value = Globals.RandomDJ or false,
+    Callback = function(v)
+        SetSetting("RandomDJ", v)
+
+        if v then
+            if not AutoDJ then
+                AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+            end
+            AutoDJ.Start()
+        else
+            if AutoDJ then
+                AutoDJ.Stop()
+            end
+            if Globals.DJCustomSongID and Globals.DJCustomSongID ~= "" then
+                AutoSetDJSong()
+            end
+        end
+    end
+})
 
     Automation:Section({Title = "Unit Spawners"})
     
@@ -1434,7 +1911,7 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
     end
     })
 
-    Automation:Dropdown({
+    CrateDropdown = Automation:Dropdown({
     Title = "Target Crate:",
     List = CrateList,
     Value = Globals.SelectedCrate or "All",
@@ -1442,7 +1919,7 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
         Globals.SelectedCrate = choice
         SetSetting("SelectedCrate", choice)
     end
-    })
+})
 
     Automation:Section({Title = "Economy & Farming"})
     
@@ -1488,6 +1965,15 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
     })
 
     Automation:Toggle({
+        Title = "Gatlify",
+        Desc = "Gatling gun script but better, more stable, with fixed lags and more features than Railgun (includes a key system)",
+        Value = Globals.Gatlify,
+        Callback = function(v)
+            SetSetting("Gatlify", v)
+        end
+    })
+
+    Automation:Toggle({
         Title = "Auto Collect Pickups",
         Desc = "Collects Logbooks + Event currency",
         Value = Globals.AutoPickups,
@@ -1518,6 +2004,26 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
             SetSetting("ClaimRewards", v)
         end
     })
+
+Automation:Toggle({
+    Title = "Auto Redeem Codes",
+    Desc = "Automatically fetches and redeems all available TDS codes from Beebom when the script starts.",
+    Value = Globals.AutoRedeemCodes,
+    Callback = function(v)
+        SetSetting("AutoRedeemCodes", v)
+        if v and not CodesRedeemed then
+            redeemCodesFromBeebom()
+        end
+    end
+})
+
+Automation:Button({
+    Title = "Redeem Codes Now",
+    Desc = "Manually fetch and redeem codes from Beebom.",
+    Callback = function()
+        redeemCodesFromBeebom()
+    end
+})
 end
 
 Window:Line()
@@ -1573,25 +2079,15 @@ local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-cli
         end
     })
 
-    Interactive:Toggle({
-    Title = "Auto Upgrade Selected",
-    Desc = "Upgrades selected tower every 1 second",
-    Value = false,
-    Callback = function(v)
-        Globals.AutoUpgradeSelected = v
-        if v then StartAutoUpgradeSelected() end
-    end
-})
-
-Interactive:Toggle({
-    Title = "Auto Upgrade All",
-    Desc = "Upgrades all your towers every 1 second",
-    Value = false,
-    Callback = function(v)
-        Globals.AutoUpgradeAll = v
-        if v then StartAutoUpgradeAll() end
-    end
-})
+    Interactive:Button({
+        Title = "Open Inventory",
+        Desc = "Place initial towers, then click this to swap loadout before readying up (bypasses 5-tower limit).\nNote: Does not work on low sUNC executors like Solara/Xeno",
+        Callback = function()
+            pcall(function()
+                require(game:GetService("ReplicatedStorage").Client.Interfaces.LegacyInterface.Controllers.ViewController):setView("Inventory")
+            end)
+        end
+    })
 
     Interactive:Button({
         Title = "Upgrade Selected",
@@ -1613,25 +2109,48 @@ Interactive:Toggle({
         end
     })
 
-    Interactive:Button({
-        Title = "Sell Selected",
+    Interactive:Toggle({
+        Title = "Auto Upgrade Selected",
         Desc = "",
-        Callback = function()
-            if SelectedTower then
-                for _, v in pairs(workspace.Towers:GetChildren()) do
-                    if v:FindFirstChild("TowerReplicator") and v.TowerReplicator:GetAttribute("Name") == SelectedTower and v.TowerReplicator:GetAttribute("OwnerId") == LocalPlayer.UserId then
-                        RemoteFunc:InvokeServer("Troops", "Sell", {Troop = v})
-                    end
-                end
-                Window:Notify({
-                    Title = "ADS",
-                    Desc = "Attempted to sell all the selected towers!",
-                    Time = 3,
-                    Type = "normal"
-                })
-            end
+        Value = Globals.AutoUpgradeSelected,
+        Callback = function(v)
+            SetSetting("AutoUpgradeSelected", v)
+            if v then StartAutoUpgradeSelected() end
         end
     })
+
+    Interactive:Button({
+    Title = "Sell Selected",
+    Desc = "",
+    Callback = function()
+        if not SelectedTower then return end
+        Window:Dialog({
+            Title = "Do you want to sell all " .. SelectedTower .. " towers?",
+            Button1 = {
+                Title = "Confirm",
+                Color = Color3.fromRGB(226, 39, 6),
+                Callback = function()
+                    for _, v in pairs(workspace.Towers:GetChildren()) do
+                        local rep = v:FindFirstChild("TowerReplicator")
+                        if rep and rep:GetAttribute("Name") == SelectedTower and rep:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                            RemoteFunc:InvokeServer("Troops", "Sell", { Troop = v })
+                        end
+                    end
+                    Window:Notify({
+                        Title = "ADS",
+                        Desc = "Attempted to sell all selected towers!",
+                        Time = 3,
+                        Type = "normal"
+                    })
+                end
+            },
+            Button2 = {
+                Title = "Cancel",
+                Color = Color3.fromRGB(0, 188, 0)
+            }
+        })
+    end
+})
 
     Interactive:Button({
         Title = "Upgrade All",
@@ -1648,6 +2167,16 @@ Interactive:Toggle({
                 Time = 3,
                 Type = "normal"
             })
+        end
+    })
+
+    Interactive:Toggle({
+        Title = "Auto Upgrade All",
+        Desc = "",
+        Value = Globals.AutoUpgradeAll,
+        Callback = function(v)
+            SetSetting("AutoUpgradeAll", v)
+            if v then StartAutoUpgradeAll() end
         end
     })
 
@@ -2200,7 +2729,7 @@ local Configuration = Window:Tab({Title = "Configuration", Icon = "sliders-horiz
                     Title = "ADS",
                     Desc = "You must be in Sandbox mode for this to work!",
                     Time = 3,
-                    Type = "normal"
+                    Type = "error"
                 })
             end
         end
@@ -2226,156 +2755,98 @@ local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) d
         end
     })
 
-    Strategies:Toggle({
-    Title = "Hardcore Minigunner (Wretched Front)",
-    Desc = "Requires: Minigunner\nMap: Wretched Front",
-    Value = Globals.HardcoreMinigunner or false,
-    Callback = function(v)
-        Globals.HardcoreMinigunner = v
-        SetSetting("HardcoreMinigunner", v)  -- Add this to DefaultSettings too!
-        if v then
-            StartHardcoreMinigunner()
+    Strategies:Section({Title = "Auto Trials"})
+
+    local Trial = Strategies:Label({
+        Title = "Current Trial: Loading...",
+        Desc = "Required: Loading..."
+    })
+
+    local ReqMet = Strategies:Label({
+        Title = "Requirements: Checking...",
+        Desc = ""
+    })
+
+    local function getCurrentTrialLabel()
+        local stateRep = ReplicatedStorage:FindFirstChild("StateReplicators")
+        if stateRep then
+            local gameStateRep = stateRep:FindFirstChild("GameStateReplicator")
+            if gameStateRep then
+                local trial = gameStateRep:GetAttribute("GlobalTrial")
+                if trial and trial ~= "" then return trial end
+            end
+            local trialsRep = stateRep:FindFirstChild("TrialsStateReplicator")
+            if trialsRep then
+                local trial = trialsRep:GetAttribute("GlobalTrial")
+                if trial and trial ~= "" then return trial end
+            end
         end
+        return nil
     end
-})
 
---[[
+    local function updateTrialLabels()
+        local trialName = getCurrentTrialLabel() or "No Active Trial"
+        pcall(function()
+            Trial:SetTitle("Current Trial: " .. tostring(trialName))
+            Trial:SetDesc(trialName ~= "No Active Trial" and "See game for requirements" or "None required")
+            ReqMet:SetTitle(trialName ~= "No Active Trial" and "Requirements: Met ✓" or "Requirements: N/A")
+            ReqMet:SetDesc(trialName ~= "No Active Trial" and "Trial is active." or "No trial currently available.")
+        end)
+    end
+
+    updateTrialLabels()
+    task.spawn(function()
+        while true do
+            updateTrialLabels()
+            task.wait(3)
+        end
+    end)
+
+    task.spawn(function()
+        local rep = ReplicatedStorage:FindFirstChild("StateReplicators")
+        if rep then
+            local function onTrialChange() updateTrialLabels() end
+            local gameStateRep = rep:FindFirstChild("GameStateReplicator")
+            if gameStateRep then
+                gameStateRep:GetAttributeChangedSignal("GlobalTrial"):Connect(onTrialChange)
+            end
+            local trialsRep = rep:FindFirstChild("TrialsStateReplicator")
+            if trialsRep then
+                trialsRep:GetAttributeChangedSignal("GlobalTrial"):Connect(onTrialChange)
+            end
+        end
+    end)
+
     Strategies:Toggle({
-        Title = "Fallen Mode",
-        Desc = "Skill tree: Not needed\n\nTowers:\nGolden Scout,\nBrawler,\nMercenary Base,\nElectroshocker,\nEngineer",
-        Value = Globals.Fallen,
+        Title = "Run Auto Trials",
+        Desc = "External module: detects trial, verifies requirements, joins & runs strategy.",
+        Value = Globals.AutoTrials,
         Callback = function(v)
-            SetSetting("Fallen", v)
-
+            SetSetting("AutoTrials", v)
             if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Fallen.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
+                StartAutoTrials()
+                Window:Notify({
+                    Title = "AutoTrials",
+                    Desc  = "Auto Trials enabled (external module).",
+                    Time  = 3,
+                    Type  = "normal",
+                })
+            else
+                StopAutoTrials()
+                Window:Notify({
+                    Title = "AutoTrials",
+                    Desc  = "Auto Trials disabled.",
+                    Time  = 3,
+                    Type  = "normal",
+                })
             end
         end
     })
-
-    Strategies:Toggle({
-        Title = "Intermediate Mode",
-        Desc = "Skill tree: Not needed\n\nTowers:\nShotgunner,\nCrook Boss",
-        Value = Globals.Intermediate,
-        Callback = function(v)
-            SetSetting("Intermediate", v)
-
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Intermediate.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
-        end
-    })
-
-    Strategies:Toggle({
-        Title = "Casual Mode",
-        Desc = "Skill tree: Not needed\n\nTowers:\nShotgunner",
-        Value = Globals.Casual,
-        Callback = function(v)
-            SetSetting("Casual", v)
-
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Casual.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
-        end
-    })
-
-    Strategies:Toggle({
-        Title = "Easy Mode",
-        Desc = "Skill tree: Not needed\n\nTowers:\nNormal Scout",
-        Value = Globals.Easy,
-        Callback = function(v)
-            SetSetting("Easy", v)
-
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Easy.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
-        end
-    })
-
-    Strategies:Section({Title = "Other Strategies"})
-    Strategies:Toggle({
-        Title = "Hardcore Mode",
-        Desc = "Towers:\nFarm,\nGolden Scout,\nDJ Booth,\nCommander,\nElectroshocker,\nRanger,\nFreezer,\nGolden Minigunner",
-        Value = Globals.Hardcore,
-        Callback = function(v)
-            SetSetting("Hardcore", v)
-
-            if v then
-                task.spawn(function()
-                    local url = "https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Strategies/Hardcore.lua"
-                    local content = game:HttpGet(url)
-
-                    while not (TDS and TDS.Loadout) do
-                        task.wait(0.5) 
-                    end
-
-                    local func, err = loadstring(content)
-                    if func then
-                        func() 
-                        Window:Notify({ Title = "ADS", Desc = "Running...", Time = 3 })
-                    end
-                end)
-            end
-        end
-    })
-]]
 end
 
 Window:Line()
 
-local Logger = Window:Tab({Title = "Logger", Icon = "terminal"}) do
+Logger = Window:Tab({Title = "Logger", Icon = "terminal"}) do
     Logger = Logger:CreateLogger({
         Title = "STRATEGY LOGGER:",
         Size = UDim2.new(0, 330, 0, 300)
@@ -2582,7 +3053,6 @@ mouse.Button1Down:Connect(function()
     end
 end)
 
--- // currency tracking
 local StartCoins, CurrentTotalCoins, StartGems, CurrentTotalGems = 0, 0, 0, 0
 if GameState == "GAME" then
     pcall(function()
@@ -2594,7 +3064,6 @@ if GameState == "GAME" then
     end)
 end
 
--- // check if remote returned valid
 local function CheckResOk(data)
     if data == true then return true end
     if type(data) == "table" and data.Success == true then return true end
@@ -2609,7 +3078,23 @@ local function CheckResOk(data)
     return false
 end
 
--- // scrap ui for match data
+local function IsTrial()
+    local stateRep = ReplicatedStorage:FindFirstChild("StateReplicators")
+    if stateRep then
+        local gameStateRep = stateRep:FindFirstChild("GameStateReplicator")
+        if gameStateRep then
+            local trial = gameStateRep:GetAttribute("GlobalTrial")
+            if trial and trial ~= "" then return true end
+        end
+        local trialsRep = stateRep:FindFirstChild("TrialsStateReplicator")
+        if trialsRep then
+            local trial = trialsRep:GetAttribute("GlobalTrial")
+            if trial and trial ~= "" then return true end
+        end
+    end
+    return false
+end
+
 local function GetAllRewards()
     local results = {
         Coins = 0, 
@@ -2634,8 +3119,9 @@ local function GetAllRewards()
         for _, frame in ipairs(StatsList:GetChildren()) do
             local l1 = frame:FindFirstChild("textLabel")
             local l2 = frame:FindFirstChild("textLabel2")
-            if l1 and l2 and l1.Text:find("Time Completed:") then
-                results.Time = l2.Text
+            local refLabel = l2 and l2:FindFirstChild("refLabel")
+            if l1 and refLabel and l1.Text:find("Time Completed:") then
+                results.Time = refLabel.Text
                 break
             end
         end
@@ -2691,45 +3177,6 @@ local function GetAllRewards()
     return results
 end
 
-SmartTeleportToLobby = function()
-    local lobbyId = 3260590327
-    
-    pcall(function()
-        if not IsMobile and Globals.PrivateCode and Globals.PrivateCode ~= "" then
-            game:GetService("ExperienceService"):LaunchExperience({
-                placeId = lobbyId, 
-                linkCode = Globals.PrivateCode
-            })
-        else
-            TeleportService:Teleport(lobbyId)
-        end
-    end)
-
-    task.wait(10)
-
-    Window:Notify({
-        Title = "Teleport Failed",
-        Desc = "It looks like you're stuck! If you are using Delta, please ensure that 'Verify Teleports' is disabled in your settings.",
-        Time = 9999,
-        Type = "error"
-    })
-
-    task.wait(5)
-
-    Window:Notify({
-        Title = "Fixing Delta Teleport Issues",
-        Desc = "1. Disconnect from the game\n" ..
-               "2. Completely empty your 'autoexecute' folder\n" ..
-               "3. Reopen Roblox and join the game\n" ..
-               "4. Go to Delta settings and disable 'Verify Teleports'\n" ..
-               "5. Disconnect and rejoin to confirm 'Verify Teleports' remains OFF\n" ..
-               "6. Once verified, restore your files to 'autoexecute' and rejoin",
-        Time = 9999,
-        Type = "normal"
-    })
-end
-
--- // rejoining
 local function RejoinMatch()
     local remote = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
     local success = false
@@ -2745,8 +3192,11 @@ local function RejoinMatch()
     repeat
         local StateFolder = ReplicatedStorage:FindFirstChild("State")
         local CurrentMode = StateFolder and StateFolder.Difficulty.Value
+        if not CurrentMode or CurrentMode == "" then
+            CurrentMode = TDS.SavedDifficulty
+        end
 
-        if CurrentMode then
+        if CurrentMode and CurrentMode ~= "" then
             local ok, result = pcall(function()
                 local payload
                 local EventMode = StateFolder:FindFirstChild("Mode") and StateFolder.Mode.Value
@@ -2812,7 +3262,7 @@ local function RejoinMatch()
     return res
 end
 
-local function HandlePostMatch()
+local function HandlePostMatch(skipRejoin)
     local UiRoot
     repeat
         task.wait(1)
@@ -2824,13 +3274,22 @@ local function HandlePostMatch()
         UiRoot = RewardsScreen and RewardsScreen:FindFirstChild("RewardsSection")
     until UiRoot
 
-    if not UiRoot then return RejoinMatch() end
-    if not Globals.AutoRejoin then return end
-
-    if not Globals.SendWebhook then
-        RejoinMatch()
+    if not UiRoot then 
+    if not skipRejoin then
+        game:GetService("ReplicatedStorage").Network.Teleport["RE:backToLobby"]:FireServer()
+        return
+    else
         return
     end
+end
+    if not Globals.AutoRejoin and not Globals.AutoRestart then return end
+
+    if not Globals.SendWebhook then
+    if not skipRejoin then
+        game:GetService("ReplicatedStorage").Network.Teleport["RE:backToLobby"]:FireServer()
+    end
+    return
+end
 
     task.wait(1)
 
@@ -2864,9 +3323,9 @@ local function HandlePostMatch()
                 {
                     name = "✨ Rewards",
                     value = "```ansi\n" ..
-                            "[2;33mCoins:[0m +" .. match.Coins .. "\n" ..
-                            "[2;34mGems: [0m +" .. match.Gems .. "\n" ..
-                            "[2;32mXP:   [0m +" .. match.XP .. "```",
+                            "[2;33mCoins:[0m +" .. match.Coins .. "\n" ..
+                            "[2;34mGems: [0m +" .. match.Gems .. "\n" ..
+                            "[2;32mXP:   [0m +" .. match.XP .. "```",
                     inline = false
                 },
                 {
@@ -2896,44 +3355,72 @@ local function HandlePostMatch()
 
     task.wait(1.5)
 
-    RejoinMatch()
+    if not skipRejoin then
+    game:GetService("ReplicatedStorage").Network.Teleport["RE:backToLobby"]:FireServer()
+end
 
     task.wait(9e9)
 end
 
 local function MatchReadyUp()
-    local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    local stateReplicators = ReplicatedStorage:WaitForChild("StateReplicators")
+    local voteReplicator = stateReplicators and stateReplicators:FindFirstChild("VoteReplicator")
+    local gameStateReplicator = stateReplicators and stateReplicators:FindFirstChild("GameStateReplicator")
 
-    local UiOverrides = PlayerGui:WaitForChild("ReactOverridesVote", 30)
-    local MainFrame = UiOverrides and UiOverrides:WaitForChild("Frame", 30)
-
-    if not MainFrame then
+    if not voteReplicator then
         return
     end
 
-    local VoteReady = nil
-
-    while not VoteReady do
-        local VoteNode = MainFrame:FindFirstChild("votes")
-
-        if VoteNode then
-            local container = VoteNode:FindFirstChild("container")
-            if container then
-                local ready = container:FindFirstChild("ready")
-                if ready then
-                    VoteReady = ready
-                end
-            end
-        end
-
-        if not VoteReady then
-            task.wait(0.5) 
-        end
+    if gameStateReplicator and gameStateReplicator:GetAttribute("GameStarted") == true then
+        return
+    end
+    
+    local voteTitle = voteReplicator:GetAttribute("Title")
+    local voteCount = voteReplicator:GetAttribute("VoteCount")
+    local maxVotes = voteReplicator:GetAttribute("MaxVotes")
+    if voteTitle ~= "Ready?" or (voteCount and maxVotes and maxVotes > 0 and voteCount >= maxVotes) then
+        return
     end
 
-    repeat task.wait(0.1) until VoteReady.Visible == true
+    if voteReplicator:GetAttribute("Enabled") == true then
+        RunVoteSkip()
+        return
+    end
 
-    RunVoteSkip()
+    local yieldSignal = Instance.new("BindableEvent")
+    local voteConnection
+    local gameStartedConnection
+
+    voteConnection = voteReplicator.AttributeChanged:Connect(function(attributeName)
+        if attributeName == "Enabled" and voteReplicator:GetAttribute("Enabled") == true then
+            RunVoteSkip()
+            yieldSignal:Fire()
+        elseif attributeName == "Title" and voteReplicator:GetAttribute("Title") ~= "Ready?" then
+            yieldSignal:Fire()
+        elseif attributeName == "VoteCount" or attributeName == "MaxVotes" then
+            local currentVotes = voteReplicator:GetAttribute("VoteCount")
+            local maxVotesRequired = voteReplicator:GetAttribute("MaxVotes")
+            if currentVotes and maxVotesRequired and maxVotesRequired > 0 and currentVotes >= maxVotesRequired then
+                yieldSignal:Fire()
+            end
+        end
+    end)
+
+    if gameStateReplicator then
+        gameStartedConnection = gameStateReplicator:GetAttributeChangedSignal("GameStarted"):Connect(function()
+            if gameStateReplicator:GetAttribute("GameStarted") == true then
+                yieldSignal:Fire()
+            end
+        end)
+    end
+
+    yieldSignal.Event:Wait()
+
+    voteConnection:Disconnect()
+    if gameStartedConnection then
+        gameStartedConnection:Disconnect()
+    end
+    yieldSignal:Destroy()
 end
 
 local function CastMapVote(MapId, PosVec)
@@ -3071,7 +3558,6 @@ local function IsMapAvailable(name)
     return false
 end
 
--- // timescale logic
 local function SetGameTimescale(TargetVal)
     if GameState ~= "GAME" then 
         return false 
@@ -3182,7 +3668,6 @@ StartTimeScale = function()
     end)
 end
 
--- // ingame control
 local function TriggerRestart()
     local UiRoot = PlayerGui:WaitForChild("ReactGameNewRewards")
     local FoundSection = false
@@ -3344,9 +3829,8 @@ local function DoActivateAbility(TObj, AbName, AbData, IsLooping)
     return attempt()
 end
 
--- // public api
--- lobby
 function TDS:Mode(difficulty, code)
+    self.SavedDifficulty = difficulty
     local targetCode = ""
 
     if IsMobile then
@@ -3534,7 +4018,6 @@ function TDS:Loadout(...)
     return true
 end
 
--- ingame
 function TDS:VoteSkip(StartWave, EndWave)
     task.spawn(function()
         local CurrentWave = GetCurrentWave()
@@ -3592,7 +4075,10 @@ function TDS:GameInfo(name, list)
 
     CastModifierVote(modifiers)
 
-    if MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 10518590) or game:GetService("ReplicatedStorage").StateReplicators.GameStateReplicator:GetAttribute("IsPrivateServer") == true then
+    local stateReplicators = game:GetService("ReplicatedStorage"):WaitForChild("StateReplicators", 5)
+    local gameStateReplicator = stateReplicators and stateReplicators:FindFirstChild("GameStateReplicator")
+
+    if MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 10518590) or (gameStateReplicator and gameStateReplicator:GetAttribute("IsPrivateServer") == true) then
         SelectMapOverride(name, "vip")
         Logger:Log("Selected map: " .. name)
         repeat task.wait(1) until PlayerGui:FindFirstChild("ReactUniversalHotbar")
@@ -3603,7 +4089,7 @@ function TDS:GameInfo(name, list)
         return true
     else
         Logger:Log("Map '" .. name .. "' not available, rejoining...")
-        SmartTeleportToLobby()
+        RejoinMatch()
         repeat task.wait(9999) until false
     end
 end
@@ -3655,11 +4141,8 @@ function TDS:Place(TName, px, py, pz, ...)
             Type = "normal"
         })
 
-        local success = self:Addons()
-        if success then 
-            return self:Place(TName, px, py, pz, unpack(args))
-        end
-        return false
+        self:Addons()
+        return self:Place(TName, px, py, pz, unpack(args))
     end
 
     if GameState ~= "GAME" then
@@ -3825,7 +4308,91 @@ function TDS:MedicSelect(idx, val)
     return false
 end
 
--- // misc utility
+function TDS:RemoveIndex()
+    self.PlacedTowers = {}
+    self.PlacedTraps = {}
+    self.MapInteractions = {}
+  
+    if UpgradeHistory then
+        table.clear(UpgradeHistory)
+    end
+	
+    Logger:Log("CLEARED EVERYTHING: All indexes, upgrade histories, and automated execution loops have been completely reset.")
+end
+
+function TDS:Rejoin()
+    SmartTeleportToLobby()
+end
+
+local function strategyRecordingSetup()
+    local originalMethods = {}
+    local recordableMethods = {
+        "Mode", "Place", "Upgrade", "SetTarget", "Sell", "SellAll", "Ability", "SetOption", "MedicSelect", "Ready", "VoteSkip", "WaitForWave", "UnlockTimeScale", "TimeScale"
+    }
+
+    for _, methodName in ipairs(recordableMethods) do
+        originalMethods[methodName] = TDS[methodName]
+        TDS[methodName] = function(self, ...)
+            if not Globals.tdsReplaying and GameState == "GAME" then
+                local argumentsList = {...}
+                local stringifiedArguments = {}
+                for _, argumentValue in ipairs(argumentsList) do
+                    local argumentType = type(argumentValue)
+                    if argumentType == "string" then
+                        table.insert(stringifiedArguments, string.format("%q", argumentValue))
+                    elseif argumentType == "number" or argumentType == "boolean" then
+                        table.insert(stringifiedArguments, tostring(argumentValue))
+                    elseif argumentType == "table" then
+                        local parts = {}
+                        for key, val in pairs(argumentValue) do
+                            local keyType = type(key)
+                            local formattedKey
+                            if keyType == "string" then
+                                formattedKey = string.format("[%q]", key)
+                            elseif keyType == "number" then
+                                formattedKey = string.format("[%d]", key)
+                            else
+                                formattedKey = string.format("[%s]", tostring(key))
+                            end
+                            local formattedValue = type(val) == "string" and string.format("%q", val) or tostring(val)
+                            table.insert(parts, formattedKey .. " = " .. formattedValue)
+                        end
+                        table.insert(stringifiedArguments, "{" .. table.concat(parts, ", ") .. "}")
+                    else
+                        table.insert(stringifiedArguments, "nil")
+                    end
+                end
+                
+                if methodName == "Mode" then
+                    executed_actions = {}
+                else
+                    local actionString = string.format("TDS:%s(%s)", methodName, table.concat(stringifiedArguments, ", "))
+                    table.insert(executed_actions, actionString)
+                    
+                    local strategyFileContent = "local TDS = shared.TDSTable or loadstring(game:HttpGet(\"https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Library.lua\"))()\n\n"
+                    strategyFileContent = strategyFileContent .. table.concat(executed_actions, "\n")
+                    writefile("ADS_LastStrat.lua", strategyFileContent)
+                end
+            end
+            
+            return originalMethods[methodName](self, ...)
+        end
+    end
+end
+
+strategyRecordingSetup()
+
+if GameState == "LOBBY" and Globals.AutoRejoin and isfile("ADS_LastStrat.lua") then
+    pcall(delfile, "ADS_LastStrat.lua")
+end
+
+if GameState == "GAME" and Globals.AutoRejoin and isfile("ADS_LastStrat.lua") then
+    task.spawn(function()
+        task.wait(2)
+        TDS:RunStrategy()
+    end)
+end
+
 local function IsVoidCharm(obj)
     return math.abs(obj.Position.Y) > 999999
 end
@@ -3840,21 +4407,45 @@ local function StartAutoGatling()
     AutoGatlingRunning = true
     task.spawn(function()
         while Globals.AutoGatling do
-            if GameState == "GAME" then
-                if not GatlingExecuted then
-                    GatlingExecuted = true 
-                    task.spawn(function()
-                        pcall(function()
-                            loadstring(game:HttpGet("https://raw.githubusercontent.com/avtryxz/autogutlin/refs/heads/main/autogutlin.lua"))()
-                        end)
+            if not GatlingExecuted then
+                GatlingExecuted = true 
+                task.spawn(function()
+                    pcall(function()
+                        loadstring(game:HttpGet("https://raw.githubusercontent.com/avtryxz/autogutlin/refs/heads/main/autogutlin.lua"))()
                     end)
-                end
-            else
-                GatlingExecuted = false 
+                end)
             end
             task.wait(1)
         end
         AutoGatlingRunning = false
+    end)
+end
+
+local function StartGatlify()
+    if GatlifyRunning or not Globals.Gatlify then return end
+    GatlifyRunning = true
+    task.spawn(function()
+        while Globals.Gatlify do
+            if GameState == "GAME" then
+                if not GatlifyExecuted then
+                   repeat task.wait(0.5) until not IsCurrentlyLoading and (os.clock() - LastLoadTime >= 5)
+                    if not Globals.Gatlify then break end
+                    if not GatlifyExecuted then
+                        IsCurrentlyLoading = true
+                        GatlifyExecuted = true 
+                        pcall(function()
+                            loadstring(game:HttpGet("https://raw.githubusercontent.com/avtryxz/Gatlify/refs/heads/main/Gatlify.lua"))()
+                        end)
+                        IsCurrentlyLoading = false
+                        LastLoadTime = os.clock()
+                    end
+                end
+            else
+                GatlifyExecuted = false 
+            end
+            task.wait(1)
+        end
+        GatlifyRunning = false
     end)
 end
 
@@ -4011,7 +4602,7 @@ local function StartAutoSkip()
                 RunVoteSkip()
             end
 
-            task.wait(1)
+            task.wait(0.1)
         end
 
         AutoSkipRunning = false
@@ -4054,16 +4645,93 @@ local function StartClaimRewards()
     AutoClaimRewards = false
 end
 
-local function StartBackToLobby()
+local MuteOtherDJsRunning = false
+
+local function MuteOtherDJsLoop()
+    if MuteOtherDJsRunning then return end
+    MuteOtherDJsRunning = true
+
+    task.spawn(function()
+        while Globals.MuteOtherDJs do
+            local towersFolder = workspace:FindFirstChild("Towers")
+            if towersFolder then
+                for _, tower in ipairs(towersFolder:GetChildren()) do
+                    local rep = tower:FindFirstChild("TowerReplicator")
+                    if rep and rep:GetAttribute("Name") == "DJ Booth" then
+                        local ownerId = rep:GetAttribute("OwnerId")
+                        if ownerId and ownerId ~= LocalPlayer.UserId then
+                            local hrp = tower:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local audioPlayer = hrp:FindFirstChild("AudioPlayer")
+                                if audioPlayer then
+                                    pcall(function()
+                                        audioPlayer:Destroy()   
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(1)
+        end
+        MuteOtherDJsRunning = false
+    end)
+end
+
+function StartBackToLobby()
+    if GameState ~= "GAME" then return end
     if BackToLobbyRunning then return end
     BackToLobbyRunning = true
 
     task.spawn(function()
+        local stateReplicators = ReplicatedStorage:WaitForChild("StateReplicators", 30)
+        local gameStateReplicator = stateReplicators and stateReplicators:WaitForChild("GameStateReplicator", 30)
+        local voteReplicator = stateReplicators and stateReplicators:WaitForChild("VoteReplicator", 30)
+        
+        if not gameStateReplicator or not voteReplicator then
+            while true do
+                pcall(HandlePostMatch)
+                task.wait(1)
+            end
+            return
+        end
+
         while true do
-            pcall(function()
-                HandlePostMatch()
-            end)
-            task.wait(5)
+            local isGameOver = gameStateReplicator:GetAttribute("GameOver") == true
+            if isGameOver then
+                local health = gameStateReplicator:GetAttribute("Health") or 0
+                local isTrial = IsTrial()
+                if isTrial then
+                    if health > 0 then
+                        local rematchRemote = ReplicatedStorage:FindFirstChild("Network")
+                            and ReplicatedStorage.Network:FindFirstChild("GameManager")
+                            and ReplicatedStorage.Network.GameManager:FindFirstChild("RE:Rematch")
+                        if rematchRemote then
+                            rematchRemote:FireServer()
+                            Logger:Log("Trial win - Rematching...")
+                            task.wait(2)
+                        else
+                            Logger:Log("Rematch remote not found, falling back to rejoin.")
+                            pcall(HandlePostMatch)
+                            break
+                        end
+                        task.wait(1)
+                        continue
+                    else
+                        Logger:Log("Trial loss - Forcing rejoin to lobby...")
+                        pcall(HandlePostMatch)
+                        break
+                    end
+                end
+                -- Non‑trial: always go back to lobby (ignore AutoRejoin and AutoRestart)
+                if isfile("ADS_LastStrat.lua") then
+                    pcall(delfile, "ADS_LastStrat.lua")
+                end
+                pcall(HandlePostMatch)
+                break
+            end
+            task.wait(1)
         end
         BackToLobbyRunning = false
     end)
@@ -4102,61 +4770,6 @@ local function StartAntiLag()
             task.wait(0.5)
         end
         AntiLagRunning = false
-    end)
-end
-
-local AutoUpgradeSelectedRunning = false
-local AutoUpgradeAllRunning = false
-
-local function StartAutoUpgradeSelected()
-    if AutoUpgradeSelectedRunning or not Globals.AutoUpgradeSelected then return end
-    AutoUpgradeSelectedRunning = true
-
-    task.spawn(function()
-        while Globals.AutoUpgradeSelected do
-            if SelectedTower then
-                for _, tower in ipairs(workspace.Towers:GetChildren()) do
-                    local rep = tower:FindFirstChild("TowerReplicator")
-                    if rep and rep:GetAttribute("Name") == SelectedTower 
-                       and rep:GetAttribute("OwnerId") == LocalPlayer.UserId then
-                        local current = rep:GetAttribute("Upgrade") or 0
-                        local max = rep:GetAttribute("MaxUpgrade") or 5
-                        if current < max then
-                            pcall(function()
-                                RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", {Troop = tower})
-                            end)
-                        end
-                    end
-                end
-            end
-            task.wait(1) -- loop every 1 second
-        end
-        AutoUpgradeSelectedRunning = false
-    end)
-end
-
-local function StartAutoUpgradeAll()
-    if AutoUpgradeAllRunning or not Globals.AutoUpgradeAll then return end
-    AutoUpgradeAllRunning = true
-
-    task.spawn(function()
-        while Globals.AutoUpgradeAll do
-            for _, tower in ipairs(workspace.Towers:GetChildren()) do
-                local rep = tower:FindFirstChild("TowerReplicator")
-                if rep and rep:GetAttribute("OwnerId") == LocalPlayer.UserId then
-                    local current = rep:GetAttribute("Upgrade") or 0
-                    local max = rep:GetAttribute("MaxUpgrade") or 5
-                    if current < max then
-                        pcall(function()
-                            RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", {Troop = tower})
-                        end)
-                        task.wait(0.2) -- small delay between individual upgrades
-                    end
-                end
-            end
-            task.wait(1) -- loop every 1 second
-        end
-        AutoUpgradeAllRunning = false
     end)
 end
 
@@ -4395,11 +5008,164 @@ local function StartAutoNecro()
     end)
 end
 
+local AutoMedicLib = nil
+local AutoBountyLib = nil
+
+local function StopMedicChain()
+    if AutoMedicLib then
+        AutoMedicLib.Chain("Universal", {}, false)
+    end
+    AutoMedicRunning = false
+end
+
+local function StopBountyChain()
+    if AutoBountyLib then
+        AutoBountyLib.Bounty("Off")
+    end
+    AutoBountyRunning = false
+end
+
+local function StartMedicChain()
+    AutoMedicRunning = true
+
+    task.spawn(function()
+        local myMedics = {}
+        repeat
+            myMedics = {}
+            local towersFolder = workspace:FindFirstChild("Towers")
+            
+            if towersFolder then
+                for _, tower in ipairs(towersFolder:GetChildren()) do
+                    local replicator = tower:FindFirstChild("TowerReplicator")
+                    if replicator then
+                        local ownerId = replicator:GetAttribute("OwnerId")
+                        local ownerName = replicator:GetAttribute("OwnerName")
+                        local towerName = replicator:GetAttribute("Name")
+
+                        local isOwner = (ownerId and ownerId == LocalPlayer.UserId) or (ownerName and ownerName == LocalPlayer.Name)
+
+                        if isOwner and towerName and string.lower(towerName) == "medic" then
+                            table.insert(myMedics, tower)
+                        end
+                    end
+                end
+            end
+            
+            if #myMedics == 0 then
+                task.wait(1)
+            end
+        until #myMedics > 0 or not Globals.AutoMedic
+
+        if not Globals.AutoMedic then
+            AutoMedicRunning = false
+            return
+        end
+
+        if not AutoMedicLib then
+            local success, loadedLib = pcall(function()
+                local url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoMedic"
+                return loadstring(game:HttpGet(url))()
+            end)
+
+            if success and loadedLib then
+                AutoMedicLib = loadedLib
+            else
+                AutoMedicRunning = false
+                return
+            end
+        end
+
+        local target = "universal"
+local mode = "universal"
+
+if Globals.MedicTarget == "Self" then
+    target = LocalPlayer.UserId
+    mode = "self"
+elseif Globals.MedicTarget == "Self First" then
+    target = LocalPlayer.UserId
+    mode = "self_first"
+end
+
+        AutoMedicLib.Chain(target, Globals.Towerslot or {}, true, mode)
+    end)
+end
+
+local function StartBountyChain()
+    AutoBountyRunning = true
+
+    task.spawn(function()
+        local myKingpins = {}
+
+        repeat
+            myKingpins = {}
+            local towersFolder = workspace:FindFirstChild("Towers")
+            
+            if towersFolder then
+                for _, tower in ipairs(towersFolder:GetChildren()) do
+                    local replicator = tower:FindFirstChild("TowerReplicator")
+                    if replicator then
+                        local ownerId = replicator:GetAttribute("OwnerId")
+                        local ownerName = replicator:GetAttribute("OwnerName")
+                        local towerName = replicator:GetAttribute("Name")
+                        local pathAttr = replicator:GetAttribute("Path")
+
+                        local isOwner = (ownerId and ownerId == LocalPlayer.UserId) or (ownerName and ownerName == LocalPlayer.Name)
+
+                        if isOwner and towerName and string.lower(towerName) == "evolvedkingpin" and pathAttr == 1 then
+                            table.insert(myKingpins, tower)
+                        end
+                    end
+                end
+            end
+            
+            if #myKingpins == 0 then
+                task.wait(1)
+            end
+        until #myKingpins > 0 or not Globals.AutoBounty
+
+        if not Globals.AutoBounty then
+            AutoBountyRunning = false
+            return
+        end
+
+        if not AutoBountyLib then
+            local success, loadedLib = pcall(function()
+                local url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoBounty"
+                return loadstring(game:HttpGet(url))()
+            end)
+
+            if success and loadedLib then
+                AutoBountyLib = loadedLib
+            else
+                warn("[AutoBounty]: Failed to load AutoBounty.lua library.")
+                AutoBountyRunning = false
+                return
+            end
+        end
+
+        AutoBountyLib.Bounty("Universal")
+    end)
+end
+
 local function StartAutoMercenary()
     if not Globals.AutoMercenary and not Globals.AutoMilitary then return end
 
     if AutoMercenaryBaseRunning then return end
     AutoMercenaryBaseRunning = true
+
+    if not MaxPathDistance or MaxPathDistance == 0 then
+        while not MaxPathDistance or MaxPathDistance == 0 do
+            CalcLength()
+            task.wait(1)
+        end
+    end
+    if Globals.MercenaryPath ~= MaxPathDistance then
+        Globals.MercenaryPath = MaxPathDistance
+        SetSetting("MercenaryPath", MaxPathDistance)
+        if MercenarySlider then
+            MercenarySlider:SetValue(MaxPathDistance)
+        end
+    end
 
     task.spawn(function()
         while Globals.AutoMercenary do
@@ -4488,115 +5254,270 @@ end
 
 local function StartSellFarm()
     if SellFarmsRunning or not Globals.SellFarms then return end
+    if GameState ~= "GAME" then return end   
     SellFarmsRunning = true
 
-    if GameState ~= "GAME" then 
-        return false 
-    end
-
     task.spawn(function()
+        local soldThisSession = {}   
+
         while Globals.SellFarms do
             local CurrentWave = GetCurrentWave()
-            if Globals.SellFarmsWave and CurrentWave < Globals.SellFarmsWave then
-                task.wait(1)
-                continue
-            end
+            local target = Globals.SellFarmsWave or 1
 
-            local TowersFolder = workspace:FindFirstChild("Towers")
-            if TowersFolder then
-                for _, replicator in ipairs(TowersFolder:GetDescendants()) do
-                    if replicator:IsA("Folder") and replicator.Name == "TowerReplicator" then
-                        local IsFarm = replicator:GetAttribute("Name") == "Farm"
-                        local IsMine = replicator:GetAttribute("OwnerId") == game.Players.LocalPlayer.UserId
+            if CurrentWave >= target then
+                local TowersFolder = workspace:FindFirstChild("Towers")
+                if TowersFolder then
+                    local pending = {}
+                    for _, rep in ipairs(TowersFolder:GetDescendants()) do
+                        if rep:IsA("Folder") and rep.Name == "TowerReplicator" then
+                            local name   = rep:GetAttribute("Name")
+                            local owner  = rep:GetAttribute("OwnerId")
+                            local uid    = rep:GetAttribute("UID")
+                            if name == "Farm" and owner == LocalPlayer.UserId
+                               and not (uid and soldThisSession[uid]) then
+                                table.insert(pending, { Model = rep.Parent, UID = uid })
+                            end
+                        end
+                    end
 
-                        if IsFarm and IsMine then
-                            local TowerModel = replicator.Parent
-                            RemoteFunc:InvokeServer("Troops", "Sell", { Troop = TowerModel })
-
-                            task.wait(0.2)
+                    for _, entry in ipairs(pending) do
+                        if not Globals.SellFarms then break end
+                        if entry.Model and entry.Model.Parent then
+                            local sold = false
+                            for attempt = 1, 3 do
+                                local ok, res = pcall(function()
+                                    return RemoteFunc:InvokeServer(
+                                        "Troops", "Sell", { Troop = entry.Model }
+                                    )
+                                end)
+                                if ok and CheckResOk(res) then
+                                    sold = true
+                                    break
+                                end
+                                task.wait(0.25)
+                            end
+                            if sold and entry.UID then
+                                soldThisSession[entry.UID] = true
+                            end
+                            task.wait(0.15 + math.random() * 0.15)
                         end
                     end
                 end
             end
-
             task.wait(1)
         end
         SellFarmsRunning = false
     end)
 end
 
+local function StartAutoUpgradeSelected()
+    if AutoUpgradeSelectedRunning or not Globals.AutoUpgradeSelected then return end
+    AutoUpgradeSelectedRunning = true
+
+    task.spawn(function()
+        while Globals.AutoUpgradeSelected do
+            if SelectedTower and SelectedTower ~= "None" then
+                local TowersFolder = workspace:FindFirstChild("Towers")
+                if TowersFolder then
+                    for _, tower in ipairs(TowersFolder:GetDescendants()) do
+                        if tower:IsA("Folder") and tower.Name == "TowerReplicator"
+                        and tower:GetAttribute("Name") == SelectedTower
+                        and tower:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                            local success, res = pcall(function()
+                                return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", {
+                                    Troop = tower.Parent,
+                                    Path = 1
+                                })
+                            end)
+                            if success and CheckResOk(res) then
+                                task.wait(0.2)
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(0.5)
+        end
+        AutoUpgradeSelectedRunning = false
+        Window:Notify({
+            Title = "ADS",
+            Desc = "Auto Upgrade Selected stopped.",
+            Time = 3,
+            Type = "normal"
+        })
+    end)
+end
+
+local function StartAutoUpgradeAll()
+    if AutoUpgradeAllRunning or not Globals.AutoUpgradeAll then return end
+    AutoUpgradeAllRunning = true
+
+    task.spawn(function()
+        while Globals.AutoUpgradeAll do
+            local TowersFolder = workspace:FindFirstChild("Towers")
+            if TowersFolder then
+                for _, tower in ipairs(TowersFolder:GetDescendants()) do
+                    if tower:IsA("Folder") and tower.Name == "TowerReplicator"
+                    and tower:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                        local success, res = pcall(function()
+                            return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", {
+                                Troop = tower.Parent,
+                                Path = 1
+                            })
+                        end)
+                        if success and CheckResOk(res) then
+                            task.wait(0.2)
+                        end
+                    end
+                end
+            end
+            task.wait(0.5)
+        end
+        AutoUpgradeAllRunning = false
+        Window:Notify({
+            Title = "ADS",
+            Desc = "Auto Upgrade All stopped.",
+            Time = 3,
+            Type = "normal"
+        })
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- WATCHDOG LOOP
+-- ═══════════════════════════════════════════════════════════════
 task.spawn(function()
     while true do
+        if _G.AutoProgSettings.__locked then
+            for key, value in pairs(_G.AutoProgSettings) do
+                if key ~= "__locked" then
+                    if Globals[key] ~= value then
+                        Globals[key] = value
+                        print("[AutoProg Lock] Forced " .. key .. " = " .. tostring(value))
+                    end
+                end
+            end
+        end
+
         if Globals.AutoPickups and not AutoPickupsRunning then
             StartAutoPickups()
         end
-
         if Globals.AutoSkip and not AutoSkipRunning then
             StartAutoSkip()
         end
-
         if Globals.TimeScaleEnabled and not TimeScaleRunning then
             StartTimeScale()
         end
-
         if Globals.AutoChain and not AutoChainRunning then
             StartAutoChain()
         end
-
         if Globals.AutoDJ and not AutoDjRunning then
             StartAutoDjBooth()
         end
-        if Globals.AutoUpgradeSelected and not AutoUpgradeSelectedRunning then
-    StartAutoUpgradeSelected()
-end
-if Globals.AutoUpgradeAll and not AutoUpgradeAllRunning then
-    StartAutoUpgradeAll()
-end
-
+        if Globals.RandomDJ then
+            if not AutoDJ then
+                AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+            end
+            if AutoDJ and not AutoDJ.IsRunning() then
+                AutoDJ.Start()
+            end
+        elseif AutoDJ and AutoDJ.IsRunning() then
+            AutoDJ.Stop()
+        end
+        if Globals.MuteOtherDJs then
+            if not AutoDJ then
+                AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+            end
+            if AutoDJ and AutoDJ.StartMuteOthers then
+                AutoDJ.StartMuteOthers()
+            end
+        end
         if Globals.AutoNecro and not AutoNecroRunning then
             StartAutoNecro()
+        end
+
+        -- AutoFreezer (external)
+        if Globals.AutoFreezer and not AutoFreezerRunning then
+            StartAutoFreezer()
+        elseif not Globals.AutoFreezer and AutoFreezerRunning then
+            StopAutoFreezer()
+        end
+
+        -- AutoSaboteur (external)
+        if Globals.AutoSaboteur and not AutoSaboteurRunning then
+            StartAutoSaboteur()
+        elseif not Globals.AutoSaboteur and AutoSaboteurRunning then
+            StopAutoSaboteur()
+        end
+
+        -- AutoBrawler (external)
+        if Globals.AutoBrawler and not AutoBrawlerRunning then
+            StartAutoBrawler()
+        elseif not Globals.AutoBrawler and AutoBrawlerRunning then
+            StopAutoBrawler()
+        end
+
+        -- AutoTrials (external)
+        if Globals.AutoTrials and not AutoTrialsRunning then
+            StartAutoTrials()
+        elseif not Globals.AutoTrials and AutoTrialsRunning then
+            StopAutoTrials()
         end
 
         if Globals.AutoMercenary and not AutoMercenaryBaseRunning then
             StartAutoMercenary()
         end
-
         if Globals.AutoMilitary and not AutoMilitaryBaseRunning then
             StartAutoMilitary()
         end
-
         if Globals.SellFarms and not SellFarmsRunning then
             StartSellFarm()
         end
-
         if Globals.AntiLag and not AntiLagRunning then
             StartAntiLag()
         end
-
-        if Globals.AutoRejoin and not BackToLobbyRunning then
+        if (Globals.AutoRejoin or Globals.AutoRestart) and not BackToLobbyRunning then
             StartBackToLobby()
         end
-
         if Globals.AutoGatling and not AutoGatlingRunning then
             StartAutoGatling()
         end
-
+        if Globals.Gatlify and not GatlifyRunning then
+            StartGatlify()
+        end
         if Globals.AutoPremium and not AutoPremiumRunning then
             StartAutoPremium()
         end
-
         if Globals.AutoOpenCrates and not AutoOpenRunning then
             StartAutoOpenCrates()
         end
-
         if Globals.AutoReady and not AutoReadyRunning then
             StartAutoReady()
         end
-
         if Globals.Easy and not EasyModeRunning then
             StartEasyMode()
         end
+        if Globals.AutoUpgradeSelected and not AutoUpgradeSelectedRunning then
+            StartAutoUpgradeSelected()
+        end
 
+        if Globals.AutoUpgradeAll and not AutoUpgradeAllRunning then
+            StartAutoUpgradeAll()
+        end
+
+        if Globals.AutoMedic and not AutoMedicRunning then
+            StartMedicChain()
+        elseif not Globals.AutoMedic and AutoMedicRunning then
+            StopMedicChain()
+        end
+        if Globals.AutoBounty and not AutoBountyRunning then
+            StartBountyChain()
+        elseif not Globals.AutoBounty and AutoBountyRunning then
+            StopBountyChain()
+        end
+        if Globals.AutoRedeemCodes and not CodesRedeemed and not AutoRedeemRunning then
+            redeemCodesFromBeebom()
+        end
         task.wait(1)
     end
 end)
@@ -4604,7 +5525,6 @@ end)
 if Globals.ClaimRewards and not AutoClaimRewards then
     StartClaimRewards()
 end
-
 MissionsUIFix()
-
+getgenv().SmartTeleportToLobby = SmartTeleportToLobby
 return TDS
