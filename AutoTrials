@@ -1,9 +1,35 @@
--- AutoTrials.lua
--- Handles checking trial requirements, joining, and running the appropriate strategy.
+--[[
+    AutoTrials - External Module
+    Detects the active TDS trial, verifies skill + tower requirements,
+    joins the trial from the lobby, and runs the matching strategy in-game.
+
+    Dependencies (via getgenv()):
+        Globals.AutoTrials  (boolean toggle, set by the GUI)
+
+    Optional dependency (for notifications):
+        getgenv().AetherWindow   -> the hub's Window object
+
+    Exposed API:
+        AutoTrials.Start()
+        AutoTrials.Stop()
+        AutoTrials.IsRunning()
+]]
 
 local AutoTrials = {}
 
--- Constants
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService       = game:GetService("HttpService")
+local Workspace         = game:GetService("Workspace")
+local LocalPlayer       = Players.LocalPlayer
+local Globals           = getgenv()
+
+local running = false
+local thread  = nil
+
+----------------------------------------------------------------
+-- Trial config (map of trial name -> strategy URL + required towers/skills)
+----------------------------------------------------------------
 local trialScripts = {
     ["Speedy Enemies"]    = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Speedy.lua",
     ["Glass"]             = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Glass.lua",
@@ -18,69 +44,112 @@ local trialScripts = {
     ["Hidden Enemies"]    = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Hidden.lua",
     ["Hidden"]            = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Hidden.lua",
     ["Broke"]             = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Broke.lua",
-    ["Healthy Enemies"]   = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Healthy.lua"
+    ["Healthy Enemies"]   = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Healthy.lua",
 }
 
 local trialConfigs = {
-    ["Speedy Enemies"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "Trapper"}, SkillTree = {} },
-    ["Glass"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "Trapper"}, SkillTree = {} },
-    ["Quarantine"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
-    ["Fog"] = { Level = 175, Towers = {"Trapper", "Hacker", "Gatling Gun", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
-    ["Limitation"] = { Level = 175, Towers = {"Trapper", "Hacker", "Gatling Gun", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
-    ["Flying"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
-    ["Jailed"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "Military Base"}, SkillTree = {} },
-    ["Exploding Enemies"] = { Level = 175, Towers = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "DJ Booth"}, SkillTree = {} },
-    ["Inflation"] = { Level = 175, Towers = {"Ace Pilot", "Trapper", "Gatling Gun", "DJ Booth", "Medic"}, SkillTree = {} },
-    ["Committed"] = { Level = 175, Towers = {"Placeholder"}, SkillTree = {} },
-    ["Hidden"] = { Level = 175, Towers = {"Gatling Gun", "Hacker", "Mercenary Base", "Trapper", "DJ Booth"}, SkillTree = {} },
-    ["Broke"] = { Level = 175, Towers = {"Gatling Gun", "Militant", "Medic", "Trapper", "DJ Booth"}, SkillTree = {} },
-    ["Healthy Enemies"] = {
+    ["Speedy Enemies"]    = { Level = 175, Towers = {"Hacker","Gatling Gun","Militant","Mercenary Base","Trapper"}, SkillTree = {} },
+    ["Glass"]             = { Level = 175, Towers = {"Hacker","Gatling Gun","Militant","Mercenary Base","Trapper"}, SkillTree = {} },
+    ["Quarantine"]        = { Level = 175, Towers = {"Hacker","Gatling Gun","Militant","Mercenary Base","DJ Booth"}, SkillTree = {} },
+    ["Fog"]               = { Level = 175, Towers = {"Trapper","Hacker","Gatling Gun","Mercenary Base","DJ Booth"}, SkillTree = {} },
+    ["Limitation"]        = { Level = 175, Towers = {"Trapper","Hacker","Gatling Gun","Mercenary Base","DJ Booth"}, SkillTree = {} },
+    ["Flying"]            = { Level = 175, Towers = {"Hacker","Gatling Gun","Militant","Mercenary Base","DJ Booth"}, SkillTree = {} },
+    ["Jailed"]            = { Level = 175, Towers = {"Hacker","Gatling Gun","Militant","Mercenary Base","Military Base"}, SkillTree = {} },
+    ["Exploding Enemies"] = { Level = 175, Towers = {"Hacker","Gatling Gun","Militant","Mercenary Base","DJ Booth"}, SkillTree = {} },
+    ["Inflation"]         = { Level = 175, Towers = {"Ace Pilot","Trapper","Gatling Gun","DJ Booth","Medic"}, SkillTree = {} },
+    ["Committed"]         = { Level = 175, Towers = {"Placeholder"}, SkillTree = {} },
+    ["Hidden"]            = { Level = 175, Towers = {"Gatling Gun","Hacker","Mercenary Base","Trapper","DJ Booth"}, SkillTree = {} },
+    ["Broke"]             = { Level = 175, Towers = {"Gatling Gun","Militant","Medic","Trapper","DJ Booth"}, SkillTree = {} },
+    ["Healthy Enemies"]   = {
         Level = 175,
-        Towers = {"Ace Pilot", "Mercenary Base", "DJ Booth", "Gatling Gun", "Medic"},
+        Towers = {"Ace Pilot","Mercenary Base","DJ Booth","Gatling Gun","Medic"},
         SkillTree = {
-            ["Bigger Budget"] = 10,
-            ["Fortify"] = 10,
-            ["Stonks"] = 10,
-            ["Over-Heal"] = 10,
-            ["Bandages"] = 10,
-            ["Accelerator"] = 10,
+            ["Bigger Budget"]   = 10,
+            ["Fortify"]         = 10,
+            ["Stonks"]          = 10,
+            ["Over-Heal"]       = 10,
+            ["Bandages"]        = 10,
+            ["Accelerator"]     = 10,
             ["Enhanced Optics"] = 10,
             ["Resourcefulness"] = 10,
         }
     }
 }
 
--- Helper: get current trial name from replicators
-function AutoTrials.getCurrentTrial()
-    local stateRep = game:GetService("ReplicatedStorage"):FindFirstChild("StateReplicators")
-    if stateRep then
-        local gameStateRep = stateRep:FindFirstChild("GameStateReplicator")
-        if gameStateRep then
-            local trial = gameStateRep:GetAttribute("GlobalTrial")
-            if trial and trial ~= "" then return trial end
-        end
-        local trialsRep = stateRep:FindFirstChild("TrialsStateReplicator")
-        if trialsRep then
-            local trial = trialsRep:GetAttribute("GlobalTrial")
-            if trial and trial ~= "" then return trial end
-        end
+-- Normalisation table (game sends variants like "SpeedyEnemies")
+local trialMap = {
+    ["SpeedyEnemies"]    = "Speedy Enemies",
+    ["Speedy Enemies"]   = "Speedy Enemies",
+    ["Glass"]            = "Glass",
+    ["Quarantine"]       = "Quarantine",
+    ["Fog"]              = "Fog",
+    ["Limitation"]       = "Limitation",
+    ["Flying"]           = "Flying",
+    ["Jailed"]           = "Jailed",
+    ["ExplodingEnemies"] = "Exploding Enemies",
+    ["Exploding Enemies"]= "Exploding Enemies",
+    ["Inflation"]        = "Inflation",
+    ["Committed"]        = "Committed",
+    ["Hidden"]           = "Hidden",
+    ["HiddenEnemies"]    = "Hidden Enemies",
+    ["Hidden Enemies"]   = "Hidden Enemies",
+    ["Broke"]            = "Broke",
+    ["Healthy"]          = "Healthy Enemies",
+    ["HealthyEnemies"]   = "Healthy Enemies",
+    ["Healthy Enemies"]  = "Healthy Enemies",
+}
+
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
+local function Notify(title, desc, time, kind)
+    local win = getgenv().AetherWindow
+    if win and win.Notify then
+        pcall(function()
+            win:Notify({ Title = title, Desc = desc, Time = time or 3, Type = kind or "normal" })
+        end)
+    else
+        print(string.format("[AutoTrials] %s: %s", title, desc))
+    end
+end
+
+local function getGameState()
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    if pg:FindFirstChild("ReactLobbyHud") then return "LOBBY" end
+    if pg:FindFirstChild("ReactUniversalHotbar") then return "GAME" end
+    return nil
+end
+
+local function getCurrentTrial()
+    local stateRep = ReplicatedStorage:FindFirstChild("StateReplicators")
+    if not stateRep then return nil end
+
+    local gameStateRep = stateRep:FindFirstChild("GameStateReplicator")
+    if gameStateRep then
+        local trial = gameStateRep:GetAttribute("GlobalTrial")
+        if trial and trial ~= "" then return trial end
+    end
+
+    local trialsRep = stateRep:FindFirstChild("TrialsStateReplicator")
+    if trialsRep then
+        local trial = trialsRep:GetAttribute("GlobalTrial")
+        if trial and trial ~= "" then return trial end
     end
     return nil
 end
 
--- Get current skill levels from the UI (SurfaceGuis)
 local function getSkillLevels()
     local skills = {}
-    for _, obj in ipairs(workspace:GetDescendants()) do
+    for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("SurfaceGui") and obj.Name == "TileSurfaceGui" then
             local frame = obj:FindFirstChild("Frame")
             if frame then
-                local skillName = frame:FindFirstChild("SkillName")
+                local skillName  = frame:FindFirstChild("SkillName")
                 local skillLevel = frame:FindFirstChild("SkillLevel")
                 if skillName and skillLevel then
-                    local name = skillName.Text
-                    local levelText = skillLevel.Text
                     local current = 0
+                    local levelText = skillLevel.Text
                     if levelText:find("MAX") then
                         local maxMatch = levelText:match("%[(%d+)%]")
                         if maxMatch then current = tonumber(maxMatch) or 0 end
@@ -93,7 +162,7 @@ local function getSkillLevels()
                             current = tonumber(parts[1]) or 0
                         end
                     end
-                    skills[name] = current
+                    skills[skillName.Text] = current
                 end
             end
         end
@@ -101,171 +170,148 @@ local function getSkillLevels()
     return skills
 end
 
--- Check skill requirements for a trial
 local function checkSkillRequirements(trialName)
     local config = trialConfigs[trialName]
     if not config or not config.SkillTree or next(config.SkillTree) == nil then
         return true, {}
     end
-    local skills = getSkillLevels()
+    local skills  = getSkillLevels()
     local missing = {}
     for skillName, requiredLevel in pairs(config.SkillTree) do
         local current = skills[skillName] or 0
         if current < requiredLevel then
-            table.insert(missing, string.format("%s (Required: %d, Current: %d)", skillName, requiredLevel, current))
+            table.insert(missing, string.format("%s (Req: %d, Cur: %d)", skillName, requiredLevel, current))
         end
     end
     return #missing == 0, missing
 end
 
--- Open inventory UI (needed to check owned towers)
 local function OpenInventory()
-    local network = game:GetService("ReplicatedStorage"):FindFirstChild("Network")
+    local network = ReplicatedStorage:FindFirstChild("Network")
     if not network then return false end
     local inventory = network:FindFirstChild("Inventory")
     if not inventory then return false end
     local openRemote = inventory:FindFirstChild("URE:OpenInventory")
     if not openRemote then return false end
-    local pg = game.Players.LocalPlayer:FindFirstChild("PlayerGui")
-    if pg and pg:FindFirstChild("ReactUniversalInventoryView") then
-        return true
-    end
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if pg and pg:FindFirstChild("ReactUniversalInventoryView") then return true end
     openRemote:FireServer()
     task.wait(2)
     return true
 end
 
--- Get list of owned tower names from inventory UI
 local function GetOwnedTowers()
     local towers = {}
     OpenInventory()
-    local LocalPlayer = game.Players.LocalPlayer
-    for attempt = 1, 15 do
+    for _ = 1, 15 do
         local pg = LocalPlayer:FindFirstChild("PlayerGui")
-        if pg then
-            local inv = pg:FindFirstChild("ReactUniversalInventoryView")
-            if inv then
-                local holder = inv:FindFirstChild("Holder")
-                if holder then
-                    local windowFrame = holder:FindFirstChild("windowFrame")
-                    if windowFrame then
-                        local towersFrame = windowFrame:FindFirstChild("towersInventoryFrame")
-                        if towersFrame then
-                            local towerContainer = towersFrame:FindFirstChild("towerContainer")
-                            if towerContainer then
-                                task.wait(0.5)
-                                for _, scroller in ipairs(towerContainer:GetChildren()) do
-                                    if string.find(scroller.Name, "scrolling") then
-                                        for _, frame in ipairs(scroller:GetChildren()) do
-                                            if frame:IsA("Frame") and frame.Name ~= "UIListLayout" then
-                                                local owned = false
-                                                local main = frame:FindFirstChild("main")
-                                                if main then
-                                                    local topThing = main:FindFirstChild("topThing")
-                                                    if topThing then
-                                                        if not topThing.Visible then
-                                                            owned = true
-                                                        else
-                                                            local icon = topThing:FindFirstChild("icon")
-                                                            if icon and icon:IsA("ImageLabel") then
-                                                                local image = icon.Image
-                                                                if image ~= "rbxassetid://8418293221" then
-                                                                    owned = true
-                                                                end
-                                                            else
-                                                                owned = true
-                                                            end
-                                                        end
-                                                    else
-                                                        owned = true
-                                                    end
-                                                else
-                                                    owned = true
-                                                end
-                                                if owned then
-                                                    table.insert(towers, frame.Name)
-                                                end
+        local inv = pg and pg:FindFirstChild("ReactUniversalInventoryView")
+        local holder = inv and inv:FindFirstChild("Holder")
+        local windowFrame = holder and holder:FindFirstChild("windowFrame")
+        local towersFrame = windowFrame and windowFrame:FindFirstChild("towersInventoryFrame")
+        local towerContainer = towersFrame and towersFrame:FindFirstChild("towerContainer")
+        if towerContainer then
+            task.wait(0.5)
+            for _, scroller in ipairs(towerContainer:GetChildren()) do
+                if string.find(scroller.Name, "scrolling") then
+                    for _, frame in ipairs(scroller:GetChildren()) do
+                        if frame:IsA("Frame") and frame.Name ~= "UIListLayout" then
+                            local owned = false
+                            local main = frame:FindFirstChild("main")
+                            if main then
+                                local topThing = main:FindFirstChild("topThing")
+                                if topThing then
+                                    if not topThing.Visible then
+                                        owned = true
+                                    else
+                                        local icon = topThing:FindFirstChild("icon")
+                                        if icon and icon:IsA("ImageLabel") then
+                                            if icon.Image ~= "rbxassetid://8418293221" then
+                                                owned = true
                                             end
+                                        else
+                                            owned = true
                                         end
                                     end
+                                else
+                                    owned = true
                                 end
-                                return towers
+                            else
+                                owned = true
                             end
+                            if owned then table.insert(towers, frame.Name) end
                         end
                     end
                 end
             end
+            return towers
         end
         task.wait(0.5)
     end
-    warn("[AutoTrials] Timeout waiting for inventory UI – tower check may be incomplete.")
+    warn("[AutoTrials] Timeout waiting for inventory UI.")
     return towers
 end
 
--- Check tower requirements for a trial
 local function checkTowerRequirements(trialName)
     local config = trialConfigs[trialName]
     if not config or not config.Towers or #config.Towers == 0 then
         return true, {}
     end
-    local owned = GetOwnedTowers()
+    local owned   = GetOwnedTowers()
     local missing = {}
     for _, req in ipairs(config.Towers) do
-        if req == "Placeholder" then
-            -- Placeholder means we ignore (committed trial uses external)
-            continue
-        end
-        local found = false
-        for _, o in ipairs(owned) do
-            if o == req then
-                found = true
-                break
+        if req ~= "Placeholder" then
+            local found = false
+            for _, o in ipairs(owned) do
+                if o == req then found = true; break end
             end
-        end
-        if not found then
-            table.insert(missing, req)
+            if not found then table.insert(missing, req) end
         end
     end
     return #missing == 0, missing
 end
 
--- Main function: run the trial (checks, joins, starts strategy)
-function AutoTrials.runAuto()
-    local trialName = AutoTrials.getCurrentTrial()
+----------------------------------------------------------------
+-- Core run logic (executes once per "tick")
+----------------------------------------------------------------
+local function RunOnce()
+    local trialName = getCurrentTrial()
     if not trialName then
-        return { success = false, message = "No active trial found." }
+        Notify("AutoTrials", "No active trial found.", 3, "error")
+        return false
     end
 
-    -- Check skills
-    local skillPass, skillMissing = checkSkillRequirements(trialName)
-    if not skillPass then
-        return { success = false, message = "Missing skills: " .. table.concat(skillMissing, ", ") }
+    local skillOK, skillMissing = checkSkillRequirements(trialName)
+    if not skillOK then
+        Notify("AutoTrials", "Missing skills:\n" .. table.concat(skillMissing, "\n"), 10, "error")
+        return false
     end
 
-    -- Check towers
-    local towerPass, towerMissing = checkTowerRequirements(trialName)
-    if not towerPass then
-        return { success = false, message = "Missing towers: " .. table.concat(towerMissing, ", ") }
+    local towerOK, towerMissing = checkTowerRequirements(trialName)
+    if not towerOK then
+        Notify("AutoTrials", "Missing towers:\n" .. table.concat(towerMissing, "\n"), 10, "error")
+        return false
     end
 
-    -- If in lobby, join trial match
-    local GameState = game.Players.LocalPlayer.PlayerGui:FindFirstChild("ReactLobbyHud") and "LOBBY" or "GAME"
-    local RemoteFunc = game:GetService("ReplicatedStorage"):FindFirstChild("RemoteFunction")
-    if GameState == "LOBBY" then
-        -- Save trial name for strategy loading later
+    local state = getGameState()
+
+    -- LOBBY -> join the trial, remember which one we joined
+    if state == "LOBBY" then
         if writefile and makefolder then
             pcall(makefolder, "GlobalConfigs")
             pcall(writefile, "GlobalConfigs/trialscript.txt", trialName)
         end
         pcall(function()
-            RemoteFunc:InvokeServer("Multiplayer", "v2:start", { count = 1, mode = "Trials" })
+            ReplicatedStorage.RemoteFunction:InvokeServer(
+                "Multiplayer", "v2:start", { count = 1, mode = "Trials" }
+            )
         end)
-        return { success = true, message = "Joined trial for " .. trialName }
+        Notify("AutoTrials", "Joined trial for " .. trialName, 3)
+        return "joined"
     end
 
-    -- If in game, load and run the strategy
-    if GameState == "GAME" then
-        -- Read saved trial name if exists
+    -- GAME -> run the saved strategy
+    if state == "GAME" then
         local savedTrial = nil
         if isfile then
             pcall(function()
@@ -273,24 +319,96 @@ function AutoTrials.runAuto()
             end)
         end
         local targetTrial = savedTrial or trialName
-        local scriptUrl = trialScripts[targetTrial]
+        local mapped      = trialMap[targetTrial] or targetTrial
+        local scriptUrl   = trialScripts[mapped]
         if not scriptUrl then
-            return { success = false, message = "No strategy for " .. targetTrial }
+            Notify("AutoTrials", "No strategy for " .. targetTrial, 3, "error")
+            return false
         end
+
+        task.wait(2)
         local ok, err = pcall(function()
             local chunk = game:HttpGet(scriptUrl)
+            chunk = "local TDS = shared.TDSTable or _G.TDS or error('TDS not found')\n" .. chunk
             local fn = loadstring(chunk)
             if fn then fn() end
         end)
         if ok then
-            return { success = true, message = "Running strategy for " .. targetTrial }
+            Notify("AutoTrials", "Running strategy for " .. targetTrial, 3)
         else
             warn("[AutoTrials] Error: " .. tostring(err))
-            return { success = false, message = "Failed to load strategy: " .. tostring(err) }
+            Notify("AutoTrials", "Failed to load strategy.", 3, "error")
         end
+        return "ran"
     end
 
-    return { success = false, message = "Unknown game state." }
+    return false
+end
+
+----------------------------------------------------------------
+-- Public API
+----------------------------------------------------------------
+function AutoTrials.Start()
+    if running then return end
+    running = true
+
+    thread = task.spawn(function()
+        local lastJoinAt    = 0
+        local ranForTrial   = nil
+        local joinedForTrial = nil
+
+        while running do
+            if not Globals.AutoTrials then
+                running = false
+                break
+            end
+
+            local state = getGameState()
+            local trialName = getCurrentTrial()
+
+            -- Never run requirements checks more than once per trial per state
+            local shouldTry = false
+            if trialName then
+                if state == "LOBBY" then
+                    if joinedForTrial ~= trialName and (os.clock() - lastJoinAt) > 5 then
+                        shouldTry = true
+                    end
+                elseif state == "GAME" then
+                    if ranForTrial ~= trialName then
+                        shouldTry = true
+                    end
+                end
+            end
+
+            if shouldTry then
+                local ok, result = pcall(RunOnce)
+                if not ok then
+                    warn("[AutoTrials] RunOnce failed: " .. tostring(result))
+                elseif result == "joined" then
+                    lastJoinAt     = os.clock()
+                    joinedForTrial = trialName
+                elseif result == "ran" then
+                    ranForTrial = trialName
+                end
+            end
+
+            task.wait(2)
+        end
+
+        running = false
+    end)
+end
+
+function AutoTrials.Stop()
+    running = false
+    if thread then
+        pcall(task.cancel, thread)
+        thread = nil
+    end
+end
+
+function AutoTrials.IsRunning()
+    return running
 end
 
 return AutoTrials
