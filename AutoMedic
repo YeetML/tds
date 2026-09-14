@@ -409,6 +409,43 @@ local function clearAllSelected(medic)
     runToggleBatch(medic, items)
 end
 
+-- Returns true only when the medic is confirmed empty server-side.
+local function clearAllSelectedConfirmed(medic, hardTimeout)
+    if not IsAlive(medic) then return true end
+    local deadline = os.clock() + (hardTimeout or 1.5)
+    while true do
+        clearAllSelected(medic)
+        local sel = getSelectedUIDs(medic)
+        if next(sel) == nil then return true end
+        if os.clock() >= deadline then return false end
+        task.wait(BATCH_POLL_INTERVAL)
+    end
+end
+
+-- Force-clear every OTHER medic we own before we attach anything.
+local function purgeOtherMedics(myMedic)
+    local myUID = getTowerUID(myMedic)
+    local folder = Workspace:FindFirstChild("Towers")
+    if not folder then return end
+    for _, tower in ipairs(folder:GetChildren()) do
+        local rep = GetReplicator(tower)
+        if rep then
+            local name = rep:GetAttribute("Name")
+            local uid  = rep:GetAttribute("UID")
+            if name and string.lower(name) == "medic" and uid ~= myUID then
+                local oid = rep:GetAttribute("OwnerId")
+                local onm = rep:GetAttribute("OwnerName")
+                if (oid == PlayerUserId) or (onm == PlayerName) then
+                    local sel = getSelectedUIDs(tower)
+                    if next(sel) ~= nil then
+                        clearAllSelectedConfirmed(tower, 0.8)
+                    end
+                end
+            end
+        end
+    end
+end
+
 -- Only reports targets that were actually confirmed selected server-side
 -- (checked against getSelectedUIDs after the toggle batch, not assumed).
 local function attachTargets(medic, targets)
@@ -716,6 +753,7 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
 
         -- Attach + ONE fire attempt. No retry. Returns true if uber fired.
         local function fireOnce(m)
+            purgeOtherMedics(m)
             local targets = gatherTargets(m)
             if #targets == 0 then return false end
 
@@ -744,6 +782,7 @@ function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
         -- Anchor fired first, so when we come back to it the cooldown
         -- should already be over. If not, we wait without spamming.
         local function fireAnchor(m)
+            purgeOtherMedics(m)
             local targets = {}
             repeat
                 if not medicUsable(m) then return false end
