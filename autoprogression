@@ -1871,163 +1871,85 @@ local function RunFallenStrategy()
         runningFallen = false
     end
 end
-local APR_HC_URL            = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore"
-local APR_HC_LOSS_THRESHOLD = 30
-local APR_HcLossCount       = 0
-local APR_HcContent         = nil
-local APR_HcStrategySrc     = nil
-local runningHardcore       = false
-
-local function APR_HcFetch()
-    local ok, content = pcall(game.HttpGet, game, APR_HC_URL)
-    if ok and type(content) == "string" and #content > 0 then
-        return content
-    end
-    return nil
-end
-
-local function APR_HcSplit(content)
-    local setup, strategy = {}, {}
-    local inStrategy = false
-    for line in content:gmatch("[^\r\n]+") do
-        if not inStrategy and
-           (line:match("TDS:Place") or line:match("TDS:VoteSkip")) then
-            inStrategy = true
-        end
-        if inStrategy then
-            table.insert(strategy, line)
-        else
-            table.insert(setup, line)
-        end
-    end
-    return table.concat(setup, "\n"), table.concat(strategy, "\n")
-end
-
-local function APR_HcRunFull()
-    APR_HcContent = APR_HcFetch()
-    if not APR_HcContent then
-        warn("[APR-HC] Failed to fetch: " .. APR_HC_URL)
-        return false
-    end
-    local _, strat = APR_HcSplit(APR_HcContent)
-    APR_HcStrategySrc = strat
-
-    local fn = loadstring(APR_HcContent)
-    if not fn then return false end
-    local ok, err = pcall(fn)
-    if not ok then
-        warn("[APR-HC] Full exec error: " .. tostring(err))
-        return false
-    end
-    return true
-end
-
-local function APR_HcRunStrategyOnly()
-    if not APR_HcStrategySrc then
-        if not APR_HcContent then
-            APR_HcContent = APR_HcFetch()
-            if APR_HcContent then
-                local _, strat = APR_HcSplit(APR_HcContent)
-                APR_HcStrategySrc = strat
-            end
-        end
-    end
-    if not APR_HcStrategySrc then return false end
-
-    -- Wipe stale tower indexes before re-placing
-    local prefixed = "TDS:RemoveIndex()\n" .. APR_HcStrategySrc
-    local fn = loadstring(prefixed)
-    if not fn then return false end
-    local ok, err = pcall(fn)
-    if not ok then
-        warn("[APR-HC] Strategy re-run error: " .. tostring(err))
-        return false
-    end
-    return true
-end
-
-local function APR_RequeueHardcore()
-    local remote = ReplicatedStorage:WaitForChild("RemoteFunction", 10)
-    if not remote then return false end
-    local ok, attempts = false, 0
-    while not ok and attempts < 30 do
-        attempts = attempts + 1
-        local success, result = pcall(function()
-            return remote:InvokeServer("Multiplayer", "v2:start", {
-                mode       = "hardcore",
-                difficulty = "Easy",
-                count      = 1,
-            })
-        end)
-        if success and result then ok = true else task.wait(0.5) end
-    end
-    return ok
-end
+-- ═══════════════════════════════════════════════════════════════
+-- RUN HARDCORE  (single strategy, mirrors Easy/Fallen flow)
+-- ═══════════════════════════════════════════════════════════════
+local HardcoreStrategy = {
+    name        = "hardcore",
+    url         = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore",
+    autoPremium = false,
+    autoSkip    = false,
+    autoRejoin  = false,
+    autoReady   = true,
+}
 
 local HC_REQUIRED_TOWERS = {"Pyromancer", "Farm", "Shotgunner"}
 
-local HC_STRATEGY_SETTINGS = {
-    autoSkip    = false,  
-    autoReady   = true,   
-    autoPremium = false,   
-    autoRejoin  = false,   
-    autoRestart = false,
-}
-
+local runningHardcore = false
 function RunHardcore()
     if runningHardcore then return end
     runningHardcore = true
     getgenv().TimeScaleEnabled = false
     SetStatus("Starting Hardcore strategy...")
 
-    if not IsInLobby() then
-        -- In-match gate: verify via DifficultyDisplayName
-        local sr  = ReplicatedStorage:FindFirstChild("StateReplicators")
+    local function getDifficultyDisplay()
+        local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
         local rep = sr and sr:FindFirstChild("GameStateReplicator")
-        local deadline = os.clock() + 5
-        while rep and rep:GetAttribute("DifficultyDisplayName") == nil
-              and os.clock() < deadline do
-            task.wait(0.1)
-        end
-        local display = rep and rep:GetAttribute("DifficultyDisplayName")
-        local isHc = display and display ~= ""
+        return rep and rep:GetAttribute("DifficultyDisplayName") or nil
+    end
+
+    local function isHardcoreDisplay(display)
+        return display and display ~= ""
             and tostring(display):lower():find("hardcore", 1, true) ~= nil
-        if not isHc then
+    end
+
+    local function loadHardcore()
+        ApplyStrategySettings(HardcoreStrategy)
+        task.wait(0.3)
+        print("[AutoProgression] Loading Hardcore strategy...")
+        SetStatus("Loading Hardcore strategy...")
+        loadstring(game:HttpGet(HardcoreStrategy.url))()
+    end
+
+    if not IsInLobby() then
+        -- In-match: wait briefly then verify Hardcore
+        local display = getDifficultyDisplay()
+        local deadline = os.clock() + 5
+        while not display and os.clock() < deadline do
+            task.wait(0.1)
+            display = getDifficultyDisplay()
+        end
+
+        if not isHardcoreDisplay(display) then
             SetStatus("Hardcore: wrong mode – going to lobby")
             runningHardcore = false
             getgenv().SmartTeleportToLobby()
             return
         end
 
-        task.spawn(function()
-            APR_HcRunStrategyOnly()
+        local buyResult = AutoBuyTowers(HC_REQUIRED_TOWERS)
+        if buyResult ~= "OK" then
+            SetStatus("Hardcore: cannot afford towers – Easy fallback")
             runningHardcore = false
-        end)
-    else
-        task.spawn(function()
-            print("[APR-HC] Checking required towers...")
-            SetStatus("Hardcore: checking towers...")
-            local buyResult = AutoBuyTowers(HC_REQUIRED_TOWERS)
+            RunYeetEasy()
+            return
+        end
 
-            if buyResult == "Coins" then
-                print("[APR-HC] Not enough coins for required towers – falling back to Easy")
-                SetStatus("Hardcore: no coins – Easy fallback")
-                runningHardcore = false
-                RunYeetEasy()
-                return
-            elseif buyResult == "Gems" then
-                print("[APR-HC] Not enough gems for required towers – falling back to Easy")
-                SetStatus("Hardcore: no gems – Easy fallback")
-                runningHardcore = false
-                RunYeetEasy()
-                return
-            end
-            ApplyStrategySettings(HC_STRATEGY_SETTINGS)
-            if not APR_HcRunFull() then
-                SetStatus("Hardcore: failed to load strategy")
-            end
+        loadHardcore()
+        runningHardcore = false
+    else
+        -- In lobby: check resources, then load
+        local buyResult = AutoBuyTowers(HC_REQUIRED_TOWERS)
+        if buyResult == "Coins" or buyResult == "Gems" then
+            print("[AutoProgression] Hardcore – not enough resources – farming Easy")
+            SetStatus("Hardcore: no resources – farming Easy")
             runningHardcore = false
-        end)
+            RunYeetEasy()
+            return
+        end
+
+        loadHardcore()
+        runningHardcore = false
     end
 end
 local APR_HandlingGameOver = false
@@ -2156,64 +2078,8 @@ local function APR_HandleGameOver()
             warn("[AutoProgression] ❌ Webhook skipped: " .. tostring(reason))
         end
         task.wait(0.5) 
-        if APR_IsHardcoreDisplay() then
-            -- Read win/loss banner of the match that just ended
-            local status = nil
-            pcall(function()
-                local pg = LocalPlayer:FindFirstChild("PlayerGui")
-                local root = pg and pg:FindFirstChild("ReactGameNewRewards")
-                local f = root and root:FindFirstChild("Frame")
-                local go = f and f:FindFirstChild("gameOver")
-                local rs = go and go:FindFirstChild("RewardsScreen")
-                local banner = rs and rs:FindFirstChild("RewardBanner")
-                local lbl = banner and banner:FindFirstChild("textLabel")
-                if lbl then
-                    local t = lbl.Text:upper()
-                    if t:find("TRIUMPH") or t:find("VICTORY") or t:find("WIN") then
-                        status = "WIN"
-                    elseif t:find("LOST") or t:find("DEFEAT") or t:find("FAIL") then
-                        status = "LOSS"
-                    end
-                end
-            end)
-
-            if status == "WIN" then
-                if APR_HcLossCount > 0 then
-                    print("[APR-HC] Win — counter reset")
-                end
-                APR_HcLossCount = 0
-                SetStatus("Hardcore WIN — counter reset")
-            elseif status == "LOSS" then
-                APR_HcLossCount = APR_HcLossCount + 1
-                print(string.format("[APR-HC] Loss %d/%d",
-                    APR_HcLossCount, APR_HC_LOSS_THRESHOLD))
-            end
-
-            if APR_HcLossCount >= APR_HC_LOSS_THRESHOLD then
-                print("[APR-HC] Threshold reached — returning to lobby")
-                APR_HcLossCount = 0
-                SetStatus("HC threshold — lobby")
-                APR_TeleportLobby()
-            else
-                SetStatus("HC restart " .. APR_HcLossCount ..
-                          "/" .. APR_HC_LOSS_THRESHOLD)
-                APR_RequeueHardcore()
-                task.spawn(function()
-                    local deadline = os.clock() + 90
-                    while os.clock() < deadline do
-                        task.wait(0.5)
-                        local r = APR_GetGameStateReplicator()
-                        if not r or r:GetAttribute("GameOver") ~= true then
-                            break
-                        end
-                    end
-                    task.wait(3)
-                    print("[APR-HC] Re-running strategy...")
-                    pcall(APR_HcRunStrategyOnly)
-                end)
-            end
-
-        elseif APR_IsEasySurvival() then
+if APR_IsHardcoreDisplay() then
+elseif APR_IsEasySurvival() then
             SetStatus("Easy – requeueing...")
             print("[AutoProgression] Easy match ended, requeueing directly...")
             APR_RequeueEasy()
