@@ -445,6 +445,134 @@ local function APR_GetAllRewards()
     return results
 end
 
+local function IsInLobby()
+    local placeId = game.PlaceId
+    if placeId == 3260590327 then return true end
+    return workspace:FindFirstChild("Lobby") ~= nil
+end
+
+-- Skill tree only exists in the lobby, so cache it continuously.
+local APR_SkillTreeCache = { data = {}, lastUpdate = 0 }
+
+local function APR_RefreshSkillTreeCache()
+    if not IsInLobby() then return end
+    local skills = {}
+    pcall(function()
+        for _, tile in ipairs(workspace:GetDescendants()) do
+            if tile:IsA("SurfaceGui") and tile.Name == "TileSurfaceGui" then
+                local frame = tile:FindFirstChild("Frame")
+                if frame then
+                    local nameLbl = frame:FindFirstChild("SkillName")
+                    local lvlLbl  = frame:FindFirstChild("SkillLevel")
+                    if nameLbl and lvlLbl and nameLbl.Text ~= "" then
+                        local text = tostring(lvlLbl.Text)
+                        local cur, mx, isMax = 0, 0, false
+                        if text:upper():find("MAX") then
+                            mx = tonumber(text:match("%[(%d+)%]")) or 0
+                            cur = mx
+                            isMax = true
+                        else
+                            local c, m = text:match("(%d+)%s*/%s*(%d+)")
+                            cur = tonumber(c) or 0
+                            mx  = tonumber(m) or 0
+                            isMax = (mx > 0 and cur >= mx)
+                        end
+                        table.insert(skills, {
+                            Name = nameLbl.Text,
+                            Current = cur,
+                            Max = mx,
+                            IsMax = isMax,
+                        })
+                    end
+                end
+            end
+        end
+    end)
+    if #skills > 0 then
+        table.sort(skills, function(a, b)
+            if a.IsMax ~= b.IsMax then return a.IsMax end
+            return a.Name < b.Name
+        end)
+        APR_SkillTreeCache.data = skills
+        APR_SkillTreeCache.lastUpdate = os.clock()
+    end
+end
+
+-- Keep the cache fresh while in lobby
+task.spawn(function()
+    while true do
+        pcall(APR_RefreshSkillTreeCache)
+        task.wait(5)
+    end
+end)
+
+-- Snapshot: every tower the player has any EXP on
+local function APR_GetTowerExpSnapshot()
+    local towers = {}
+    local ok, expTable = pcall(function()
+        return waitForCache("TowerExp") or {}
+    end)
+    if not ok or type(expTable) ~= "table" then return towers end
+
+    for _, name in ipairs(ALL_TOWERS) do
+        local exp = expTable[name]
+        if exp and exp > 0 then
+            local level = 0
+            pcall(function()
+                level = TowerExpUtil.getLevel({ TowerExp = expTable }, name) or 0
+            end)
+            table.insert(towers, { Name = name, Level = level, Exp = exp })
+        end
+    end
+
+    table.sort(towers, function(a, b)
+        if a.Level ~= b.Level then return a.Level > b.Level end
+        if a.Exp   ~= b.Exp   then return a.Exp   > b.Exp   end
+        return a.Name < b.Name
+    end)
+    return towers
+end
+
+-- ── Discord field formatters ──────────────────────────────────
+local function APR_Truncate(str, limit)
+    limit = limit or 1000
+    if #str <= limit then return str end
+    return str:sub(1, limit - 3) .. "..."
+end
+
+local function APR_FormatSkillTreeField(skills)
+    if not skills or #skills == 0 then
+        return "_No skill data cached yet (must be in lobby)._\n" ..
+               "Cached entries: `0`"
+    end
+    local lines = {}
+    for _, s in ipairs(skills) do
+        local status = s.IsMax and "**MAX**"
+            or string.format("`%d/%d`", s.Current, s.Max)
+        table.insert(lines, string.format("• %-22s %s", s.Name, status))
+    end
+    local body = APR_Truncate(table.concat(lines, "\n"), 990)
+    return "```\n" .. body .. "\n```"
+end
+
+local function APR_FormatTowerExpField(towers)
+    if not towers or #towers == 0 then
+        return "_No tower EXP found (TowerExp cache empty)._"
+    end
+    local lines = {}
+    for _, t in ipairs(towers) do
+        table.insert(lines, string.format("• %-20s Lv.%2d  (%d xp)",
+            t.Name, t.Level, t.Exp))
+    end
+    local body = APR_Truncate(table.concat(lines, "\n"), 990)
+    return "```\n" .. body .. "\n```"
+end
+
+getgenv().APR_GetTowerExpSnapshot    = APR_GetTowerExpSnapshot
+getgenv().APR_FormatSkillTreeField   = APR_FormatSkillTreeField
+getgenv().APR_FormatTowerExpField    = APR_FormatTowerExpField
+getgenv().APR_SkillTreeCache         = APR_SkillTreeCache
+
 local function APR_SendMatchWebhook()
     local MainGlobals = getgenv().Globals or _G.Globals or getgenv()
     if not MainGlobals then return false, "no Globals" end
@@ -472,35 +600,61 @@ local function APR_SendMatchWebhook()
         BonusString = "_No bonus rewards found._"
     end
 
-    local PostData = {
-        username = "TDS AutoStrat",
-        embeds = {{
-            title = (match.Status == "WIN" and "🏆 TRIUMPH" or "💀 DEFEAT"),
-            color = (match.Status == "WIN" and 0x2ecc71 or 0xe74c3c),
-            description =
-                "### 📋 Match Overview\n" ..
-                "> **Status:** `" .. match.Status .. "`\n" ..
-                "> **Time:** `" .. match.Time .. "`\n" ..
-                "> **Current Level:** `" .. match.Level .. "`\n" ..
-                "> **Wave:** `" .. match.Wave .. "`\n",
-            fields = {
-                {
-                    name = "✨ Rewards",
-                    value = "```ansi\n\27[2;33mCoins:\27[0m +" .. match.Coins ..
-                            "\n\27[2;34mGems: \27[0m +" .. match.Gems ..
-                            "\n\27[2;32mXP:   \27[0m +" .. match.XP .. "```",
-                    inline = false
-                },
-                { name = "🎁 Bonus Items", value = BonusString, inline = true },
-                { name = "📊 Session Totals",
-                  value = "```py\n# Total Amount\nCoins: " .. APR_SessionCoins ..
-                          "\nGems:  " .. APR_SessionGems .. "```",
-                  inline = true }
+    local skillSnapshot = APR_SkillTreeCache.data
+local towerSnapshot = APR_GetTowerExpSnapshot()
+
+-- Small header summary for the skills field
+local skillHeader = ""
+if #skillSnapshot > 0 then
+    local maxed = 0
+    for _, s in ipairs(skillSnapshot) do
+        if s.IsMax then maxed = maxed + 1 end
+    end
+    skillHeader = string.format("_Cached %d skill(s) — %d maxed_\n",
+        #skillSnapshot, maxed)
+end
+
+local PostData = {
+    username = "TDS AutoStrat",
+    embeds = {{
+        title = (match.Status == "WIN" and "🏆 TRIUMPH" or "💀 DEFEAT"),
+        color = (match.Status == "WIN" and 0x2ecc71 or 0xe74c3c),
+        description =
+            "### 📋 Match Overview\n" ..
+            "> **Status:** `" .. match.Status .. "`\n" ..
+            "> **Time:** `" .. match.Time .. "`\n" ..
+            "> **Current Level:** `" .. match.Level .. "`\n" ..
+            "> **Wave:** `" .. match.Wave .. "`\n",
+        fields = {
+            {
+                name = "✨ Rewards",
+                value = "```ansi\n\27[2;33mCoins:\27[0m +" .. match.Coins ..
+                        "\n\27[2;34mGems: \27[0m +" .. match.Gems ..
+                        "\n\27[2;32mXP:   \27[0m +" .. match.XP .. "```",
+                inline = false
             },
-            footer = { text = "Logged for " .. LocalPlayer.Name .. " • TDS AutoStrat" },
-            timestamp = DateTime.now():ToIsoDate()
-        }}
-    }
+            { name = "🎁 Bonus Items",   value = BonusString,       inline = true },
+            { name = "📊 Session Totals",
+              value = "```py\n# Total Amount\nCoins: " .. APR_SessionCoins ..
+                      "\nGems:  " .. APR_SessionGems .. "```",
+              inline = true },
+
+            -- ── NEW FIELDS ─────────────────────────────────────
+            {
+                name   = "🌳 Skill Tree Progress",
+                value  = skillHeader .. APR_FormatSkillTreeField(skillSnapshot),
+                inline = false
+            },
+            {
+                name   = "🗼 Tower EXP",
+                value  = APR_FormatTowerExpField(towerSnapshot),
+                inline = false
+            },
+        },
+        footer = { text = "Logged for " .. LocalPlayer.Name .. " • TDS AutoStrat" },
+        timestamp = DateTime.now():ToIsoDate()
+    }}
+}
 
     local ok, err = pcall(function()
         httpRequest({
@@ -656,12 +810,6 @@ local function PurchaseGoldenCrates()
 end
 
 getgenv().PurchaseGoldenCrates = PurchaseGoldenCrates
-
-local function IsInLobby()
-    local placeId = game.PlaceId
-    if placeId == 3260590327 then return true end
-    return workspace:FindFirstChild("Lobby") ~= nil
-end
 
 local SKILL_TARGETS = {
     { name = "Enhanced Optics", maxLevel = 20 },
