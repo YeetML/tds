@@ -1838,10 +1838,10 @@ local function RunFallenStrategy()
                     RunHardcore()
                     return
                 elseif buyResult ~= "OK" then
-                    print("[AutoProgression] Fallen – cannot afford " .. chosen.name .. " – farming Easy")
-                    SetStatus("Fallen: cannot afford – farming Easy")
+                    print("[AutoProgression] Fallen – cannot afford " .. chosen.name .. " – farming Pizza")
+                    SetStatus("Fallen: cannot afford – farming Pizza")
                     runningFallen = false
-                    RunYeetEasy()
+                    RunPizzaParty()
                     return
                 end
             end
@@ -1863,9 +1863,9 @@ local function RunFallenStrategy()
                 return
             end
 
-            SetStatus("Cannot afford Fallen towers – farming Easy")
+            SetStatus("Cannot afford Fallen towers – farming Pizza")
             runningFallen = false
-            RunYeetEasy()
+            RunPizzaParty()
             return
         end
         runningFallen = false
@@ -1929,9 +1929,9 @@ function RunHardcore()
 
         local buyResult = AutoBuyTowers(HC_REQUIRED_TOWERS)
         if buyResult ~= "OK" then
-            SetStatus("Hardcore: cannot afford towers – Easy fallback")
+            SetStatus("Hardcore: cannot afford towers – Pizza fallback")
             runningHardcore = false
-            RunYeetEasy()
+            RunPizzaParty()
             return
         end
 
@@ -1940,11 +1940,10 @@ function RunHardcore()
     else
         -- In lobby: check resources, then load
         local buyResult = AutoBuyTowers(HC_REQUIRED_TOWERS)
-        if buyResult == "Coins" or buyResult == "Gems" then
-            print("[AutoProgression] Hardcore – not enough resources – farming Easy")
-            SetStatus("Hardcore: no resources – farming Easy")
+        if buyResult == "Coins" then
+            SetStatus("Hardcore: no resources – farming Pizza")
             runningHardcore = false
-            RunYeetEasy()
+            RunPizzaParty()
             return
         end
 
