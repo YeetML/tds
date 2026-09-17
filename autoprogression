@@ -2070,13 +2070,7 @@ local function RunFallenStrategy()
             local reqs = FallenTowerRequirements[chosen.name] or {}
             if #reqs > 0 then
                 local buyResult = AutoBuyTowers(reqs)
-                if buyResult == "Gems" then
-                    print("[AutoProgression] Fallen – not enough gems for Hacker – falling back to Hardcore")
-                    SetStatus("Fallen: no gems for Hacker – Hardcore fallback")
-                    runningFallen = false
-                    RunHardcore()
-                    return
-                elseif buyResult ~= "OK" then
+                if buyResult ~= "OK" then
                     print("[AutoProgression] Fallen – cannot afford " .. chosen.name .. " – farming Pizza")
                     SetStatus("Fallen: cannot afford – farming Pizza")
                     runningFallen = false
@@ -2090,17 +2084,6 @@ local function RunFallenStrategy()
             SetStatus("In lobby – loading Fallen: " .. chosen.name)
             loadstring(game:HttpGet(chosen.url))()
                 else
-            -- Determine *why* Fallen isn't feasible
-            local hasGatling = OwnsTower("Gatling Gun") or GetStat("Coins") >= 35000
-            local hasHacker  = OwnsTower("Hacker")      or GetStat("Gems")  >= 5500
-
-            if hasGatling and not hasHacker then
-                print("[AutoProgression] Fallen – no gems for Hacker – falling back to Hardcore")
-                SetStatus("Fallen: no gems for Hacker – Hardcore fallback")
-                runningFallen = false
-                RunHardcore()
-                return
-            end
 
             SetStatus("Cannot afford Fallen towers – farming Pizza")
             runningFallen = false
