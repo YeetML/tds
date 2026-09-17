@@ -117,6 +117,7 @@ getgenv().GetAllTowers = GetAllTowers
 
 getgenv().AutoUpgradeSelected = false
 getgenv().AutoUpgradeAll = false
+getgenv().APR_PizzaLoaded = getgenv().APR_PizzaLoaded or false
 if Globals then
     Globals.AutoUpgradeSelected = false
     Globals.AutoUpgradeAll = false
@@ -1891,6 +1892,16 @@ local function RunPizzaParty()
         if not IsInLobby() and APR_IsPizzaPartyMatch() then
         SetStatus("Already in Pizza Party")
         ApplyStrategySettings(PizzaPartySettings)
+
+        -- Load Pizza if we're in a Pizza match but never loaded it
+        if not getgenv().APR_PizzaLoaded then
+            getgenv().APR_PizzaLoaded = true
+            print("[AutoProgression] Pizza match detected – loading pizzaparty script NOW")
+            runningPizzaParty = false   -- allow the load below to proceed
+            loadstring(game:HttpGet(
+                "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/pizzaparty"
+            ))()
+        end
         return
     end
     runningPizzaParty = true
@@ -1950,6 +1961,7 @@ local function RunFallenStrategy()
         if APR_IsPizzaPartyMatch() then
         SetStatus("Already in Pizza Party")
         runningFallen = false
+        RunPizzaParty()     -- ← route to Pizza so it loads if needed
         return
     end
         -- Wait briefly in case Difficulty hasn't replicated yet
@@ -2292,6 +2304,7 @@ end
 local function APR_HandleGameOver()
     if APR_HandlingGameOver then return end
     APR_HandlingGameOver = true
+    getgenv().APR_PizzaLoaded = false
 
     task.spawn(function()
         APR_WaitForRewardsUI(30)
