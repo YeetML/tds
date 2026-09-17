@@ -2378,7 +2378,7 @@ local function RunAutoProgression()
         if level >= 176 then
         SetStatus("Level " .. level .. " → Fallen path")
         RunFallenStrategy()
-        elseif level >= 125 then
+        elseif level >= 115 then
         SetStatus("Level " .. level .. " → Hardcore path")
         RunHardcore()
     elseif level >= 50 then
