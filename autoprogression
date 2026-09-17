@@ -250,6 +250,7 @@ local function BuyTower(towerName)
         ["EvolvedOperator"] = "Operator",
         ["EvolvedJuggernaut"] = "Juggernaut",
         ["EvolvedKingpin"] = "Kingpin",
+        ["EvolvedEnforcer"]   = "Enforcer",
     }
     local function attemptPurchase(name)
         local success, result = pcall(function()
@@ -810,6 +811,61 @@ local function PurchaseGoldenCrates()
 end
 
 getgenv().PurchaseGoldenCrates = PurchaseGoldenCrates
+
+local EVOLVED_TOWER_MAP = {
+    ["Scout"]      = "EvolvedOperator",
+    ["Crook Boss"] = "EvolvedKingpin",
+    ["Minigunner"] = "EvolvedJuggernaut",
+    ["Shotgunner"] = "EvolvedEnforcer",
+}
+
+local EvolvedBuyingRunning = false
+
+local function CheckAndBuyEvolvedTowers()
+    if EvolvedBuyingRunning then return end
+    EvolvedBuyingRunning = true
+
+    -- Buying towers is only safe from the lobby
+    if not IsInLobby() then
+        EvolvedBuyingRunning = false
+        return
+    end
+
+    for baseName, evolvedName in pairs(EVOLVED_TOWER_MAP) do
+        -- 1) Not already owned
+        if not OwnsTower(evolvedName) then
+            -- 2) Base is owned AND maxed (level 20)
+            if OwnsTower(baseName) and IsTowerMaxLevel(baseName) then
+                local _, needCoins, needGems = ResolveTowerReq(evolvedName)
+                local haveCoins = GetStat("Coins")
+                local haveGems  = GetStat("Gems")
+
+                if haveCoins >= needCoins and haveGems >= needGems then
+                    local msg = string.format(
+                        "[EvolvedBuyer] %s (maxed) → buying %s  (%d C + %d G)",
+                        baseName, evolvedName, needCoins, needGems)
+                    print(msg)
+                    SetStatus("Buying " .. evolvedName)
+                    BuyTower(evolvedName)
+                    task.wait(1)
+                else
+                    print(string.format(
+                        "[EvolvedBuyer] %s is maxed but cannot afford %s " ..
+                        "(need %d C + %d G, have %d C + %d G)",
+                        baseName, evolvedName,
+                        needCoins, needGems, haveCoins, haveGems))
+                end
+            end
+        end
+    end
+
+    EvolvedBuyingRunning = false
+end
+
+-- Manual trigger (always available, even while the loop is off):
+--   getgenv().CheckAndBuyEvolvedTowers()
+getgenv().CheckAndBuyEvolvedTowers = CheckAndBuyEvolvedTowers
+getgenv().EVOLVED_TOWER_MAP        = EVOLVED_TOWER_MAP
 
 local SKILL_TARGETS = {
     { name = "Enhanced Optics", maxLevel = 20 },
@@ -2790,6 +2846,15 @@ task.spawn(function()
         end
     end
 end)
+
+--[[
+task.spawn(function()
+    while true do
+        pcall(CheckAndBuyEvolvedTowers)
+        task.wait(0.5)
+    end
+end)
+--]]
 
 getgenv().RunSkillPurchases   = RunSkillPurchases
 getgenv().SkillBuyingRunning  = function() return SkillBuyingRunning end
