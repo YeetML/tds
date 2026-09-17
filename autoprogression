@@ -452,6 +452,23 @@ local function IsInLobby()
     return workspace:FindFirstChild("Lobby") ~= nil
 end
 
+local function APR_IsPizzaPartyMatch()
+    local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
+    local rep = sr and sr:FindFirstChild("GameStateReplicator")
+    if not rep then return false end
+    local display = rep:GetAttribute("DifficultyDisplayName")
+    if display and display ~= ""
+       and tostring(display):lower():find("pizza", 1, true) then
+        return true
+    end
+    local diff = rep:GetAttribute("Difficulty")
+    if diff and tostring(diff):lower():find("pizza", 1, true) then
+        return true
+    end
+    return false
+end
+getgenv().APR_IsPizzaPartyMatch = APR_IsPizzaPartyMatch
+
 -- Skill tree only exists in the lobby, so cache it continuously.
 local APR_SkillTreeCache = { data = {}, lastUpdate = 0 }
 
@@ -1722,6 +1739,12 @@ RunYeetEasy = function()
     end
 
     if not IsInLobby() then
+
+            if APR_IsPizzaPartyMatch() then
+        SetStatus("Already in Pizza Party")
+        runningEasy = false
+        return
+    end
         local diff = getDifficulty()
 local deadline = os.clock() + 5
 while not diff and os.clock() < deadline do
@@ -1864,6 +1887,11 @@ end
 local runningPizzaParty = false
 local function RunPizzaParty()
     if runningPizzaParty then return end
+
+        if not IsInLobby() and APR_IsPizzaPartyMatch() then
+        SetStatus("Already in Pizza Party")
+        return
+    end
     runningPizzaParty = true
 
     getgenv().TimeScaleEnabled = false
@@ -1917,6 +1945,12 @@ local function RunFallenStrategy()
     end
 
     if not IsInLobby() then
+
+        if APR_IsPizzaPartyMatch() then
+        SetStatus("Already in Pizza Party")
+        runningFallen = false
+        return
+    end
         -- Wait briefly in case Difficulty hasn't replicated yet
         local diff = getDifficulty()
         local deadline = os.clock() + 5
@@ -2116,6 +2150,12 @@ function RunHardcore()
     end
 
     if not IsInLobby() then
+
+            if APR_IsPizzaPartyMatch() then
+        SetStatus("Already in Pizza Party")
+        runningHardcore = false
+        return
+    end
         -- In-match: wait briefly then verify Hardcore
         local display = getDifficultyDisplay()
         local deadline = os.clock() + 5
