@@ -1890,6 +1890,7 @@ local function RunPizzaParty()
 
         if not IsInLobby() and APR_IsPizzaPartyMatch() then
         SetStatus("Already in Pizza Party")
+        ApplyStrategySettings(PizzaPartySettings)
         return
     end
     runningPizzaParty = true
