@@ -1406,8 +1406,8 @@ local TRIAL_TOWER_REQS = {
     ["Healthy Enemies"]   = {"Ace Pilot", "Mercenary Base", "DJ Booth", "Gatling Gun", "Medic"},
 }
 
--- ═══ HARDCODED: trial level requirement is 175 ═══
-local TRIAL_LEVEL_REQ = 175
+-- ═══ HARDCODED: trial level requirement is 177 ═══
+local TRIAL_LEVEL_REQ = 177
 local TRIALS_FILE = "APR_CompletedTrials.json"
 
 local function APR_NormalizeTrialName(name)
