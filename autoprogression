@@ -1372,6 +1372,117 @@ local PizzaPartySettings = {
 local RunYeetEasy
 local RunHardcore
 
+-- ═══════════════════════════════════════════════════════════════
+-- TRIAL SYSTEM — runs trials once, remembers which are already won
+-- ═══════════════════════════════════════════════════════════════
+local TRIAL_SCRIPTS = {
+    ["Speedy Enemies"]    = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Speedy.lua",
+    ["Glass"]             = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Glass.lua",
+    ["Quarantine"]        = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Quarantine.lua",
+    ["Fog"]               = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Fog.lua",
+    ["Limitation"]        = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Limitation.lua",
+    ["Flying"]            = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Flying.lua",
+    ["Jailed"]            = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Jailed.lua",
+    ["Exploding Enemies"] = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Exploding.lua",
+    ["Inflation"]         = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Inflation.lua",
+    ["Committed"]         = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Committed.lua",
+    ["Hidden Enemies"]    = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Hidden.lua",
+    ["Broke"]             = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Broke.lua",
+    ["Healthy Enemies"]   = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/Healthy.lua",
+}
+
+local TRIAL_TOWER_REQS = {
+    ["Speedy Enemies"]    = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "Trapper"},
+    ["Glass"]             = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "Trapper"},
+    ["Quarantine"]        = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "DJ Booth"},
+    ["Fog"]               = {"Trapper", "Hacker", "Gatling Gun", "Mercenary Base", "DJ Booth"},
+    ["Limitation"]        = {"Trapper", "Hacker", "Gatling Gun", "Mercenary Base", "DJ Booth"},
+    ["Flying"]            = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "DJ Booth"},
+    ["Jailed"]            = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "Military Base"},
+    ["Exploding Enemies"] = {"Hacker", "Gatling Gun", "Militant", "Mercenary Base", "DJ Booth"},
+    ["Inflation"]         = {"Ace Pilot", "Trapper", "Gatling Gun", "DJ Booth", "Medic"},
+    ["Hidden Enemies"]    = {"Gatling Gun", "Hacker", "Mercenary Base", "Trapper", "DJ Booth"},
+    ["Broke"]             = {"Gatling Gun", "Militant", "Medic", "Trapper", "DJ Booth"},
+    ["Healthy Enemies"]   = {"Ace Pilot", "Mercenary Base", "DJ Booth", "Gatling Gun", "Medic"},
+}
+
+-- ═══ HARDCODED: trial level requirement is 175 ═══
+local TRIAL_LEVEL_REQ = 175
+local TRIALS_FILE = "APR_CompletedTrials.json"
+
+local function APR_NormalizeTrialName(name)
+    if not name or name == "" then return nil end
+    local map = {
+        ["SpeedyEnemies"]     = "Speedy Enemies",
+        ["Speedy Enemies"]    = "Speedy Enemies",
+        ["Glass"]             = "Glass",
+        ["Quarantine"]        = "Quarantine",
+        ["Fog"]               = "Fog",
+        ["Limitation"]        = "Limitation",
+        ["Flying"]            = "Flying",
+        ["Jailed"]            = "Jailed",
+        ["ExplodingEnemies"]  = "Exploding Enemies",
+        ["Exploding Enemies"] = "Exploding Enemies",
+        ["Inflation"]         = "Inflation",
+        ["Committed"]         = "Committed",
+        ["Hidden"]            = "Hidden Enemies",
+        ["HiddenEnemies"]     = "Hidden Enemies",
+        ["Hidden Enemies"]    = "Hidden Enemies",
+        ["Broke"]             = "Broke",
+        ["Healthy"]           = "Healthy Enemies",
+        ["HealthyEnemies"]    = "Healthy Enemies",
+        ["Healthy Enemies"]   = "Healthy Enemies",
+    }
+    return map[name] or name
+end
+
+local function APR_LoadCompletedTrials()
+    local list = {}
+    if isfile and isfile(TRIALS_FILE) then
+        pcall(function()
+            local data = HttpService:JSONDecode(readfile(TRIALS_FILE))
+            if type(data) == "table" then list = data end
+        end)
+    end
+    return list
+end
+
+local function APR_SaveCompletedTrials(list)
+    if writefile then
+        pcall(function()
+            writefile(TRIALS_FILE, HttpService:JSONEncode(list))
+        end)
+    end
+end
+
+local function APR_MarkTrialCompleted(trialName)
+    local name = APR_NormalizeTrialName(trialName)
+    if not name then return false end
+    local list = APR_LoadCompletedTrials()
+    if not table.find(list, name) then
+        table.insert(list, name)
+        APR_SaveCompletedTrials(list)
+        print("[AutoProgression] ✅ Trial completed: " .. name)
+        SetStatus("Trial completed: " .. name)
+        return true
+    end
+    return false
+end
+
+local function APR_IsTrialCompleted(trialName)
+    local name = APR_NormalizeTrialName(trialName)
+    if not name then return false end
+    return table.find(APR_LoadCompletedTrials(), name) ~= nil
+end
+
+getgenv().APR_LoadCompletedTrials = APR_LoadCompletedTrials
+getgenv().APR_SaveCompletedTrials = APR_SaveCompletedTrials
+getgenv().APR_MarkTrialCompleted  = APR_MarkTrialCompleted
+getgenv().APR_IsTrialCompleted    = APR_IsTrialCompleted
+getgenv().APR_NormalizeTrialName  = APR_NormalizeTrialName
+getgenv().APR_TRIALS_FILE         = TRIALS_FILE
+getgenv().APR_TRIAL_LEVEL_REQ     = TRIAL_LEVEL_REQ
+
 local BootCampRunning = false
 local function RunBootCamp()
     if BootCampRunning then
@@ -2361,7 +2472,23 @@ local function APR_HandleGameOver()
         else
             warn("[AutoProgression] ❌ Webhook skipped: " .. tostring(reason))
         end
-        task.wait(0.5) 
+        task.wait(0.5)
+
+        -- ═══ Trial completion: mark as done on WIN ═══
+        do
+            local rep = APR_GetGameStateReplicator()
+            local activeTrial = rep and rep:GetAttribute("GlobalTrial")
+            if activeTrial and activeTrial ~= "" then
+                local rewards = APR_GetAllRewards()
+                if rewards and rewards.Status == "WIN" then
+                    APR_MarkTrialCompleted(activeTrial)
+                else
+                    print("[AutoProgression] Trial ended without WIN (" ..
+                          tostring(rewards and rewards.Status) .. ") – not marking complete.")
+                end
+            end
+        end
+
 if APR_IsHardcoreDisplay() then
 elseif APR_IsEasySurvival() then
             SetStatus("Easy – requeueing...")
@@ -2401,6 +2528,84 @@ local function APR_StartMatchWatcher()
     end)
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- RUN AUTO TRIAL — joins + runs the active trial if not yet won
+-- ═══════════════════════════════════════════════════════════════
+local runningAutoTrial = false
+local function RunAutoTrial()
+    if runningAutoTrial then return end
+    runningAutoTrial = true
+    getgenv().TimeScaleEnabled = false
+
+    local rep = APR_GetGameStateReplicator()
+    local trialName = rep and rep:GetAttribute("GlobalTrial")
+    if not trialName or trialName == "" then
+        SetStatus("No active trial")
+        runningAutoTrial = false
+        return
+    end
+
+    local normalized = APR_NormalizeTrialName(trialName)
+
+    if APR_IsTrialCompleted(normalized) then
+        SetStatus("Trial '" .. tostring(normalized) .. "' already done – skipping")
+        print("[AutoProgression] Trial already completed:", normalized)
+        runningAutoTrial = false
+        return
+    end
+
+    local url = TRIAL_SCRIPTS[normalized]
+    if not url then
+        SetStatus("No strategy for trial: " .. tostring(normalized))
+        print("[AutoProgression] No strategy for trial:", normalized)
+        runningAutoTrial = false
+        return
+    end
+
+    local level = GetStat("Level")
+    if level < TRIAL_LEVEL_REQ then
+        SetStatus("Need level " .. TRIAL_LEVEL_REQ .. " for trials (have " .. level .. ")")
+        runningAutoTrial = false
+        return
+    end
+
+    local reqs = TRIAL_TOWER_REQS[normalized] or {}
+    if #reqs > 0 then
+        local buyResult = AutoBuyTowers(reqs)
+        if buyResult ~= "OK" then
+            SetStatus("Cannot afford trial towers – " .. tostring(buyResult))
+            print("[AutoProgression] Cannot afford towers for trial:", normalized)
+            runningAutoTrial = false
+            return
+        end
+    end
+
+    ApplyStrategySettings({
+        name        = normalized,
+        autoSkip    = false,
+        autoPremium = false,
+        autoReady   = true,
+    })
+
+    if not IsInLobby() then
+        APR_SetCurrentStrategy("Trial", normalized, normalized)
+        SetStatus("Loading trial: " .. normalized)
+        print("[AutoProgression] Loading trial strat:", normalized)
+        loadstring(game:HttpGet(url))()
+        runningAutoTrial = false
+        return
+    end
+
+    APR_SetCurrentStrategy("Trial", normalized, normalized)
+    SetStatus("Joining trial: " .. normalized)
+    print("[AutoProgression] Joining trial:", normalized)
+    pcall(function()
+        RemoteFunc:InvokeServer("Multiplayer", "v2:start", { count = 1, mode = "Trials" })
+    end)
+    runningAutoTrial = false
+end
+getgenv().RunAutoTrial = RunAutoTrial
+
 local AutoProgressionRunning = false
 local AutoProgressionEnabled = false
 
@@ -2418,6 +2623,23 @@ local function RunAutoProgression()
             RunBootCamp()
             AutoProgressionRunning = false
             return
+        end
+    end
+
+    -- ═══ Active trial takes priority over level routing ═══
+    do
+        local trialRep = APR_GetGameStateReplicator()
+        local activeTrial = trialRep and trialRep:GetAttribute("GlobalTrial")
+        if activeTrial and activeTrial ~= "" then
+            local normalized = APR_NormalizeTrialName(activeTrial)
+            if not APR_IsTrialCompleted(normalized) then
+                SetStatus("Active trial detected: " .. tostring(normalized))
+                RunAutoTrial()
+                AutoProgressionRunning = false
+                return
+            else
+                print("[AutoProgression] Trial '" .. tostring(normalized) .. "' already done – falling through to normal routing.")
+            end
         end
     end
 
