@@ -2931,14 +2931,14 @@ task.spawn(function()
     end
 end)
 
---[[
 task.spawn(function()
     while true do
-        pcall(CheckAndBuyEvolvedTowers)
-        task.wait(0.5)
+        task.wait(1)
+        if GetStat("Level") >= 177 then
+            pcall(CheckAndBuyEvolvedTowers)
+        end
     end
 end)
---]]
 
 getgenv().RunSkillPurchases   = RunSkillPurchases
 getgenv().SkillBuyingRunning  = function() return SkillBuyingRunning end
