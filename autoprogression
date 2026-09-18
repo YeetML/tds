@@ -592,6 +592,29 @@ getgenv().APR_FormatSkillTreeField   = APR_FormatSkillTreeField
 getgenv().APR_FormatTowerExpField    = APR_FormatTowerExpField
 getgenv().APR_SkillTreeCache         = APR_SkillTreeCache
 
+-- ═══════════════════════════════════════════════════════════════
+-- STRATEGY TRACKER — remembers which strat is currently being run
+-- so the end-of-match webhook can report it.
+-- ═══════════════════════════════════════════════════════════════
+getgenv().APR_CurrentStrategy = getgenv().APR_CurrentStrategy or {
+    mode     = "Unknown",
+    name     = "Unknown",
+    mapName  = "Unknown",
+    startedAt = 0,
+}
+
+local function APR_SetCurrentStrategy(mode, name, mapName)
+    getgenv().APR_CurrentStrategy = {
+        mode      = mode      or "Unknown",
+        name      = name      or "Unknown",
+        mapName   = mapName   or "Unknown",
+        startedAt = os.time(),
+    }
+    print(string.format("[AutoProgression] Strategy tracked: %s • %s @ %s",
+        mode, name, mapName))
+end
+getgenv().APR_SetCurrentStrategy = APR_SetCurrentStrategy
+
 local function APR_SendMatchWebhook()
     local MainGlobals = getgenv().Globals or _G.Globals or getgenv()
     if not MainGlobals then return false, "no Globals" end
@@ -622,6 +645,14 @@ local function APR_SendMatchWebhook()
     local skillSnapshot = APR_SkillTreeCache.data
 local towerSnapshot = APR_GetTowerExpSnapshot()
 
+    local cur = getgenv().APR_CurrentStrategy or {}
+    local stratValue = string.format(
+        "```ansi\n\27[2;35mMode:\27[0m %s\n\27[2;36mStrat:\27[0m %s\n\27[2;33mMap:\27[0m   %s```",
+        tostring(cur.mode),
+        tostring(cur.name),
+        tostring(cur.mapName)
+    )
+
 -- Small header summary for the skills field
 local skillHeader = ""
 if #skillSnapshot > 0 then
@@ -645,6 +676,11 @@ local PostData = {
             "> **Current Level:** `" .. match.Level .. "`\n" ..
             "> **Wave:** `" .. match.Wave .. "`\n",
         fields = {
+            {
+                name   = "🎯 Strategy Used",
+                value  = stratValue,
+                inline = false
+            },
             {
                 name = "✨ Rewards",
                 value = "```ansi\n\27[2;33mCoins:\27[0m +" .. match.Coins ..
@@ -910,7 +946,7 @@ local function FindSkillNodes()
             local node  = tile.Parent
             if frame and node then
                 local nameLbl = frame:FindFirstChild("SkillName")
-                local lvlLbl  = frame:FindFirstChild("SkillLevel")
+                local lvlLbl  = frame:FindFirstChild("Level") or frame:FindFirstChild("SkillLevel")
                 local pFrame  = frame:FindFirstChild("PurchaseFrame")
                 if nameLbl and lvlLbl and nameLbl.Text ~= "" then
                     map[nameLbl.Text] = {
@@ -1372,6 +1408,7 @@ local function RunBootCamp()
 
     print("[BootCamp] Boot Camp detected – starting automation.")
     SetStatus("Running Boot Camp...")
+    APR_SetCurrentStrategy("Boot Camp", "bootcamp", "Boot Camp")
 
     BootCampRunning = true
 
@@ -1812,6 +1849,7 @@ end
                 task.wait(0.3)
                 print("[AutoProgression] Selected Easy: " .. chosen.name .. " on " .. chosen.mapName)
                 SetStatus("Loading Easy: " .. chosen.name .. " on " .. chosen.mapName)
+                APR_SetCurrentStrategy("Easy", chosen.name, chosen.mapName)
                 loadstring(game:HttpGet(chosen.url))()
                 -- No teleport here – main script watcher will handle it
                 runningEasy = false
@@ -1876,6 +1914,7 @@ end
             task.wait(0.3)
             print("[AutoProgression] In lobby, selected Easy: " .. chosen.name)
             SetStatus("In lobby – loading Easy: " .. chosen.name)
+            APR_SetCurrentStrategy("Easy", chosen.name, chosen.mapName)
             loadstring(game:HttpGet(chosen.url))()
         else
             SetStatus("Cannot afford any Easy towers – returning to lobby")
@@ -1897,6 +1936,7 @@ local function RunPizzaParty()
         if not getgenv().APR_PizzaLoaded then
             getgenv().APR_PizzaLoaded = true
             print("[AutoProgression] Pizza match detected – loading pizzaparty script NOW")
+            APR_SetCurrentStrategy("Pizza Party", "pizzaparty", "Pizza Party")
             runningPizzaParty = false   -- allow the load below to proceed
             loadstring(game:HttpGet(
                 "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/pizzaparty"
@@ -1918,6 +1958,7 @@ local PIZZA_TOWERS = {"Minigunner", "Ranger", "DJ Booth", "Commander", "Trapper"
     if result == "OK" then
         SetStatus("Loading Pizza Party strategy...")
         print("[AutoProgression] Loading pizzaparty script...")
+        APR_SetCurrentStrategy("Pizza Party", "pizzaparty", "Pizza Party")
         loadstring(game:HttpGet(
             "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/pizzaparty"
         ))()
@@ -2026,6 +2067,7 @@ local function RunFallenStrategy()
                 task.wait(0.3)
                 print("[AutoProgression] Selected Fallen: " .. chosen.name .. " on " .. chosen.mapName)
                 SetStatus("Loading Fallen: " .. chosen.name .. " on " .. chosen.mapName)
+                APR_SetCurrentStrategy("Fallen", chosen.name, chosen.mapName)
                 loadstring(game:HttpGet(chosen.url))()
                 runningFallen = false
                 return
@@ -2094,6 +2136,7 @@ local function RunFallenStrategy()
             task.wait(0.3)
             print("[AutoProgression] In lobby, selected Fallen: " .. chosen.name)
             SetStatus("In lobby – loading Fallen: " .. chosen.name)
+            APR_SetCurrentStrategy("Fallen", chosen.name, chosen.mapName)
             loadstring(game:HttpGet(chosen.url))()
                 else
 
@@ -2139,6 +2182,7 @@ function RunHardcore()
 
     local function loadHardcore()
         ApplyStrategySettings(HardcoreStrategy)
+        APR_SetCurrentStrategy("Hardcore", HardcoreStrategy.name, "Hardcore")
         task.wait(0.3)
         print("[AutoProgression] Loading Hardcore strategy...")
         SetStatus("Loading Hardcore strategy...")
@@ -2727,6 +2771,9 @@ local function CreateUI()
             ClearAllForceModes(nil)
             updateAllModeButtons()
             SetStatus("Stopped")
+            getgenv().APR_CurrentStrategy = {
+                mode = "None", name = "None", mapName = "None", startedAt = 0,
+            }
         else
             SetStatus("Starting...")
         end
