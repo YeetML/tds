@@ -1420,6 +1420,8 @@ local function APR_NormalizeTrialName(name)
         ["Fog"]               = "Fog",
         ["Limitation"]        = "Limitation",
         ["Flying"]            = "Flying",
+        ["FlyingEnemies"]     = "Flying",
+        ["Flying Enemies"]    = "Flying",
         ["Jailed"]            = "Jailed",
         ["ExplodingEnemies"]  = "Exploding Enemies",
         ["Exploding Enemies"] = "Exploding Enemies",
