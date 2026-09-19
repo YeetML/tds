@@ -2599,7 +2599,7 @@ local function RunAutoTrial(passedTrialName)
         name        = normalized,
         autoSkip    = false,
         autoPremium = false,
-        autoReady   = true,
+        autoReady   = false,
     })
 
     if not IsInLobby() then
