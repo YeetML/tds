@@ -2476,9 +2476,14 @@ local function APR_HandleGameOver()
 
         -- ═══ Trial completion: mark as done on WIN ═══
         do
-            local rep = APR_GetGameStateReplicator()
-            local activeTrial = rep and rep:GetAttribute("GlobalTrial")
-            if activeTrial and activeTrial ~= "" then
+            local sr  = ReplicatedStorage:FindFirstChild("StateReplicators")
+            local gsr = sr and sr:FindFirstChild("GameStateReplicator")
+            local tsr = sr and sr:FindFirstChild("TrialsStateReplicator")
+            local a = gsr and gsr:GetAttribute("GlobalTrial")
+            local b = tsr and tsr:GetAttribute("GlobalTrial")
+            local activeTrial = (a and a ~= "" and a) or (b and b ~= "" and b) or nil
+
+            if activeTrial then
                 local rewards = APR_GetAllRewards()
                 if rewards and rewards.Status == "WIN" then
                     APR_MarkTrialCompleted(activeTrial)
@@ -2532,13 +2537,21 @@ end
 -- RUN AUTO TRIAL — joins + runs the active trial if not yet won
 -- ═══════════════════════════════════════════════════════════════
 local runningAutoTrial = false
-local function RunAutoTrial()
+local function RunAutoTrial(passedTrialName)
     if runningAutoTrial then return end
     runningAutoTrial = true
     getgenv().TimeScaleEnabled = false
 
-    local rep = APR_GetGameStateReplicator()
-    local trialName = rep and rep:GetAttribute("GlobalTrial")
+    local trialName = passedTrialName
+    if not trialName or trialName == "" then
+        -- Fallback: check both replicators
+        local sr  = ReplicatedStorage:FindFirstChild("StateReplicators")
+        local gsr = sr and sr:FindFirstChild("GameStateReplicator")
+        local tsr = sr and sr:FindFirstChild("TrialsStateReplicator")
+        local a = gsr and gsr:GetAttribute("GlobalTrial")
+        local b = tsr and tsr:GetAttribute("GlobalTrial")
+        trialName = (a and a ~= "" and a) or (b and b ~= "" and b) or nil
+    end
     if not trialName or trialName == "" then
         SetStatus("No active trial")
         runningAutoTrial = false
@@ -2626,20 +2639,33 @@ local function RunAutoProgression()
         end
     end
 
-    -- ═══ Active trial takes priority over level routing ═══
     do
-        local trialRep = APR_GetGameStateReplicator()
-        local activeTrial = trialRep and trialRep:GetAttribute("GlobalTrial")
+        local sr  = ReplicatedStorage:FindFirstChild("StateReplicators")
+        local gsr = sr and sr:FindFirstChild("GameStateReplicator")
+        local tsr = sr and sr:FindFirstChild("TrialsStateReplicator")
+
+        local activeTrial
+        if IsInLobby() then
+            activeTrial = tsr and tsr:GetAttribute("GlobalTrial")
+        else
+            activeTrial = gsr and gsr:GetAttribute("GlobalTrial")
+        end
+
         if activeTrial and activeTrial ~= "" then
             local normalized = APR_NormalizeTrialName(activeTrial)
             if not APR_IsTrialCompleted(normalized) then
                 SetStatus("Active trial detected: " .. tostring(normalized))
-                RunAutoTrial()
+                print("[AutoProgression] ✅ Trial priority: " .. tostring(normalized)
+                      .. (IsInLobby() and "  (lobby → join)" or "  (match → load)"))
+                RunAutoTrial(activeTrial)
                 AutoProgressionRunning = false
                 return
             else
-                print("[AutoProgression] Trial '" .. tostring(normalized) .. "' already done – falling through to normal routing.")
+                print("[AutoProgression] Trial '" .. tostring(normalized)
+                      .. "' already done – falling through to normal routing.")
             end
+        else
+            print("[AutoProgression] No active trial – normal routing (Fallen/etc.)")
         end
     end
 
