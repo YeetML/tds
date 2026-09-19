@@ -3165,4 +3165,29 @@ end)
 getgenv().RunSkillPurchases   = RunSkillPurchases
 getgenv().SkillBuyingRunning  = function() return SkillBuyingRunning end
 
+task.spawn(function()
+    task.wait(3)
+    local wasInLobby  = IsInLobby()
+    local lastTrigger = 0
+    while true do
+        task.wait(2)
+        local inLobby = IsInLobby()
+
+        if inLobby and not wasInLobby
+           and (_G.AutoProgSettings.AutoProgressionEnabled or IsAnyForceOn())
+           and not AutoProgressionRunning
+           and os.clock() - lastTrigger > 15
+        then
+            lastTrigger = os.clock()
+            print("[AutoProgression] Landed in lobby – re-checking for uncompleted trials...")
+            task.wait(5) -- let lobby/trial data replicate
+            if not AutoProgressionRunning then
+                task.spawn(RunAutoProgression)
+            end
+        end
+
+        wasInLobby = inLobby
+    end
+end)
+
 APR_StartMatchWatcher()
