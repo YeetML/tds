@@ -2544,6 +2544,12 @@ local function RunAutoTrial(passedTrialName)
     runningAutoTrial = true
     getgenv().TimeScaleEnabled = false
 
+    -- force AutoReady OFF before anything else
+    getgenv().AutoReady           = false
+    _G.AutoProgSettings.AutoReady = false
+    local MG = getgenv().Globals or _G.Globals
+    if MG then MG.AutoReady = false end
+
     local trialName = passedTrialName
     if not trialName or trialName == "" then
         -- Fallback: check both replicators
@@ -2601,6 +2607,8 @@ local function RunAutoTrial(passedTrialName)
         autoPremium = false,
         autoReady   = false,
     })
+
+    task.wait(0.4)
 
     if not IsInLobby() then
         APR_SetCurrentStrategy("Trial", normalized, normalized)
