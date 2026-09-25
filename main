@@ -4525,6 +4525,23 @@ end
 
 strategyRecordingSetup()
 
+do
+    local _origPlace = TDS.Place
+
+    function TDS:Place(TName, px, py, pz, ...)
+        local args = {...}
+        local last = args[#args]
+        local isStacking = (last == true or last == "stack")
+
+        if isStacking then
+            args[#args] = nil
+            return _origPlace(self, TName, px, py + 25, pz, unpack(args))
+        end
+
+        return _origPlace(self, TName, px, py, pz, ...)
+    end
+end
+
 if GameState == "LOBBY" and Globals.AutoRejoin and isfile("ADS_LastStrat.lua") then
     pcall(delfile, "ADS_LastStrat.lua")
 end
