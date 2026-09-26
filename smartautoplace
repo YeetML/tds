@@ -1,0 +1,327 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+
+local Asset = require(ReplicatedStorage.Shared.Modules.Asset)
+local Network = require(ReplicatedStorage.Shared.Modules.Network)
+local SharedGameConstants = require(ReplicatedStorage.Shared.Modules.SharedGameConstants)
+local TowerReplicator = require(ReplicatedStorage.Client.Modules.Replicators.TowerReplicator)
+local GameState = require(ReplicatedStorage.Shared.Modules.GameState)
+
+local Troops = Network.Channel("Troops")
+local Map = workspace:WaitForChild("Map")
+local DEFAULT_BOUNDARY = SharedGameConstants.DEFAULT_BOUNDARY_SIZE or 1.5
+
+local AutoPlaceTowers = {}
+
+-- ============================== Path math ==============================
+
+local function getPathPoints(pathName)
+	local folder = Map.Paths:FindFirstChild(pathName)
+	if not folder then error("path not found: " .. tostring(pathName)) end
+	local pts, i = {}, 1
+	while true do
+		local part = folder:FindFirstChild(tostring(i))
+		if not part then break end
+		table.insert(pts, part.Position)
+		i += 1
+	end
+	return pts
+end
+
+local function buildArcLength(pts)
+	local cum = { [1] = 0 }
+	for i = 2, #pts do cum[i] = cum[i-1] + (pts[i] - pts[i-1]).Magnitude end
+	return cum
+end
+
+local function pointAtPercent(pts, cum, percent)
+	local total = cum[#cum]
+	local target = total * (percent / 100)
+	for i = 2, #pts do
+		if target <= cum[i] or i == #pts then
+			local segLen = cum[i] - cum[i-1]
+			local t = segLen > 0 and (target - cum[i-1]) / segLen or 0
+			t = math.clamp(t, 0, 1)
+			local pos = pts[i-1]:Lerp(pts[i], t)
+			local dir = pts[i] - pts[i-1]
+			dir = dir.Magnitude > 0 and dir.Unit or Vector3.new(1,0,0)
+			return pos, dir
+		end
+	end
+	return pts[#pts], Vector3.new(1,0,0)
+end
+
+-- ============================== Validity ==============================
+
+local function isOnGround(position, towerName)
+	local validPartNames = { "Ground" }
+	if towerName then
+		local ok, asset = pcall(Asset, "Troops", towerName)
+		if ok and asset and asset.Properties then
+			local class = tostring(asset.Properties.Class)
+			if class == "3" then validPartNames = { "Cliff" }
+			elseif class == "4" then validPartNames = { "Ground", "Cliff" } end
+		end
+	end
+
+	local validParts = {}
+	for _, name in ipairs(validPartNames) do
+		local p = workspace:FindFirstChild(name)
+		if p then table.insert(validParts, p) end
+	end
+	if #validParts == 0 then return false, nil end
+
+	local origin = position + Vector3.new(0, 100, 0)
+	local down = Vector3.new(0, -200, 0)
+
+	local inc = RaycastParams.new()
+	inc.FilterType = Enum.RaycastFilterType.Include
+	inc.FilterDescendantsInstances = validParts
+
+	local exc = RaycastParams.new()
+	exc.FilterType = Enum.RaycastFilterType.Exclude
+	local exList = {
+		workspace:FindFirstChild("ClientUnits"),
+		workspace:FindFirstChild("Towers"),
+		workspace:FindFirstChild("NPCs"),
+		Map.Paths,
+		workspace.CurrentCamera,
+	}
+	if LocalPlayer.Character then table.insert(exList, LocalPlayer.Character) end
+	exc.FilterDescendantsInstances = exList
+
+	local g = workspace:Raycast(origin, down, inc)
+	local t = workspace:Raycast(origin, down, exc)
+	if g and t and g.Instance == t.Instance then return true, g.Position end
+	return false, nil
+end
+
+local function getBoundarySize(towerName)
+	local ok, asset = pcall(Asset, "Troops", towerName)
+	if ok and asset and asset.Properties and asset.Properties.BoundarySize then
+		return asset.Properties.BoundarySize
+	end
+	return DEFAULT_BOUNDARY
+end
+
+local function getLiveTowerCircles()
+	local circles = {}
+	for _, tower in pairs(TowerReplicator.getTowers()) do
+		if tower.PrimaryPart then
+			local ho = tower.PrimaryPart:FindFirstChild("HeightOffset")
+			local pos = ho and ho:IsA("Attachment") and ho.WorldPosition or tower.PrimaryPart.Position
+			local b = (tower.Asset and tower.Asset.Properties and tower.Asset.Properties.BoundarySize) or DEFAULT_BOUNDARY
+			table.insert(circles, { pos = pos, boundary = b })
+		end
+	end
+	return circles
+end
+
+local SPACING_EPSILON = 0.05
+
+local function spacingOk(position, newBoundary, extraCircles)
+	local function collidesWith(circles)
+		for _, c in ipairs(circles) do
+			local flatDist = (c.pos * Vector3.new(1,0,1) - position * Vector3.new(1,0,1)).Magnitude
+			if flatDist < (c.boundary + newBoundary) - SPACING_EPSILON then
+				return true
+			end
+		end
+		return false
+	end
+	if collidesWith(getLiveTowerCircles()) then return false end
+	if extraCircles and collidesWith(extraCircles) then return false end
+	return true
+end
+
+-- ============================== Remote firing ==============================
+
+local function tryPlaceAt(towerName, pos, attempts, delay)
+	for a = 1, attempts do
+		local ok, result = pcall(function()
+			return Troops:InvokeServer("Place", { Position = pos, Rotation = CFrame.Angles(0,0,0) }, towerName)
+		end)
+		if ok and typeof(result) == "Instance" then return true end
+		if a < attempts then task.wait(delay) end
+	end
+	return false
+end
+
+-- ============================== Core ==============================
+
+function AutoPlaceTowers.Run(towerName, count, options)
+	assert(type(towerName) == "string")
+	assert(type(count) == "number" and count > 0)
+	local opts = options or {}
+
+	local pathName = opts.pathName or "1"
+	local minOffset = opts.minOffset or 6
+	local maxOffset = opts.maxOffset or 24
+	local offsetStep = opts.offsetStep or 2
+	local startPercent = opts.startPercent or 4
+	local endPercent = opts.endPercent or 96
+	local holdTime = opts.holdTime or 0.15
+	local attempts = opts.attempts or 5
+	local waitBetween = opts.waitBetween or 0.02
+
+	local pts = getPathPoints(pathName)
+	local cum = buildArcLength(pts)
+	local newBoundary = getBoundarySize(towerName)
+
+	local placed = 0
+	local placements = {}
+	local percentStep = (endPercent - startPercent) / math.max(count, 1)
+	local percent = startPercent
+	local guard = 0
+
+	while placed < count and percent <= endPercent and guard < count * 60 do
+		guard += 1
+		local pos, dir = pointAtPercent(pts, cum, percent)
+		local perp = Vector3.new(-dir.Z, 0, dir.X)
+		local sides = opts.side and { opts.side } or { 1, -1 }
+		local placedHere = false
+
+		for _, side in ipairs(sides) do
+			local offset = minOffset
+			while offset <= maxOffset do
+				local candidate = pos + perp * (offset * side)
+				local onGround, groundPos = isOnGround(candidate, towerName)
+				if onGround and spacingOk(groundPos, newBoundary) then
+					if tryPlaceAt(towerName, groundPos, attempts, waitBetween) then
+						placed += 1
+						table.insert(placements, groundPos)
+						placedHere = true
+						break
+					end
+				end
+				offset += offsetStep
+			end
+			if placedHere then break end
+		end
+		percent += percentStep
+	end
+
+	return placed, placements
+end
+
+function AutoPlaceTowers.PlaceHoneycomb(towerName, percent, count, options)
+	assert(type(towerName) == "string")
+	assert(type(percent) == "number")
+	assert(type(count) == "number" and count > 0)
+	local opts = options or {}
+
+	local pathName = opts.pathName or "1"
+	local oneSided = opts.oneSided or false
+	local side = opts.side or 1
+	local minOffset = opts.minOffset or 6
+	local maxOffset = opts.maxOffset or 24
+	local offsetStep = opts.offsetStep or 2
+	local maxRadius = opts.maxRadius or 40
+
+	local cellAttempts    = opts.cellAttempts    or 1
+	local waitBetween     = opts.waitBetween     or 0.02
+	local maxExpandRadius = opts.maxExpandRadius or 3
+	local expandStep      = opts.expandStep      or 0.2
+	local expandAttempts  = opts.expandAttempts  or 5
+	local expandWait      = opts.expandWait      or 0.02
+	local maxTotalFails   = opts.maxTotalFails   or 25
+
+	local pts = getPathPoints(pathName)
+	local cum = buildArcLength(pts)
+	local newBoundary = getBoundarySize(towerName)
+	local d = 2 * newBoundary
+
+	local pos, dir = pointAtPercent(pts, cum, percent)
+	local tangent = dir
+	local perp = Vector3.new(-tangent.Z, 0, tangent.X)
+	local seed = pos
+
+	if oneSided then
+		local foundSeed = false
+		local offset = minOffset
+		while offset <= maxOffset and not foundSeed do
+			local candidate = pos + perp * (offset * side)
+			local onGround, groundPos = isOnGround(candidate, towerName)
+			if onGround then seed = groundPos; foundSeed = true end
+			offset += offsetStep
+		end
+		if not foundSeed then return 0, {} end
+		perp = perp * side
+	end
+
+	local e1 = perp * d
+	local e2 = perp * (d / 2) + tangent * (d * math.sqrt(3) / 2)
+
+	local N = math.ceil(maxRadius / d) + 1
+	local candidates = {}
+	for i = -N, N do
+		for j = -N, N do
+			local offset = e1 * i + e2 * j
+			if offset.Magnitude <= maxRadius then
+				table.insert(candidates, { offset = offset, dist = offset.Magnitude })
+			end
+		end
+	end
+	table.sort(candidates, function(a, b) return a.dist < b.dist end)
+
+	local placed = 0
+	local placements = {}
+	local placedCircles = {}
+	local totalFails = 0
+
+	for _, c in ipairs(candidates) do
+		if placed >= count then break end
+		if totalFails >= maxTotalFails then
+			warn(("[Honeycomb] stopping after %d total failed cells"):format(totalFails))
+			break
+		end
+
+		local targetPos = seed + c.offset
+
+		local onG, gp = isOnGround(targetPos, towerName)
+		local finalPos = nil
+
+		if onG and spacingOk(gp, newBoundary, placedCircles) then
+			if tryPlaceAt(towerName, gp, cellAttempts, waitBetween) then
+				finalPos = gp
+			end
+		end
+
+		if not finalPos then
+			for r = expandStep, maxExpandRadius, expandStep do
+				local cnt = math.max(8, math.floor((2 * math.pi * r) / expandStep))
+				local found = false
+				for k = 0, cnt - 1 do
+					local ang = (2 * math.pi / cnt) * k
+					local test = targetPos + Vector3.new(math.cos(ang) * r, 0, math.sin(ang) * r)
+					local onG2, gp2 = isOnGround(test, towerName)
+					if onG2 and spacingOk(gp2, newBoundary, placedCircles) then
+						if tryPlaceAt(towerName, gp2, expandAttempts, expandWait) then
+							finalPos = gp2
+							found = true
+							break
+						end
+					end
+				end
+				if found then break end
+			end
+		end
+
+		if finalPos then
+			placed += 1
+			table.insert(placements, finalPos)
+			table.insert(placedCircles, { pos = finalPos, boundary = newBoundary })
+		else
+			totalFails += 1
+		end
+	end
+
+	return placed, placements
+end
+
+function AutoPlaceTowers.ClearHolograms() end
+
+_G.AutoPlaceTowers = AutoPlaceTowers
+return AutoPlaceTowers
