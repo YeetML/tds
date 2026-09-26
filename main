@@ -5711,31 +5711,27 @@ local function StartAutoUpgradeAll()
     end)
 end
 
-local AutoPlaceTowersModule = nil
-local SmartAutoPlaceRunning = false
-
-local function LoadAutoPlaceTowers()
-    if AutoPlaceTowersModule then return AutoPlaceTowersModule end
-    local url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/smartautoplace"
-    local ok, res = pcall(function()
-        return loadstring(game:HttpGet(url))()
-    end)
-    if ok and res then
-        AutoPlaceTowersModule = res
-        return res
-    end
-    warn("[SmartAutoPlace] Failed to load AutoPlaceTowers module")
-    return nil
-end
+Globals.AutoPlaceTowersModule = Globals.AutoPlaceTowersModule or nil
+Globals.SmartAutoPlaceRunning = false
 
 function StartSmartAutoPlace()
-    if SmartAutoPlaceRunning or not Globals.SmartAutoPlace then return end
-    SmartAutoPlaceRunning = true
+    if Globals.SmartAutoPlaceRunning or not Globals.SmartAutoPlace then return end
+    Globals.SmartAutoPlaceRunning = true
 
     task.spawn(function()
-        local APT = LoadAutoPlaceTowers()
+        local APT = Globals.AutoPlaceTowersModule
         if not APT then
-            SmartAutoPlaceRunning = false
+            local url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/smartautoplace"
+            local ok, res = pcall(function()
+                return loadstring(game:HttpGet(url))()
+            end)
+            if ok and res then
+                APT = res
+                Globals.AutoPlaceTowersModule = res
+            end
+        end
+        if not APT then
+            Globals.SmartAutoPlaceRunning = false
             return
         end
 
@@ -5743,7 +5739,7 @@ function StartSmartAutoPlace()
 
         local equipped = GetEquippedTowers()
         if not equipped or #equipped == 0 then
-            SmartAutoPlaceRunning = false
+            Globals.SmartAutoPlaceRunning = false
             return
         end
 
@@ -5784,7 +5780,7 @@ function StartSmartAutoPlace()
             end
         end
 
-        SmartAutoPlaceRunning = false
+        Globals.SmartAutoPlaceRunning = false
     end)
 end
 
@@ -5883,7 +5879,7 @@ end
         if Globals.AutoUpgradeAll and not AutoUpgradeAllRunning then
             StartAutoUpgradeAll()
         end
-        if Globals.SmartAutoPlace and not SmartAutoPlaceRunning then
+if Globals.SmartAutoPlace and not Globals.SmartAutoPlaceRunning then
     StartSmartAutoPlace()
 end
                 if Globals.AutoMedic and not AutoMedicRunning then
