@@ -290,6 +290,9 @@ local DefaultSettings = {
     AutoTrials = false,
     AutoFreezer = true,
     AutoSaboteur = true,
+    SmartAutoPlace = false,
+    GroundPercentage = 10,
+    CliffPercentage = 10,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -1902,6 +1905,42 @@ end
 Window:Line()
 
 local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-click"}) do
+
+    Interactive:Section({Title = "Smart Auto Place"})
+
+    Interactive:Toggle({
+        Title = "Smart Auto Place",
+        Desc = "Auto-places your equipped towers using honeycomb placement.",
+        Value = Globals.SmartAutoPlace,
+        Callback = function(v)
+            SetSetting("SmartAutoPlace", v)
+            if v then StartSmartAutoPlace() end
+        end
+    })
+
+    Interactive:Slider({
+        Title = "Ground Percentage",
+        Desc = "Starting % along path for ground towers",
+        Min = 0,
+        Max = 100,
+        Rounding = 0,
+        Value = Globals.GroundPercentage,
+        Callback = function(val)
+            SetSetting("GroundPercentage", val)
+        end
+    })
+
+    Interactive:Slider({
+        Title = "Cliff Percentage",
+        Desc = "Starting % along path for cliff towers",
+        Min = 0,
+        Max = 100,
+        Rounding = 0,
+        Value = Globals.CliffPercentage,
+        Callback = function(val)
+            SetSetting("CliffPercentage", val)
+        end
+    })
     
     Interactive:Section({Title = "Tower Controls"})
     
@@ -5672,6 +5711,83 @@ local function StartAutoUpgradeAll()
     end)
 end
 
+local AutoPlaceTowersModule = nil
+local SmartAutoPlaceRunning = false
+
+local function LoadAutoPlaceTowers()
+    if AutoPlaceTowersModule then return AutoPlaceTowersModule end
+    local url = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/smartautoplace"
+    local ok, res = pcall(function()
+        return loadstring(game:HttpGet(url))()
+    end)
+    if ok and res then
+        AutoPlaceTowersModule = res
+        return res
+    end
+    warn("[SmartAutoPlace] Failed to load AutoPlaceTowers module")
+    return nil
+end
+
+function StartSmartAutoPlace()
+    if SmartAutoPlaceRunning or not Globals.SmartAutoPlace then return end
+    SmartAutoPlaceRunning = true
+
+    task.spawn(function()
+        local APT = LoadAutoPlaceTowers()
+        if not APT then
+            SmartAutoPlaceRunning = false
+            return
+        end
+
+        repeat task.wait(1) until GameState == "GAME"
+
+        local equipped = GetEquippedTowers()
+        if not equipped or #equipped == 0 then
+            SmartAutoPlaceRunning = false
+            return
+        end
+
+        local Asset = require(ReplicatedStorage.Shared.Modules.Asset)
+
+        for _, towerName in ipairs(equipped) do
+            if not Globals.SmartAutoPlace then break end
+            if towerName ~= "None" then
+                local class = "0"
+                local ok, asset = pcall(Asset, "Troops", towerName)
+                if ok and asset and asset.Properties then
+                    class = tostring(asset.Properties.Class)
+                end
+
+                local startPct = Globals.GroundPercentage
+                if class == "3" then
+                    startPct = Globals.CliffPercentage
+                end
+
+                local placed = false
+                local pct = startPct
+                while pct <= 100 and not placed and Globals.SmartAutoPlace do
+                    local count = APT.PlaceHoneycomb(towerName, pct, 1, {
+                        cellAttempts    = 1,
+                        waitBetween     = 0.02,
+                        maxExpandRadius = 3,
+                        expandStep      = 0.2,
+                        expandAttempts  = 5,
+                        expandWait      = 0.02,
+                    })
+                    if count > 0 then
+                        placed = true
+                    else
+                        pct = pct + 10
+                    end
+                    task.wait(0.1)
+                end
+            end
+        end
+
+        SmartAutoPlaceRunning = false
+    end)
+end
+
 task.spawn(function()
     while true do
         if _G.AutoProgSettings.__locked then
@@ -5767,6 +5883,9 @@ end
         if Globals.AutoUpgradeAll and not AutoUpgradeAllRunning then
             StartAutoUpgradeAll()
         end
+        if Globals.SmartAutoPlace and not SmartAutoPlaceRunning then
+    StartSmartAutoPlace()
+end
                 if Globals.AutoMedic and not AutoMedicRunning then
             StartMedicChain()
         elseif not Globals.AutoMedic and AutoMedicRunning then
