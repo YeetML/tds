@@ -593,6 +593,8 @@ Globals.AutoUpgradeSelected = false
 Globals.AutoUpgradeAll = false
 SetSetting("AutoUpgradeSelected", false)
 SetSetting("AutoUpgradeAll", false)
+Globals.SmartAutoPlace = false
+SetSetting("SmartAutoPlace", false)
 
 local isTagChangerRunning = false
 local tagChangerConn = nil
