@@ -3896,18 +3896,14 @@ task.spawn(function()
     Towers.ChildAdded:Connect(AutoSetDJSong)
 end)
 
-if not Globals.AutoPlaceTowersModule then
-    local ok, res = pcall(function()
-        return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/smartautoplace"))()
-    end)
-    if ok and res then Globals.AutoPlaceTowersModule = res end
-end
+local SafeAsset
+pcall(function() SafeAsset = require(ReplicatedStorage.Shared.Modules.Asset) end)
 
 SAPDeps = {
     RemoteFunc          = RemoteFunc,
     LocalPlayer         = LocalPlayer,
     ReplicatedStorage   = ReplicatedStorage,
-    Asset               = require(ReplicatedStorage.Shared.Modules.Asset),
+    Asset               = SafeAsset,                      
     SetSetting          = SetSetting,
     SetSAPStatus        = SetSAPStatus,
     TryUpgradeTowerOnce = TryUpgradeTowerOnce,
@@ -3915,7 +3911,7 @@ SAPDeps = {
     GetGlobalTowerInfo  = GetGlobalTowerInfo,
     GetCurrentWave      = GetCurrentWave,
     AllTowers           = AllTowers,
-    APT                 = Globals.AutoPlaceTowersModule,
+    APT                 = Globals.AutoPlaceTowersModule,    
 }
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources"))()
