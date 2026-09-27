@@ -164,7 +164,7 @@ Globals.AutoMedicRunning = Globals.AutoMedicRunning or false
 Globals.AutoBountyRunning = Globals.AutoBountyRunning or false
 Globals.AutoRedeemRunning = Globals.AutoRedeemRunning or false
 Globals.CodesRedeemed = Globals.CodesRedeemed or false
-Globals.AutoDJ = Globals.AutoDJ or nil
+Globals.AutoDJLib = Globals.AutoDJLib or nil
 Globals.AutoUpgradeSelectedRunning = Globals.AutoUpgradeSelectedRunning or false
 Globals.AutoUpgradeAllRunning = Globals.AutoUpgradeAllRunning or false
 Globals.AutoFreezerRunning = Globals.AutoFreezerRunning or false
@@ -3304,14 +3304,14 @@ Globals.TimeScaleValue = CoerceTimeScaleValue(Globals.TimeScaleValue, 2)
 Apply3dRendering()
 
 if Globals.RandomDJ or Globals.MuteOtherDJs then
-    if not Globals.AutoDJ then
-        Globals.AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+    if not Globals.AutoDJLib then
+        Globals.AutoDJLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
     end
-    if Globals.RandomDJ and Globals.AutoDJ and not Globals.AutoDJ.IsRunning() then
-        Globals.AutoDJ.Start()
+    if Globals.RandomDJ and Globals.AutoDJLib and not Globals.AutoDJLib.IsRunning() then
+        Globals.AutoDJLib.Start()
     end
-    if Globals.MuteOtherDJs and Globals.AutoDJ and Globals.AutoDJ.StartMuteOthers then
-        Globals.AutoDJ.StartMuteOthers()
+    if Globals.MuteOtherDJs and Globals.AutoDJLib and Globals.AutoDJLib.StartMuteOthers then
+        Globals.AutoDJLib.StartMuteOthers()
     end
 end
 
@@ -3574,12 +3574,12 @@ local Automation = Globals.Window:Tab({Title = "Automation", Icon = "bot"}) do
         Callback = function(v)
             SetSetting("RandomDJ", v)
             if v then
-                if not Globals.AutoDJ then
-                    Globals.AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+                if not Globals.AutoDJLib then
+                    Globals.AutoDJLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
                 end
-                Globals.AutoDJ.Start()
+                Globals.AutoDJLib.Start()
             else
-                if Globals.AutoDJ then Globals.AutoDJ.Stop() end
+                if Globals.AutoDJLib then Globals.AutoDJLib.Stop() end
                 if Globals.DJCustomSongID and Globals.DJCustomSongID ~= "" then
                     AutoSetDJSong()
                 end
@@ -4860,22 +4860,22 @@ task.spawn(function()
         if Globals.AutoDJ and not Globals.AutoDjRunning then StartAutoDjBooth() end
 
         if Globals.RandomDJ then
-            if not Globals.AutoDJ then
-                Globals.AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+            if not Globals.AutoDJLib then
+                Globals.AutoDJLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
             end
-            if Globals.AutoDJ and not Globals.AutoDJ.IsRunning() then
-                Globals.AutoDJ.Start()
+            if Globals.AutoDJLib and not Globals.AutoDJLib.IsRunning() then
+                Globals.AutoDJLib.Start()
             end
-        elseif Globals.AutoDJ and Globals.AutoDJ.IsRunning() then
-            Globals.AutoDJ.Stop()
+        elseif Globals.AutoDJLib and Globals.AutoDJLib.IsRunning() then
+            Globals.AutoDJLib.Stop()
         end
 
         if Globals.MuteOtherDJs then
-            if not Globals.AutoDJ then
-                Globals.AutoDJ = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
+            if not Globals.AutoDJLib then
+                Globals.AutoDJLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
             end
-            if Globals.AutoDJ and Globals.AutoDJ.StartMuteOthers then
-                Globals.AutoDJ.StartMuteOthers()
+            if Globals.AutoDJLib and Globals.AutoDJLib.StartMuteOthers then
+                Globals.AutoDJLib.StartMuteOthers()
             end
         end
 
