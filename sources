@@ -169,10 +169,6 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.DisplayOrder = 999
 ScreenGui.Parent = game:GetService("CoreGui")
 
-local UIScale = Instance.new("UIScale")
-UIScale.Scale = 1.25 
-UIScale.Parent = ScreenGui
-
 local U, Tw = game:GetService("UserInputService"), game:GetService("TweenService")
 
 do
