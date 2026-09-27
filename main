@@ -3923,13 +3923,18 @@ task.spawn(function()
 end)
 print("[DIAG-2] watch towers spawned")
 
-if not Globals.AutoPlaceTowersModule then
-    local ok, res = pcall(function()
-        return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/smartautoplace"))()
+print("[DIAG-2] SKIPPING APT module for UI test")
+Globals.AutoPlaceTowersModule = nil
+print("[DIAG-2] APT skipped")
+
+do
+    local iok, ires = pcall(function()
+        return game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/icons")
     end)
-    if ok and res then Globals.AutoPlaceTowersModule = res end
+    print("[DIAG-2] icons fetch ok:", iok, "len:", ires and #ires or 0)
 end
-print("[DIAG-2] APT module loaded:", Globals.AutoPlaceTowersModule ~= nil)
+
+print("[DIAG-2] building SAPDeps...")
 
 -- Test the icons URL that the Library fetches internally
 do
