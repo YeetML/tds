@@ -266,7 +266,7 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
                 slotLabels[i]:SetTitle("Slot " .. i .. " — empty — max 0")
             else
                 local slimit = Globals.SAPLimit[i] or 0
-                local glimit = APT.GetPlacementLimit(name) or math.huge
+                local glimit = (depsTable.APT and depsTable.APT.GetPlacementLimit and depsTable.APT.GetPlacementLimit(name)) or math.huge
                 local limit
                 if slimit > 0 and glimit ~= math.huge then limit = math.min(slimit, glimit)
                 elseif slimit > 0 then limit = slimit
@@ -287,7 +287,10 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
 end
 
 function SAPScheduler.StartPlacement(Globals, deps)
-    while Globals.GameState ~= "GAME" do task.wait(1) end
+    while Globals.GameState ~= "GAME" do
+        if not Globals.SmartAutoPlace then return end  
+        task.wait(1)
+    end
 
     local equipped = deps.GetEquippedTowers()
     local slots = {}
@@ -306,9 +309,10 @@ function SAPScheduler.StartPlacement(Globals, deps)
     table.sort(slots, function(a, b) return a.order < b.order end)
 
     for _, slotInfo in ipairs(slots) do
+        if not Globals.SmartAutoPlace then return end   
         local i, name = slotInfo.index, slotInfo.name
         local sapL = Globals.SAPLimit[i]
-local natural = deps.APT.GetPlacementLimit(name) or 1
+local natural = (deps.APT and deps.APT.GetPlacementLimit and deps.APT.GetPlacementLimit(name)) or 1
 if natural == math.huge then natural = 999 end
 local limit
 if sapL == -1 then
@@ -337,7 +341,10 @@ end
 
         local waveGate = Globals.SAPUseOneWaveAll and Globals.SAPGlobalWave or Globals.SAPWave[i]
         if waveGate > 0 then
-            while deps.GetCurrentWave() < waveGate do task.wait(1) end
+            while deps.GetCurrentWave() < waveGate do
+                if not Globals.SmartAutoPlace then return end 
+                task.wait(1)
+            end
         end
 
         deps.SetSAPStatus("Placing " .. name, "slot " .. i .. ", target " .. tostring(Globals.SAPTarget[i]))
