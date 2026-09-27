@@ -4321,7 +4321,7 @@ end
 
 Globals.Window:Line()
 
-local AutoPlace = Globals.Window:Tab({Title = "Auto Place", Icon = "wand-sparkles"}) do
+local AutoPlace = Globals.Window:Tab({Title = "Auto Play", Icon = "wand-sparkles"}) do
     AutoPlace:Section({Title = "Smart Auto Place"})
 
     AutoPlace:Toggle({
