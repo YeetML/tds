@@ -4315,10 +4315,10 @@ end
 
 Globals.Window:Line()
 
-local Interactive = Globals.Window:Tab({Title = "Interactive", Icon = "mouse-pointer-click"}) do
-    Interactive:Section({Title = "Smart Auto Place"})
+local AutoPlace = Globals.Window:Tab({Title = "Auto Place", Icon = "wand-sparkles"}) do
+    AutoPlace:Section({Title = "Smart Auto Place"})
 
-    Interactive:Toggle({
+    AutoPlace:Toggle({
         Title = "Smart Auto Place",
         Desc = "Auto-places your equipped towers using honeycomb placement.",
         Value = Globals.SmartAutoPlace,
@@ -4328,7 +4328,7 @@ local Interactive = Globals.Window:Tab({Title = "Interactive", Icon = "mouse-poi
         end
     })
 
-    Interactive:Slider({
+    AutoPlace:Slider({
         Title = "Ground Percentage",
         Desc = "Starting % along path for ground towers",
         Min = 0, Max = 100, Rounding = 0,
@@ -4336,7 +4336,7 @@ local Interactive = Globals.Window:Tab({Title = "Interactive", Icon = "mouse-poi
         Callback = function(val) SetSetting("GroundPercentage", val) end
     })
 
-    Interactive:Slider({
+    AutoPlace:Slider({
         Title = "Cliff Percentage",
         Desc = "Starting % along path for cliff towers",
         Min = 0, Max = 100, Rounding = 0,
@@ -4344,14 +4344,14 @@ local Interactive = Globals.Window:Tab({Title = "Interactive", Icon = "mouse-poi
         Callback = function(val) SetSetting("CliffPercentage", val) end
     })
 
-        Interactive:Toggle({
+    AutoPlace:Toggle({
         Title = "Focus On Placing Farms",
         Desc  = "Place up to 10 Farms far from the path before placing other towers.",
         Value = Globals.FocusOnFarms,
         Callback = function(v) SetSetting("FocusOnFarms", v) end
     })
 
-    Interactive:Toggle({
+    AutoPlace:Toggle({
         Title = "Focus On Upgrading Farms",
         Desc  = "Keeps upgrading your Farms while Smart Auto Place is on (uses SAP upgrade rules).",
         Value = Globals.AutoUpgradeFarms,
@@ -4360,8 +4360,12 @@ local Interactive = Globals.Window:Tab({Title = "Interactive", Icon = "mouse-poi
         end
     })
 
-    SAPScheduler.BuildUI(Interactive, Globals, Globals.AutoPlaceTowersModule, SAPDeps)
+    SAPScheduler.BuildUI(AutoPlace, Globals, Globals.AutoPlaceTowersModule, SAPDeps)
+end
 
+Globals.Window:Line()
+
+local Interactive = Globals.Window:Tab({Title = "Interactive", Icon = "mouse-pointer-click"}) do
     Interactive:Section({Title = "Tower Controls"})
 
     local TowerDropdown = Interactive:Dropdown({
