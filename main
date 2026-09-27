@@ -107,7 +107,7 @@ local DefaultSettings = {
     SmartAutoPlace = false,
     GroundPercentage = 10,
     CliffPercentage = 10,
-    FocusOnFarms = true,
+    FocusOnFarms = false,
     AutoUpgradeFarms = false,
 }
 
