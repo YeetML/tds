@@ -1205,7 +1205,7 @@ function Library:Window(p)
 
 	UIPadding_2.Parent = Page_1
 	UIPadding_2.PaddingBottom = UDim.new(0,5)
-	UIPadding_2.PaddingLeft = UDim.new(0,120)
+	UIPadding_2.PaddingLeft = UDim.new(0,178)
 	UIPadding_2.PaddingRight = UDim.new(0,5)
 	UIPadding_2.PaddingTop = UDim.new(0,45)
 
@@ -1708,7 +1708,7 @@ function Library:Window(p)
 	Frame_6.BackgroundTransparency = 1
 	Frame_6.BorderColor3 = Color3.fromRGB(0,0,0)
 	Frame_6.BorderSizePixel = 0
-	Frame_6.Size = UDim2.new(0, 110,1, 0)
+	Frame_6.Size = UDim2.new(0, 168,1, 0)
 	Frame_6.Visible = true
 
 	ScrollingFrame_2.Name = "ScrollingFrame"
