@@ -3868,27 +3868,6 @@ if Globals.RandomDJ or Globals.MuteOtherDJs then
         Globals.AutoDJLib.StartMuteOthers()
     end
 end
-print("[DIAG] Passed AutoDJ block")
-
-local ok1, err1 = pcall(function()
-    local okA, A = pcall(require, ReplicatedStorage.Shared.Modules.Asset)
-    print("[DIAG] Asset require:", okA, A)
-end)
-print("[DIAG] Asset probe done", ok1, err1)
-
-local ok2, err2 = pcall(function()
-    local s = game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources")
-    print("[DIAG] sources fetch length:", #(s or ""))
-    print("[DIAG] sources starts with:", (s or ""):sub(1, 60))
-    local f = loadstring(s)
-    print("[DIAG] Library loadstring:", f ~= nil)
-end)
-print("[DIAG] sources probe done", ok2, err2)
-
--- ═══════════════════════════════════════════════════════════
--- DIAG-2 MARKERS: pinpoint exactly where the script dies
--- ═══════════════════════════════════════════════════════════
-print("[DIAG-2] start")
 
 Globals.HideUsername = false
 SetSetting("HideUsername", false)
@@ -3898,21 +3877,16 @@ SetSetting("AutoUpgradeSelected", false)
 SetSetting("AutoUpgradeAll", false)
 Globals.SmartAutoPlace = false
 SetSetting("SmartAutoPlace", false)
-print("[DIAG-2] settings block done")
 
 if Globals.tagName and Globals.tagName ~= "" and Globals.tagName ~= "None" then
     startTagChanger()
 end
-print("[DIAG-2] tag block done")
 
 UpdatePrivacyState()
-print("[DIAG-2] privacy done")
 
 Globals.CurrentEquippedTowers = GetEquippedTowers()
-print("[DIAG-2] equipped done")
 
 refreshCrateList()
-print("[DIAG-2] crates done")
 task.spawn(watchForCrates)
 
 task.spawn(function()
@@ -3921,31 +3895,14 @@ task.spawn(function()
     AutoSetDJSong()
     Towers.ChildAdded:Connect(AutoSetDJSong)
 end)
-print("[DIAG-2] watch towers spawned")
 
-print("[DIAG-2] SKIPPING APT module for UI test")
-Globals.AutoPlaceTowersModule = nil
-print("[DIAG-2] APT skipped")
-
-do
-    local iok, ires = pcall(function()
-        return game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/icons")
+if not Globals.AutoPlaceTowersModule then
+    local ok, res = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/smartautoplace"))()
     end)
-    print("[DIAG-2] icons fetch ok:", iok, "len:", ires and #ires or 0)
+    if ok and res then Globals.AutoPlaceTowersModule = res end
 end
 
-print("[DIAG-2] building SAPDeps...")
-
--- Test the icons URL that the Library fetches internally
-do
-    local iok, ires = pcall(function()
-        return game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/icons")
-    end)
-    print("[DIAG-2] icons fetch ok:", iok, "len:", ires and #ires or 0)
-    print("[DIAG-2] icons starts with:", (ires or ""):sub(1, 80))
-end
-
-print("[DIAG-2] building SAPDeps...")
 SAPDeps = {
     RemoteFunc          = RemoteFunc,
     LocalPlayer         = LocalPlayer,
@@ -3960,34 +3917,20 @@ SAPDeps = {
     AllTowers           = AllTowers,
     APT                 = Globals.AutoPlaceTowersModule,
 }
-print("[DIAG-2] SAPDeps done")
 
-print("[DIAG-2] fetching Library...")
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources"))()
-print("[DIAG-2] Library loaded:", typeof(Library))
 
-print("[DIAG-2] building Window...")
-local wok, werr = pcall(function()
-    Globals.Window = Library:Window({
-        Title = "YeetML Hub",
-        Desc = "your #1 hub",
-        Theme = "Default",
-        DiscordLink = "https://discord.gg/yeetml",
-        Icon = 99432006374500,
-        Config = {
-            Keybind = Enum.KeyCode.LeftControl,
-            Size = UDim2.new(0, 500, 0, 400)
-        }
-    })
-end)
-print("[DIAG-2] Window build ok:", wok, "err:", werr)
-print("[DIAG-2] Window value:", Globals.Window)
-
-if not wok then
-    warn("[YeetML] FATAL: Library:Window failed — " .. tostring(werr))
-    return
-end
--- ═══════════════════════════════════════════════════════════
+Globals.Window = Library:Window({
+    Title = "YeetML Hub",
+    Desc = "your #1 hub",
+    Theme = "Default",
+    DiscordLink = "https://discord.gg/yeetml",
+    Icon = 99432006374500,
+    Config = {
+        Keybind = Enum.KeyCode.LeftControl,
+        Size = UDim2.new(0, 500, 0, 400)
+    }
+})
 
 task.spawn(function()
     local retries = 0
