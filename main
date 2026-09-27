@@ -3936,6 +3936,38 @@ Globals.Window = Library:Window({
 })
 
 task.spawn(function()
+    task.wait(1)
+    local function patch(parent)
+        for _, d in ipairs(parent:GetDescendants()) do
+            if d:IsA("Frame") and d.Name == "Real Background" then
+                local inner = d:FindFirstChild("Background")
+                if inner then
+                    inner:GetPropertyChangedSignal("Visible"):Connect(function()
+                        d.Visible = inner.Visible
+                    end)
+                end
+            end
+        end
+        parent.DescendantAdded:Connect(function(inst)
+            if inst:IsA("Frame") and inst.Name == "Real Background" then
+                task.wait(0.1)
+                local inner = inst:FindFirstChild("Background")
+                if inner then
+                    inner:GetPropertyChangedSignal("Visible"):Connect(function()
+                        inst.Visible = inner.Visible
+                    end)
+                end
+            end
+        end)
+    end
+    for _, gui in ipairs(game:GetService("CoreGui"):GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Name == "Aether" then
+            patch(gui)
+        end
+    end
+end)
+
+task.spawn(function()
     local retries = 0
     while retries < 10 do
         local success, inGroup = pcall(LocalPlayer.IsInGroup, LocalPlayer, 4914494)
