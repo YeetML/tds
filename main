@@ -3868,7 +3868,22 @@ if Globals.RandomDJ or Globals.MuteOtherDJs then
         Globals.AutoDJLib.StartMuteOthers()
     end
 end
+print("[DIAG] Passed AutoDJ block")
 
+local ok1, err1 = pcall(function()
+    local okA, A = pcall(require, ReplicatedStorage.Shared.Modules.Asset)
+    print("[DIAG] Asset require:", okA, A)
+end)
+print("[DIAG] Asset probe done", ok1, err1)
+
+local ok2, err2 = pcall(function()
+    local s = game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources")
+    print("[DIAG] sources fetch length:", #(s or ""))
+    print("[DIAG] sources starts with:", (s or ""):sub(1, 60))
+    local f = loadstring(s)
+    print("[DIAG] Library loadstring:", f ~= nil)
+end)
+print("[DIAG] sources probe done", ok2, err2)
 Globals.HideUsername = false
 SetSetting("HideUsername", false)
 Globals.AutoUpgradeSelected = false
