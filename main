@@ -1223,6 +1223,25 @@ end
 
 CurrentEquippedTowers = GetEquippedTowers()
 
+local function GetGlobalTowerInfo()
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    local hotbar = pg and pg:FindFirstChild("ReactUniversalHotbar")
+    local frame = hotbar and hotbar:FindFirstChild("Frame")
+    local values = frame and frame:FindFirstChild("values")
+    local placement = values and values:FindFirstChild("placement")
+    local amount = placement and placement:FindFirstChild("amount")
+    if not amount then return nil, nil end
+
+    local raw = amount.Text or (amount.Value and tostring(amount.Value))
+    if not raw then return nil, nil end
+
+    local cur, max = raw:match("(%d+)%s*/%s*(%d+)")
+    if cur and max then return tonumber(cur), tonumber(max) end
+
+    local n = tonumber(raw:match("%d+"))
+    return n, n
+end
+
 local CrateList = {"All"}        
 local CrateDropdown = nil
 
@@ -5745,11 +5764,55 @@ function StartSmartAutoPlace()
             return
         end
 
+        local curCap, maxCap = GetGlobalTowerInfo()
+        if curCap and maxCap and curCap >= maxCap then
+            Window:Notify({
+                Title = "Smart Auto Place",
+                Desc  = ("Already at global cap (%d/%d)"):format(curCap, maxCap),
+                Time  = 5,
+                Type  = "error"
+            })
+            Globals.SmartAutoPlace = false
+            SetSetting("SmartAutoPlace", false)
+            Globals.SmartAutoPlaceRunning = false
+            return
+        end
+
         local Asset = require(ReplicatedStorage.Shared.Modules.Asset)
 
         for _, towerName in ipairs(equipped) do
             if not Globals.SmartAutoPlace then break end
             if towerName ~= "None" then
+
+                local cur, max = GetGlobalTowerInfo()
+                if cur and max and cur >= max then
+                    warn(("[SmartAutoPlace] Global cap reached (%d/%d), stopping."):format(cur, max))
+                    break
+                end
+
+                local towerLimit = 1
+                if APT.GetPlacementLimit then
+                    towerLimit = APT.GetPlacementLimit(towerName) or 1
+                end
+
+                local owned = 0
+                local towersFolder = workspace:FindFirstChild("Towers")
+                if towersFolder then
+                    for _, m in ipairs(towersFolder:GetChildren()) do
+                        local rep = m:FindFirstChild("TowerReplicator")
+                        if rep
+                        and rep:GetAttribute("Name") == towerName
+                        and rep:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                            owned += 1
+                        end
+                    end
+                end
+
+                if owned >= towerLimit then
+                    warn(("[SmartAutoPlace] %s at per-tower cap (%d/%d), skipping."):format(towerName, owned, towerLimit))
+                    continue
+                end
+
                 local class = "0"
                 local ok, asset = pcall(Asset, "Troops", towerName)
                 if ok and asset and asset.Properties then
