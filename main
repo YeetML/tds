@@ -308,10 +308,16 @@ function SAPScheduler.StartPlacement(Globals, deps)
     for _, slotInfo in ipairs(slots) do
         local i, name = slotInfo.index, slotInfo.name
         local sapL = Globals.SAPLimit[i]
-        local limit = 1
-        if sapL == 0 then limit = deps.APT.GetPlacementLimit(name) or 1
-        elseif sapL >= 1 then limit = sapL end
-        if limit == math.huge then limit = 999 end
+local natural = deps.APT.GetPlacementLimit(name) or 1
+if natural == math.huge then natural = 999 end
+local limit
+if sapL == -1 then
+    limit = 0 
+elseif sapL == 0 then
+    limit = natural
+else
+    limit = math.min(sapL, natural)  
+end
 
         local ownedCount = 0
         local tf = workspace:FindFirstChild("Towers")
