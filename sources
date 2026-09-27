@@ -420,12 +420,12 @@ do
 		TextLabel_1.BorderColor3 = Color3.fromRGB(0,0,0)
 		TextLabel_1.BorderSizePixel = 0
 		TextLabel_1.LayoutOrder = 1
-		TextLabel_1.Size = UDim2.new(1, 0,0, 14)
+		TextLabel_1.Size = UDim2.new(1, 0,0, 18)
 		TextLabel_1.Font = Enum.Font.GothamBold
 		TextLabel_1.RichText = true
 		TextLabel_1.Text = tostring(d)
 		TextLabel_1.TextColor3 = Color3.fromRGB(255,255,255)
-		TextLabel_1.TextSize = 10
+		TextLabel_1.TextSize = 13
 		TextLabel_1.TextTransparency = 0.699999988079071
 		TextLabel_1.TextWrapped = true
 		TextLabel_1.TextXAlignment = Enum.TextXAlignment.Left
@@ -440,12 +440,12 @@ do
 		TextLabel_2.BackgroundTransparency = 1
 		TextLabel_2.BorderColor3 = Color3.fromRGB(0,0,0)
 		TextLabel_2.BorderSizePixel = 0
-		TextLabel_2.Size = UDim2.new(1, 0,0, 14)
+		TextLabel_2.Size = UDim2.new(1, 0,0, 18)
 		TextLabel_2.Font = Enum.Font.GothamBold
 		TextLabel_2.RichText = true
 		TextLabel_2.Text = tostring(t)
 		TextLabel_2.TextColor3 = Color3.fromRGB(255,255,255)
-		TextLabel_2.TextSize = 12
+		TextLabel_2.TextSize = 16
 		TextLabel_2.TextWrapped = true
 		TextLabel_2.TextXAlignment = Enum.TextXAlignment.Left
 		TextLabel_2.AutomaticSize = Enum.AutomaticSize.Y
@@ -501,7 +501,7 @@ do
 
 		local function updateSize()
 			task.defer(function()
-				local newSize = UIListLayout_2.AbsoluteContentSize.Y + 21
+				local newSize = UIListLayout_2.AbsoluteContentSize.Y + 30
 				if RealBackground.Size.Y.Offset ~= newSize then
 					RealBackground.Size = UDim2.new(1, 0, 0, newSize)
 				end
@@ -1746,9 +1746,10 @@ function Library:Window(p)
 	TabList_1.Size = UDim2.new(1, 0,1, 0)
 	TabList_1.Visible = true
 
-	UIListLayout_10.Parent = TabList_1
-	UIListLayout_10.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_10.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    UIListLayout_10.Parent = TabList_1
+    UIListLayout_10.SortOrder = Enum.SortOrder.LayoutOrder
+    UIListLayout_10.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    UIListLayout_10.Padding = UDim.new(0, 4)
 
 	Select_1.Name = "Select"
 	Select_1.Parent = ScrollingFrame_2
@@ -1846,7 +1847,7 @@ function Library:Window(p)
 		Tab_1.BackgroundTransparency = 1
 		Tab_1.BorderColor3 = Color3.fromRGB(0,0,0)
 		Tab_1.BorderSizePixel = 0
-		Tab_1.Size = UDim2.new(1, 0,0, 30)
+		Tab_1.Size = UDim2.new(1, 0,0, 48)
 		Tab_1.Visible = true
 
 		Func.Name = "Func"
@@ -1868,7 +1869,7 @@ function Library:Window(p)
 		Title_3.Font = Enum.Font.GothamBold
 		Title_3.Text = tostring(Title)
 		Title_3.TextColor3 = Color3.fromRGB(255,255,255)
-		Title_3.TextSize = 11
+		Title_3.TextSize = 15
 		Title_3.TextTransparency = 0.7
 		Title_3.TextWrapped = true
 		Title_3.TextXAlignment = Enum.TextXAlignment.Left
@@ -1886,7 +1887,7 @@ function Library:Window(p)
 		ImageLabel_2.BackgroundTransparency = 1
 		ImageLabel_2.BorderColor3 = Color3.fromRGB(0,0,0)
 		ImageLabel_2.BorderSizePixel = 0
-		ImageLabel_2.Size = UDim2.new(0, 18,0, 18)
+		ImageLabel_2.Size = UDim2.new(0, 22,0, 22)
 		ImageLabel_2.Image = gl(Icon).Image
 		ImageLabel_2.ImageTransparency = 0.7
 		ImageLabel_2.ImageRectSize = gl(Icon).ImageRectSize
@@ -2127,7 +2128,7 @@ function Library:Window(p)
 			RealBackground.BackgroundTransparency = 1
 			RealBackground.BorderColor3 = Color3.fromRGB(0,0,0)
 			RealBackground.BorderSizePixel = 0
-			RealBackground.Size = UDim2.new(1, 0,0, 20)
+			RealBackground.Size = UDim2.new(1, 0,0, 26)
 			RealBackground.ClipsDescendants = true
 
 		Section.Name = "Background"
@@ -2136,7 +2137,7 @@ function Library:Window(p)
 		Section.BackgroundTransparency = 1
 		Section.BorderColor3 = Color3.fromRGB(0,0,0)
 		Section.BorderSizePixel = 0
-		Section.Size = UDim2.new(1, 0,0, 20)
+		Section.Size = UDim2.new(1, 0,0, 26)
 
 		local SectionStroke = Instance.new("UIStroke")
 		SectionStroke.Parent = Section
@@ -2153,7 +2154,7 @@ function Library:Window(p)
 			SectionHeader.BackgroundTransparency = 1
 			SectionHeader.BorderColor3 = Color3.fromRGB(0,0,0)
 			SectionHeader.BorderSizePixel = 0
-			SectionHeader.Size = UDim2.new(1, 0,0, 20)
+			SectionHeader.Size = UDim2.new(1, 0,0, 26)
 			SectionHeader.Text = ""
 
 			Section_1.Name = "Section"
@@ -2166,7 +2167,7 @@ function Library:Window(p)
 			Section_1.Font = Enum.Font.GothamBold
 			Section_1.Text = Title
 			Section_1.TextColor3 = Color3.fromRGB(255,255,255)
-			Section_1.TextSize = 12
+			Section_1.TextSize = 15
 			Section_1.TextXAlignment = Enum.TextXAlignment.Left
 
 			addToTheme('Text & Icon', Section_1)
@@ -2181,7 +2182,7 @@ function Library:Window(p)
 			SectionContent.BackgroundTransparency = 1
 			SectionContent.BorderColor3 = Color3.fromRGB(0,0,0)
 			SectionContent.BorderSizePixel = 0
-			SectionContent.Position = UDim2.new(0, 0,0, 20)
+			SectionContent.Position = UDim2.new(0, 0,0, 26)
 			SectionContent.Size = UDim2.new(1, 0,0, 0)
 			SectionContent.ClipsDescendants = true
 
@@ -2193,7 +2194,7 @@ function Library:Window(p)
 
 			local function updateSize()
 				local contentHeight = ContentList.AbsoluteContentSize.Y
-				local targetSize = isExpanded and (20 + contentHeight) or 20
+				local targetSize = isExpanded and (26 + contentHeight) or 26
 				local targetContentSize = isExpanded and contentHeight or 0
 				
 				tw({v = RealBackground, t = 0.3, s = Enum.EasingStyle.Quad, d = "Out", g = {
@@ -2219,7 +2220,7 @@ function Library:Window(p)
 			task.delay(0.1, function()
 				if isExpanded then
 					local contentHeight = ContentList.AbsoluteContentSize.Y
-					RealBackground.Size = UDim2.new(1, 0,0, 20 + contentHeight)
+					RealBackground.Size = UDim2.new(1, 0,0, 26 + contentHeight)
 					SectionContent.Size = UDim2.new(1, 0,0, contentHeight)
 				end
 			end)
