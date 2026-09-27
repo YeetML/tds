@@ -459,13 +459,27 @@ function SAPScheduler.StartUpgradeLoop(Globals, deps)
                 if othersPending then continue end
             end
 
-            deps.SetSAPStatus("Upgrading " .. tInfo.name, "slot " .. tInfo.slot .. ", level " .. tInfo.level)
-            local progressed = deps.TryUpgradeTowerOnce(tInfo.tower)
-            if not progressed then maxed[tInfo.tower] = true
-            else didSomething = true end
+            local status = deps.TryUpgradeTowerOnce(tInfo.tower)
+
+            if status == "upgraded" then
+                deps.SetSAPStatus("Upgrading " .. tInfo.name,
+                    "slot " .. tInfo.slot .. ", level " .. tInfo.level .. " -> " .. tostring((tInfo.level or 0) + 1))
+                didSomething = true
+            elseif status == "maxed" then
+                maxed[tInfo.tower] = true
+                deps.SetSAPStatus(tInfo.name .. " maxed",
+                    "slot " .. tInfo.slot .. " at level " .. tInfo.level)
+            elseif status == "broke" then
+                deps.SetSAPStatus("Waiting for coins",
+                    "need upgrade for " .. tInfo.name .. " (slot " .. tInfo.slot .. ")")
+                -- Do NOT blacklist — the loop will retry when we have money
+            else -- "failed"
+                maxed[tInfo.tower] = true
+            end
+
             task.wait(0.15)
         end
-        if not didSomething then task.wait(0.5) end
+        if not didSomething then task.wait(2) end
     end
     Globals.SAPUpgradeLoopRunning = false
 end
@@ -3111,16 +3125,78 @@ function SetSAPStatus(title, desc)
     end
 end
 
+-- Cache the Asset module so we don't re-require it every pass
+local _SAPAsset = nil
+local function SAPGetAsset()
+    if not _SAPAsset then
+        local ok, res = pcall(function()
+            return require(ReplicatedStorage.Shared.Modules.Asset)
+        end)
+        if ok then _SAPAsset = res end
+    end
+    return _SAPAsset
+end
+
+-- Returns the cost of the NEXT upgrade for a tower, or nil if truly maxed.
+-- Also returns the tower's current level as the 2nd value.
+function GetNextUpgradeCost(tower)
+    local rep = tower and tower:FindFirstChild("TowerReplicator")
+    if not rep then return nil, nil end
+    local name  = rep:GetAttribute("Name")
+    local level = rep:GetAttribute("Upgrade") or 0
+
+    local asset = SAPGetAsset()
+    if not asset then return nil, level end
+
+    local ok, a = pcall(asset, "Troops", name)
+    if not ok or not a then return nil, level end
+
+    local upgrades = a.Stats and a.Stats.Default and a.Stats.Default.Upgrades
+    if not upgrades then return nil, level end
+
+    local nextUp = upgrades[level + 1]
+    if not nextUp or not nextUp.Cost then
+        return nil, level  -- no next entry → truly maxed
+    end
+    return nextUp.Cost, level
+end
+
+-- Upgrade once with full coin awareness.
+-- Returns: status, newLevel
+--   "upgraded" = success, level went up
+--   "maxed"    = no next upgrade exists (truly maxed)
+--   "broke"    = not enough coins, DO NOT blacklist
+--   "failed"   = had coins but upgrade was refused → treat as maxed
 function TryUpgradeTowerOnce(tower)
     local rep = tower and tower:FindFirstChild("TowerReplicator")
-    if not rep then return false, 0 end
-    local before = rep:GetAttribute("Upgrade") or 0
+    if not rep then return "failed", 0 end
+
+    local cost, before = GetNextUpgradeCost(tower)
+    if not cost then
+        return "maxed", before or (rep:GetAttribute("Upgrade") or 0)
+    end
+
+    local coins = 0
+    local cObj = LocalPlayer:FindFirstChild("Coins")
+    if cObj then coins = cObj.Value or 0 end
+
+    if coins < cost then
+        -- Not enough money — the loop will retry later
+        return "broke", before
+    end
+
     pcall(function()
         RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", { Troop = tower })
     end)
     task.wait(0.35)
+
     local after = rep:GetAttribute("Upgrade") or 0
-    return after > before, after
+    if after > before then
+        return "upgraded", after
+    end
+
+    -- Had enough coins, still failed → genuinely maxed (or server refused)
+    return "maxed", after
 end
 
 function StartAutoUpgradeFarms()
