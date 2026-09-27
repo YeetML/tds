@@ -3931,7 +3931,7 @@ Globals.Window = Library:Window({
     Icon = 99432006374500,
     Config = {
         Keybind = Enum.KeyCode.LeftControl,
-        Size = UDim2.new(0, 800, 0, 600)
+        Size = UDim2.new(0, 560, 0, 440)
     }
 })
 
