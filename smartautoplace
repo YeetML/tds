@@ -15,6 +15,80 @@ local DEFAULT_BOUNDARY = SharedGameConstants.DEFAULT_BOUNDARY_SIZE or 1.5
 
 local AutoPlaceTowers = {}
 
+local DEFAULT_LIMIT = 1
+
+local TOWER_LIMITS = {
+    ["Scout"]              = math.huge,  
+    ["Sniper"]             = math.huge,   
+    ["Paintballer"]        = math.huge,
+    ["Demoman"]            = math.huge,
+    ["Boomerang"]          = 12,
+    ["Slime Trooper"]      = math.huge,
+    ["Soldier"]            = math.huge,
+    ["Crook Boss"]         = 5,
+    ["Freezer"]            = math.huge,
+    ["Assassin"]           = math.huge,
+    ["Militant"]           = math.huge,
+    ["Shotgunner"]         = 9,
+    ["Hunter"]             = 10,
+    ["Pyromancer"]         = math.huge,
+    ["Ace Pilot"]          = 8,
+    ["Farm"]               = 10,  
+    ["Medic"]              = 4,
+    ["Electroshocker"]     = 7,
+    ["Rocketeer"]          = 8,
+    ["Trapper"]            = 7,
+    ["Military Base"]      = 5,
+    ["Mercenary Base"]     = 3,
+    ["Mortar"]             = 4,
+    ["Turret"]             = 5,
+    ["Commander"]          = 3,  
+    ["Cowboy"]             = 12,
+    ["Warden"]             = 12,   
+    ["DJ Booth"]           = 1,  
+    ["Tesla"]              = 2,
+    ["Saboteur"]           = 8,
+    ["Minigunner"]         = math.huge,
+    ["Ranger"]             = 8,
+    ["Pursuit"]            = 6,
+    ["Gatling Gun"]        = 1,
+    ["Brawler"]            = 10,
+    ["Necromancer"]        = 3,
+    ["Accelerator"]        = 5,
+    ["Engineer"]           = 6,
+    ["Hacker"]             = 2,
+    ["Pulse Trooper"]      = 7,
+    ["EvolvedOperator"]    = 16,
+    ["EvolvedEnforcer"]    = 5,
+    ["EvolvedKingpin"]     = 4,
+    ["EvolvedJuggernaut"]  = 1,
+    ["Gladiator"]          = math.huge,  
+    ["Commando"]           = 8,
+    ["Slasher"]            = 8,
+    ["Frost Blaster"]      = 12,
+    ["Archer"]             = 15,
+    ["Swarmer"]            = math.huge,
+    ["Toxic Gunner"]       = math.huge,
+    ["Sledger"]            = 6,
+    ["Executioner"]        = 9,
+    ["Elf Camp"]           = 4,
+    ["Jester"]             = 8,
+    ["Cryomancer"]         = math.huge,
+    ["Hallow Punk"]        = 10,
+    ["Harvester"]          = 5,
+    ["Snowballer"]         = math.huge,
+    ["Elementalist"]       = 5,
+    ["Firework Technician"]= 1,
+    ["Biologist"]          = 8,
+    ["Warlock"]            = 4,   
+    ["Spotlight Tech"]     = 1,
+    ["Mecha Base"]         = 3,
+}
+
+function AutoPlaceTowers.GetPlacementLimit(towerName)
+    return TOWER_LIMITS[towerName] or DEFAULT_LIMIT
+end
+
 -- ============================== Path math ==============================
 
 local function getPathPoints(pathName)
