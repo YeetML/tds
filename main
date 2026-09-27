@@ -3942,6 +3942,11 @@ task.spawn(function()
             if d:IsA("Frame") and d.Name == "Real Background" then
                 local inner = d:FindFirstChild("Background")
                 if inner then
+                    -- ⭐ SYNC current state (this was missing)
+                    if d.Visible ~= inner.Visible then
+                        d.Visible = inner.Visible
+                    end
+                    -- Connect for FUTURE changes
                     inner:GetPropertyChangedSignal("Visible"):Connect(function()
                         d.Visible = inner.Visible
                     end)
@@ -3953,6 +3958,9 @@ task.spawn(function()
                 task.wait(0.1)
                 local inner = inst:FindFirstChild("Background")
                 if inner then
+                    if inst.Visible ~= inner.Visible then
+                        inst.Visible = inner.Visible
+                    end
                     inner:GetPropertyChangedSignal("Visible"):Connect(function()
                         inst.Visible = inner.Visible
                     end)
