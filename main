@@ -107,6 +107,8 @@ local DefaultSettings = {
     SmartAutoPlace = false,
     GroundPercentage = 10,
     CliffPercentage = 10,
+    FocusOnFarms = true,
+    AutoUpgradeFarms = false,
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -193,6 +195,8 @@ Globals.StartCoins = 0
 Globals.CurrentTotalCoins = 0
 Globals.StartGems = 0
 Globals.CurrentTotalGems = 0
+Globals.AutoUpgradeFarmsRunning = Globals.AutoUpgradeFarmsRunning or false
+Globals.SAPStatus = Globals.SAPStatus or nil
 
 local LastState = {}
 local executed_actions = {}
@@ -2665,12 +2669,73 @@ function StartAutoUpgradeAll()
     end)
 end
 
+function SetSAPStatus(title, desc)
+    if Globals.SAPStatus then
+        pcall(function()
+            Globals.SAPStatus:SetTitle("Status: " .. tostring(title))
+            if desc ~= nil then Globals.SAPStatus:SetDesc(tostring(desc)) end
+        end)
+    end
+    if Globals.Logger and Globals.Logger.Log then
+        pcall(function() Globals.Logger:Log("[SAP] " .. tostring(title)) end)
+    end
+end
+
+function TryUpgradeTowerOnce(tower)
+    local rep = tower and tower:FindFirstChild("TowerReplicator")
+    if not rep then return false, 0 end
+    local before = rep:GetAttribute("Upgrade") or 0
+    pcall(function()
+        RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", { Troop = tower })
+    end)
+    task.wait(0.35)
+    local after = rep:GetAttribute("Upgrade") or 0
+    return after > before, after
+end
+
+function StartAutoUpgradeFarms()
+    if Globals.AutoUpgradeFarmsRunning then return end
+    Globals.AutoUpgradeFarmsRunning = true
+    task.spawn(function()
+        local maxed = {}
+        while Globals.AutoUpgradeFarms and Globals.SmartAutoPlace do
+            local towersFolder = workspace:FindFirstChild("Towers")
+            local didSomething = false
+            if towersFolder then
+                for _, tower in ipairs(towersFolder:GetChildren()) do
+                    if not (Globals.AutoUpgradeFarms and Globals.SmartAutoPlace) then break end
+                    local rep = tower:FindFirstChild("TowerReplicator")
+                    if rep
+                        and rep:GetAttribute("Name") == "Farm"
+                        and rep:GetAttribute("OwnerId") == LocalPlayer.UserId
+                        and not maxed[tower] then
+                        local lvl = rep:GetAttribute("Upgrade") or 0
+                        SetSAPStatus("Upgrading Farm", "Level " .. tostring(lvl))
+                        local progressed, newLvl = TryUpgradeTowerOnce(tower)
+                        if progressed then
+                            didSomething = true
+                        else
+                            maxed[tower] = true
+                            SetSAPStatus("Farm maxed", "Level " .. tostring(newLvl))
+                        end
+                        task.wait(0.15)
+                    end
+                end
+            end
+            task.wait(didSomething and 0.3 or 1)
+        end
+        Globals.AutoUpgradeFarmsRunning = false
+    end)
+end
+
 function StartSmartAutoPlace()
     if Globals.SmartAutoPlaceRunning or not Globals.SmartAutoPlace then return end
     Globals.SmartAutoPlaceRunning = true
+
     task.spawn(function()
         local APT = Globals.AutoPlaceTowersModule
         if not APT then
+            SetSAPStatus("Loading module...", "Fetching smartautoplace")
             local ok, res = pcall(function()
                 return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/smartautoplace"))()
             end)
@@ -2680,24 +2745,28 @@ function StartSmartAutoPlace()
             end
         end
         if not APT then
+            SetSAPStatus("Failed", "Module failed to load")
             Globals.SmartAutoPlaceRunning = false
             return
         end
 
+        SetSAPStatus("Waiting for match...", "Standby")
         repeat task.wait(1) until Globals.GameState == "GAME"
 
         local equipped = GetEquippedTowers()
         if not equipped or #equipped == 0 then
+            SetSAPStatus("No towers equipped")
             Globals.SmartAutoPlaceRunning = false
             return
         end
 
         local curCap, maxCap = GetGlobalTowerInfo()
         if curCap and maxCap and curCap >= maxCap then
+            SetSAPStatus("Global cap reached", ("%d/%d"):format(curCap, maxCap))
             Globals.Window:Notify({
                 Title = "Smart Auto Place",
-                Desc = ("Already at global cap (%d/%d)"):format(curCap, maxCap),
-                Time = 5, Type = "error"
+                Desc  = ("Already at global cap (%d/%d)"):format(curCap, maxCap),
+                Time  = 5, Type = "error"
             })
             Globals.SmartAutoPlace = false
             SetSetting("SmartAutoPlace", false)
@@ -2705,13 +2774,82 @@ function StartSmartAutoPlace()
             return
         end
 
+        -- FARM PRIORITY
+        if Globals.FocusOnFarms then
+            local hasFarm = false
+            for _, t in ipairs(equipped) do
+                if t == "Farm" then hasFarm = true break end
+            end
+
+            if hasFarm and Globals.SmartAutoPlace then
+                local cur, max = GetGlobalTowerInfo()
+                if cur and max and cur < max then
+                    local farmLimit = 10
+                    if APT.GetPlacementLimit then
+                        farmLimit = APT.GetPlacementLimit("Farm") or 10
+                    end
+                    if farmLimit == math.huge then farmLimit = 999 end
+
+                    local owned = 0
+                    local tf = workspace:FindFirstChild("Towers")
+                    if tf then
+                        for _, m in ipairs(tf:GetChildren()) do
+                            local rep = m:FindFirstChild("TowerReplicator")
+                            if rep
+                            and rep:GetAttribute("Name") == "Farm"
+                            and rep:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                                owned += 1
+                            end
+                        end
+                    end
+
+                    local want = math.min(10, farmLimit - owned, max - cur)
+                    if want > 0 and APT.PlaceFarHoneycomb then
+                        SetSAPStatus("Placing farms", ("0 / %d far from path"):format(want))
+                        Globals.Window:Notify({
+                            Title = "Smart Auto Place",
+                            Desc  = ("Farm priority: placing up to %d farm(s) far from path..."):format(want),
+                            Time  = 5, Type = "normal"
+                        })
+
+                        local placed = APT.PlaceFarHoneycomb("Farm", want, {
+                            pathName        = "1",
+                            gridStep        = 8,
+                            mapMargin       = 80,
+                            cellAttempts    = 1,
+                            waitBetween     = 0.05,
+                            expandStep      = 0.5,
+                            maxExpandRadius = 5,
+                            expandAttempts  = 3,
+                            expandWait      = 0.05,
+                            maxTotalFails   = 30,
+                        })
+
+                        SetSAPStatus("Farms placed", ("%d / %d"):format(placed, want))
+                        Globals.Window:Notify({
+                            Title = "Smart Auto Place",
+                            Desc  = ("Farm priority: placed %d / %d"):format(placed, want),
+                            Time  = 5, Type = placed > 0 and "normal" or "error"
+                        })
+                    end
+                end
+            end
+        end
+
+        if Globals.AutoUpgradeFarms and not Globals.AutoUpgradeFarmsRunning then
+            StartAutoUpgradeFarms()
+        end
+
+        -- NORMAL SWEEP
+        SetSAPStatus("Normal sweep", "Placing remaining loadout")
         local Asset = require(ReplicatedStorage.Shared.Modules.Asset)
+
         for _, towerName in ipairs(equipped) do
             if not Globals.SmartAutoPlace then break end
             if towerName ~= "None" then
                 local cur, max = GetGlobalTowerInfo()
                 if cur and max and cur >= max then
-                    warn(("[SmartAutoPlace] Global cap reached (%d/%d), stopping."):format(cur, max))
+                    SetSAPStatus("Global cap reached", ("%d/%d"):format(cur, max))
                     break
                 end
 
@@ -2733,10 +2871,7 @@ function StartSmartAutoPlace()
                     end
                 end
 
-                if owned >= towerLimit then
-                    warn(("[SmartAutoPlace] %s at per-tower cap (%d/%d), skipping."):format(towerName, owned, towerLimit))
-                    continue
-                end
+                if owned >= towerLimit then continue end
 
                 local class = "0"
                 local ok, asset = pcall(Asset, "Troops", towerName)
@@ -2752,20 +2887,22 @@ function StartSmartAutoPlace()
                 local placed = false
                 local pct = startPct
                 while pct <= 100 and not placed and Globals.SmartAutoPlace do
+                    SetSAPStatus("Placing " .. towerName, ("%d%% along path"):format(pct))
                     local count = APT.PlaceHoneycomb(towerName, pct, 1, {
-                        cellAttempts = 1, waitBetween = 0.02,
-                        maxExpandRadius = 3, expandStep = 0.2,
-                        expandAttempts = 5, expandWait = 0.02,
+                        cellAttempts    = 1,
+                        waitBetween     = 0.02,
+                        maxExpandRadius = 3,
+                        expandStep      = 0.2,
+                        expandAttempts  = 5,
+                        expandWait      = 0.02,
                     })
-                    if count > 0 then
-                        placed = true
-                    else
-                        pct = pct + 10
-                    end
+                    if count > 0 then placed = true else pct = pct + 10 end
                     task.wait(0.1)
                 end
             end
         end
+
+        SetSAPStatus("Done", "All towers placed")
         Globals.SmartAutoPlaceRunning = false
     end)
 end
@@ -3772,6 +3909,30 @@ local Interactive = Globals.Window:Tab({Title = "Interactive", Icon = "mouse-poi
         Min = 0, Max = 100, Rounding = 0,
         Value = Globals.CliffPercentage,
         Callback = function(val) SetSetting("CliffPercentage", val) end
+    })
+
+        Interactive:Toggle({
+        Title = "Focus On Placing Farms",
+        Desc  = "Place up to 10 Farms far from the path before placing other towers.",
+        Value = Globals.FocusOnFarms,
+        Callback = function(v) SetSetting("FocusOnFarms", v) end
+    })
+
+    Interactive:Toggle({
+        Title = "Focus On Upgrading Farms",
+        Desc  = "Keeps upgrading your Farms to max level while Smart Auto Place is on.",
+        Value = Globals.AutoUpgradeFarms,
+        Callback = function(v)
+            SetSetting("AutoUpgradeFarms", v)
+            if v and Globals.SmartAutoPlace then
+                StartAutoUpgradeFarms()
+            end
+        end
+    })
+
+    Globals.SAPStatus = Interactive:Label({
+        Title = "Status: Idle",
+        Desc  = "Waiting to start..."
     })
 
     Interactive:Section({Title = "Tower Controls"})
@@ -4896,6 +5057,9 @@ task.spawn(function()
         if Globals.AutoUpgradeSelected and not Globals.AutoUpgradeSelectedRunning then StartAutoUpgradeSelected() end
         if Globals.AutoUpgradeAll and not Globals.AutoUpgradeAllRunning then StartAutoUpgradeAll() end
         if Globals.SmartAutoPlace and not Globals.SmartAutoPlaceRunning then StartSmartAutoPlace() end
+        if Globals.AutoUpgradeFarms and Globals.SmartAutoPlace and not Globals.AutoUpgradeFarmsRunning then
+    StartAutoUpgradeFarms()
+end
 
         if Globals.AutoMedic and not Globals.AutoMedicRunning then
             StartMedicChain()
