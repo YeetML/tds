@@ -1749,7 +1749,6 @@ function Library:Window(p)
     UIListLayout_10.Parent = TabList_1
     UIListLayout_10.SortOrder = Enum.SortOrder.LayoutOrder
     UIListLayout_10.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    UIListLayout_10.Padding = UDim.new(0, 4)
 
 	Select_1.Name = "Select"
 	Select_1.Parent = ScrollingFrame_2
