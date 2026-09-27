@@ -3915,10 +3915,10 @@ local SAPDeps = {
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources"))()
 
 Globals.Window = Library:Window({
-    Title = "Aether Hub",
+    Title = "YeetML Hub",
     Desc = "your #1 hub",
     Theme = "Default",
-    DiscordLink = "https://discord.gg/aetherhub",
+    DiscordLink = "https://discord.gg/yeetml",
     Icon = 99432006374500,
     Config = {
         Keybind = Enum.KeyCode.LeftControl,
