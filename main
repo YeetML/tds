@@ -3276,13 +3276,13 @@ do
     end
 end
 
-Globals.GameState = IdentifyGameState()
-
 AntiStuck()
 task.spawn(Reconnect)
 GuiService.ErrorMessageChanged:Connect(Reconnect)
 
 if not game:IsLoaded() then game.Loaded:Wait() end
+
+Globals.GameState = IdentifyGameState()
 
 task.spawn(function()
     LocalPlayer.Idled:Connect(function()
