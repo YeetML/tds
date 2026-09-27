@@ -51,6 +51,429 @@ local AllModifiers = {
     "Broke", "SpeedyEnemies", "Quarantine", "JailedTowers", "Inflation"
 }
 
+local SAPScheduler = {}
+local statusLabelRef = nil
+
+local function validateOrder(orderTbl)
+    local seen = {}
+    for i = 1, 5 do
+        if seen[orderTbl[i]] then return false end
+        seen[orderTbl[i]] = true
+    end
+    return true
+end
+
+function SAPScheduler.GetDefaultSettings()
+    return {
+        SAPOrder          = {1, 2, 3, 4, 5},
+        SAPLimit          = {0, 0, 0, 0, 0},
+        SAPWave           = {0, 0, 0, 0, 0},
+        SAPTarget         = {"Default", "Default", "Default", "Default", "Default"},
+        SAPUpgradeLimit   = {0, 0, 0, 0, 0},
+        SAPUpgradeOrder   = {1, 2, 3, 4, 5},
+        SAPUpgradeMethod  = "Hotbar left to right (until Max)",
+        SAPUseOneWaveAll  = false,
+        SAPGlobalWave     = 0,
+        SAPIgnoreUnits    = {},
+    }
+end
+
+function SAPScheduler.GetGlobals()
+    return {
+        SAPUpgradeLoopRunning = false,
+        SAPStatus = nil,
+    }
+end
+
+function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
+    local depsTable = deps or {}
+
+    ParentTab:Section({Title = "Placement — Order"})
+    local orderLabel = ParentTab:Label({Title = "Orders OK", Desc = "Lowest number is placed first. Do not set duplicates."})
+    for i = 1, 5 do
+        ParentTab:Slider({
+            Title = "Place Order for Slot " .. i,
+            Min = 1, Max = 5, Rounding = 0,
+            Value = Globals.SAPOrder[i],
+            Callback = function(val)
+                Globals.SAPOrder[i] = val
+                if depsTable.SetSetting then depsTable.SetSetting("SAPOrder", Globals.SAPOrder) end
+                orderLabel:SetTitle(validateOrder(Globals.SAPOrder) and "Orders OK" or "⚠ Duplicate order detected")
+            end
+        })
+    end
+
+    ParentTab:Section({Title = "Placement — Limit"})
+    ParentTab:Label({Title = "Rules", Desc = "1 or higher places that many. 0 places up to the trait-aware limit. -1 never places."})
+    for i = 1, 5 do
+        ParentTab:Slider({
+            Title = "Place Limit for Slot " .. i,
+            Min = -1, Max = 20, Rounding = 0,
+            Value = Globals.SAPLimit[i],
+            Callback = function(val)
+                Globals.SAPLimit[i] = val
+                if depsTable.SetSetting then depsTable.SetSetting("SAPLimit", Globals.SAPLimit) end
+            end
+        })
+    end
+
+    ParentTab:Section({Title = "Placement — Wave"})
+    ParentTab:Label({Title = "Rules", Desc = "Only start placing after the set wave. 0 always places."})
+
+    local globalWaveSlider, perSlotWaveSliders = nil, {}
+
+    globalWaveSlider = ParentTab:Slider({
+        Title = "Place every slot at wave",
+        Min = 0, Max = 60, Rounding = 0,
+        Value = Globals.SAPGlobalWave,
+        Callback = function(val)
+            Globals.SAPGlobalWave = val
+            if depsTable.SetSetting then depsTable.SetSetting("SAPGlobalWave", val) end
+        end
+    })
+    globalWaveSlider:SetVisible(Globals.SAPUseOneWaveAll)
+
+    for i = 1, 5 do
+        perSlotWaveSliders[i] = ParentTab:Slider({
+            Title = "Place Wave for Slot " .. i,
+            Min = 0, Max = 60, Rounding = 0,
+            Value = Globals.SAPWave[i],
+            Callback = function(val)
+                Globals.SAPWave[i] = val
+                if depsTable.SetSetting then depsTable.SetSetting("SAPWave", Globals.SAPWave) end
+            end
+        })
+        perSlotWaveSliders[i]:SetVisible(not Globals.SAPUseOneWaveAll)
+    end
+
+    ParentTab:Toggle({
+        Title = "Use one wave for every slot",
+        Desc = "",
+        Value = Globals.SAPUseOneWaveAll,
+        Callback = function(val)
+            Globals.SAPUseOneWaveAll = val
+            if depsTable.SetSetting then depsTable.SetSetting("SAPUseOneWaveAll", val) end
+            if globalWaveSlider then globalWaveSlider:SetVisible(val) end
+            for i = 1, 5 do
+                if perSlotWaveSliders[i] then perSlotWaveSliders[i]:SetVisible(not val) end
+            end
+        end
+    })
+
+    ParentTab:Section({Title = "Placement — Target"})
+    ParentTab:Label({Title = "Rules", Desc = "Applied to each unit as it lands. Farm units ignore targeting."})
+    for i = 1, 5 do
+        ParentTab:Dropdown({
+            Title = "Target Priority for Slot " .. i,
+            List = {"Default", "First", "Last", "Strongest", "Weakest", "Closest", "Farthest", "Random"},
+            Value = Globals.SAPTarget[i],
+            Callback = function(val)
+                Globals.SAPTarget[i] = val
+                if depsTable.SetSetting then depsTable.SetSetting("SAPTarget", Globals.SAPTarget) end
+            end
+        })
+    end
+
+    ParentTab:Section({Title = "Upgrade"})
+    ParentTab:Dropdown({
+        Title = "Upgrade Method",
+        List = {"Hotbar left to right (until Max)", "Randomize", "Lowest Level (Spread Upgrade)", "Customize upgrade order (Set below)"},
+        Value = Globals.SAPUpgradeMethod,
+        Callback = function(val)
+            Globals.SAPUpgradeMethod = val
+            if depsTable.SetSetting then depsTable.SetSetting("SAPUpgradeMethod", val) end
+        end
+    })
+
+    ParentTab:Section({Title = "Upgrade — Limit (UL)"})
+    ParentTab:Label({Title = "Rules", Desc = "1 or higher stops at that level. 0 upgrades to max. -1 waits until everything else is done. -2 never upgrades."})
+    for i = 1, 5 do
+        ParentTab:Slider({
+            Title = "Upgrade Limit for Slot " .. i,
+            Min = -2, Max = 20, Rounding = 0,
+            Value = Globals.SAPUpgradeLimit[i],
+            Callback = function(val)
+                Globals.SAPUpgradeLimit[i] = val
+                if depsTable.SetSetting then depsTable.SetSetting("SAPUpgradeLimit", Globals.SAPUpgradeLimit) end
+            end
+        })
+    end
+
+    ParentTab:Section({Title = "Upgrade — Order (UO)"})
+    local uoLabel = ParentTab:Label({Title = "Orders OK", Desc = "Used by the Customize upgrade order method. Lowest number is upgraded first. Do not set duplicates."})
+    for i = 1, 5 do
+        ParentTab:Slider({
+            Title = "Upgrade Order for Slot " .. i,
+            Min = 1, Max = 5, Rounding = 0,
+            Value = Globals.SAPUpgradeOrder[i],
+            Callback = function(val)
+                Globals.SAPUpgradeOrder[i] = val
+                if depsTable.SetSetting then depsTable.SetSetting("SAPUpgradeOrder", Globals.SAPUpgradeOrder) end
+                uoLabel:SetTitle(validateOrder(Globals.SAPUpgradeOrder) and "Orders OK" or "⚠ Duplicate order detected")
+            end
+        })
+    end
+
+    ParentTab:Section({Title = "Live Status"})
+    statusLabelRef = ParentTab:Label({Title = "Status: Idle", Desc = ""})
+    Globals.SAPStatus = statusLabelRef
+
+    local coinsLabel = ParentTab:Label({Title = "Coins: 0", Desc = ""})
+    local waveLabel = ParentTab:Label({Title = "Wave: —", Desc = ""})
+
+    task.spawn(function()
+        while task.wait(0.5) do
+            local wave = "-"
+            if depsTable.GetCurrentWave then
+                local w = depsTable.GetCurrentWave()
+                if w then wave = tostring(w) end
+            end
+            local coins = 0
+            if depsTable.LocalPlayer then
+                local cObj = depsTable.LocalPlayer:FindFirstChild("Coins") or depsTable.LocalPlayer:FindFirstChild("Cash")
+                if cObj then coins = cObj.Value or 0 end
+            end
+            pcall(function()
+                coinsLabel:SetTitle("Coins: " .. tostring(coins))
+                waveLabel:SetTitle("Wave: " .. wave)
+            end)
+        end
+    end)
+
+    ParentTab:Section({Title = "Equipped Units"})
+    ParentTab:Dropdown({
+        Title = "Ignore Units",
+        List = depsTable.AllTowers or {},
+        Value = Globals.SAPIgnoreUnits,
+        Multi = true,
+        Callback = function(val)
+            Globals.SAPIgnoreUnits = val
+            if depsTable.SetSetting then depsTable.SetSetting("SAPIgnoreUnits", Globals.SAPIgnoreUnits) end
+        end
+    })
+
+    local slotLabels = {}
+    for i = 1, 5 do
+        slotLabels[i] = ParentTab:Label({Title = "Slot " .. i .. " — empty — max 0", Desc = ""})
+    end
+
+    local function refreshSlotLabels()
+        if not depsTable.GetEquippedTowers then return end
+        local equipped = depsTable.GetEquippedTowers()
+        for i = 1, 5 do
+            local name = equipped[i]
+            if not name or name == "None" then
+                slotLabels[i]:SetTitle("Slot " .. i .. " — empty — max 0")
+            else
+                local slimit = Globals.SAPLimit[i] or 0
+                local glimit = APT.GetPlacementLimit(name) or math.huge
+                local limit
+                if slimit > 0 and glimit ~= math.huge then limit = math.min(slimit, glimit)
+                elseif slimit > 0 then limit = slimit
+                elseif glimit ~= math.huge then limit = glimit
+                else limit = "∞" end
+                slotLabels[i]:SetTitle("Slot " .. i .. " — " .. name .. " — max " .. tostring(limit))
+            end
+        end
+    end
+
+    ParentTab:Button({
+        Title = "Refresh equipped units",
+        Desc = "",
+        Callback = refreshSlotLabels
+    })
+
+    task.defer(function() task.wait(1) refreshSlotLabels() end)
+end
+
+function SAPScheduler.StartPlacement(Globals, deps)
+    while Globals.GameState ~= "GAME" do task.wait(1) end
+
+    local equipped = deps.GetEquippedTowers()
+    local slots = {}
+    for i = 1, 5 do
+        local name = equipped[i]
+        if name and name ~= "None" then
+            local ignored = false
+            for _, ign in ipairs(Globals.SAPIgnoreUnits or {}) do
+                if ign == name then ignored = true break end
+            end
+            if not ignored and Globals.SAPLimit[i] ~= -1 then
+                table.insert(slots, {index = i, name = name, order = Globals.SAPOrder[i]})
+            end
+        end
+    end
+    table.sort(slots, function(a, b) return a.order < b.order end)
+
+    for _, slotInfo in ipairs(slots) do
+        local i, name = slotInfo.index, slotInfo.name
+        local sapL = Globals.SAPLimit[i]
+        local limit = 1
+        if sapL == 0 then limit = deps.APT.GetPlacementLimit(name) or 1
+        elseif sapL >= 1 then limit = sapL end
+        if limit == math.huge then limit = 999 end
+
+        local ownedCount = 0
+        local tf = workspace:FindFirstChild("Towers")
+        if tf then
+            for _, t in ipairs(tf:GetChildren()) do
+                local rep = t:FindFirstChild("TowerReplicator")
+                if rep and rep:GetAttribute("Name") == name and rep:GetAttribute("OwnerId") == deps.LocalPlayer.UserId then
+                    ownedCount = ownedCount + 1
+                end
+            end
+        end
+        if ownedCount >= limit then
+            deps.SetSAPStatus(name .. " at cap", "")
+            continue
+        end
+        local want = limit - ownedCount
+
+        local waveGate = Globals.SAPUseOneWaveAll and Globals.SAPGlobalWave or Globals.SAPWave[i]
+        if waveGate > 0 then
+            while deps.GetCurrentWave() < waveGate do task.wait(1) end
+        end
+
+        deps.SetSAPStatus("Placing " .. name, "slot " .. i .. ", target " .. tostring(Globals.SAPTarget[i]))
+
+        local class = "0"
+        local ok, asset = pcall(deps.Asset, "Troops", name)
+        if ok and asset and asset.Properties then class = tostring(asset.Properties.Class) end
+        local startPct = Globals.GroundPercentage or 10
+        if class == "3" then startPct = Globals.CliffPercentage or 10 end
+
+        local uidsBefore = {}
+        if tf then
+            for _, t in ipairs(tf:GetChildren()) do
+                local rep = t:FindFirstChild("TowerReplicator")
+                if rep and rep:GetAttribute("OwnerId") == deps.LocalPlayer.UserId and rep:GetAttribute("Name") == name then
+                    local uid = rep:GetAttribute("UID")
+                    if uid then uidsBefore[uid] = true end
+                end
+            end
+        end
+
+        deps.APT.PlaceHoneycomb(name, startPct, want, {
+            cellAttempts = 1, waitBetween = 0.02, maxExpandRadius = 3,
+            expandStep = 0.2, expandAttempts = 5, expandWait = 0.02
+        })
+        task.wait(0.5)
+
+        local tStr = Globals.SAPTarget[i]
+        local isNoTargetTower = (name == "Farm" or name == "Military Base" or name == "Mercenary Base" or name == "DJ Booth")
+        if tStr ~= "Default" and not isNoTargetTower and tf then
+            for _, t in ipairs(tf:GetChildren()) do
+                local rep = t:FindFirstChild("TowerReplicator")
+                if rep and rep:GetAttribute("OwnerId") == deps.LocalPlayer.UserId and rep:GetAttribute("Name") == name then
+                    local uid = rep:GetAttribute("UID")
+                    if uid and not uidsBefore[uid] then
+                        pcall(function()
+                            deps.RemoteFunc:InvokeServer("Troops", "Target", "Set", {Troop = t, Target = tStr})
+                        end)
+                    end
+                end
+            end
+        end
+    end
+    deps.SetSAPStatus("Done", "All slots placed")
+end
+
+function SAPScheduler.StartUpgradeLoop(Globals, deps)
+    Globals.SAPUpgradeLoopRunning = true
+    local maxed = {}
+
+    while Globals.AutoUpgradeFarms and Globals.SmartAutoPlace do
+        local equipped = deps.GetEquippedTowers()
+        local myTowers = {}
+
+        local tf = workspace:FindFirstChild("Towers")
+        if tf then
+            for _, t in ipairs(tf:GetChildren()) do
+                local rep = t:FindFirstChild("TowerReplicator")
+                if rep and rep:GetAttribute("OwnerId") == deps.LocalPlayer.UserId then
+                    local tName = rep:GetAttribute("Name")
+                    local lvl = rep:GetAttribute("Upgrade") or 0
+                    local slotIdx = nil
+                    for i, eqName in ipairs(equipped) do
+                        if eqName == tName then slotIdx = i break end
+                    end
+                    if slotIdx and Globals.SAPUpgradeLimit[slotIdx] ~= -2 then
+                        table.insert(myTowers, {tower = t, name = tName, slot = slotIdx, level = lvl, rep = rep})
+                    end
+                end
+            end
+        end
+
+        local allMaxed = true
+        for _, tInfo in ipairs(myTowers) do
+            if not maxed[tInfo.tower] then
+                local lim = Globals.SAPUpgradeLimit[tInfo.slot]
+                if lim == -1 or lim == 0 then allMaxed = false
+                elseif lim >= 1 and tInfo.level < lim then allMaxed = false
+                elseif lim >= 1 and tInfo.level >= lim then maxed[tInfo.tower] = true end
+            end
+        end
+        if allMaxed and #myTowers > 0 then break end
+
+        local method = Globals.SAPUpgradeMethod
+        if method == "Randomize" then
+            for i = #myTowers, 2, -1 do
+                local j = math.random(i)
+                myTowers[i], myTowers[j] = myTowers[j], myTowers[i]
+            end
+        elseif method == "Lowest Level (Spread Upgrade)" then
+            table.sort(myTowers, function(a, b) return a.level < b.level end)
+        elseif method == "Customize upgrade order (Set below)" then
+            table.sort(myTowers, function(a, b)
+                local oa, ob = Globals.SAPUpgradeOrder[a.slot], Globals.SAPUpgradeOrder[b.slot]
+                if oa == ob then return a.level < b.level end
+                return oa < ob
+            end)
+        else
+            table.sort(myTowers, function(a, b)
+                if a.slot == b.slot then return a.level < b.level end
+                return a.slot < b.slot
+            end)
+        end
+
+        local didSomething = false
+        for _, tInfo in ipairs(myTowers) do
+            if not (Globals.AutoUpgradeFarms and Globals.SmartAutoPlace) then break end
+            if maxed[tInfo.tower] then continue end
+            local lim = Globals.SAPUpgradeLimit[tInfo.slot]
+            if lim >= 1 and tInfo.level >= lim then continue end
+
+            if lim == -1 then
+                local othersPending = false
+                for _, otherInfo in ipairs(myTowers) do
+                    if otherInfo.tower ~= tInfo.tower then
+                        local oLim = Globals.SAPUpgradeLimit[otherInfo.slot]
+                        if oLim ~= -1 then
+                            local effLim = (oLim == 0) and 999 or oLim
+                            if otherInfo.level < effLim and not maxed[otherInfo.tower] then
+                                othersPending = true break
+                            end
+                        end
+                    end
+                end
+                if othersPending then continue end
+            end
+
+            deps.SetSAPStatus("Upgrading " .. tInfo.name, "slot " .. tInfo.slot .. ", level " .. tInfo.level)
+            local progressed = deps.TryUpgradeTowerOnce(tInfo.tower)
+            if not progressed then maxed[tInfo.tower] = true
+            else didSomething = true end
+            task.wait(0.15)
+        end
+        if not didSomething then task.wait(0.5) end
+    end
+    Globals.SAPUpgradeLoopRunning = false
+end
+
+function SAPScheduler.GetStatusLabelRef()
+    return statusLabelRef
+end
+
 local DefaultSettings = {
     PathVisuals = true,
     AutoUpgradeSelected = false,
@@ -110,6 +533,10 @@ local DefaultSettings = {
     FocusOnFarms = false,
     AutoUpgradeFarms = false,
 }
+
+for k, v in pairs(SAPScheduler.GetDefaultSettings()) do
+    DefaultSettings[k] = v
+end
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
 local ItemNames = {
@@ -197,6 +624,9 @@ Globals.StartGems = 0
 Globals.CurrentTotalGems = 0
 Globals.AutoUpgradeFarmsRunning = Globals.AutoUpgradeFarmsRunning or false
 Globals.SAPStatus = Globals.SAPStatus or nil
+for k, v in pairs(SAPScheduler.GetGlobals()) do
+    Globals[k] = Globals[k] or v
+end
 
 local LastState = {}
 local executed_actions = {}
@@ -2742,6 +3172,7 @@ function StartSmartAutoPlace()
             if ok and res then
                 APT = res
                 Globals.AutoPlaceTowersModule = res
+                SAPDeps.APT = res
             end
         end
         if not APT then
@@ -2760,149 +3191,53 @@ function StartSmartAutoPlace()
             return
         end
 
-        local curCap, maxCap = GetGlobalTowerInfo()
-        if curCap and maxCap and curCap >= maxCap then
-            SetSAPStatus("Global cap reached", ("%d/%d"):format(curCap, maxCap))
-            Globals.Window:Notify({
-                Title = "Smart Auto Place",
-                Desc  = ("Already at global cap (%d/%d)"):format(curCap, maxCap),
-                Time  = 5, Type = "error"
-            })
-            Globals.SmartAutoPlace = false
-            SetSetting("SmartAutoPlace", false)
-            Globals.SmartAutoPlaceRunning = false
-            return
-        end
-
-        -- FARM PRIORITY
+        -- Farm priority (unchanged, runs first)
         if Globals.FocusOnFarms then
             local hasFarm = false
             for _, t in ipairs(equipped) do
                 if t == "Farm" then hasFarm = true break end
             end
-
             if hasFarm and Globals.SmartAutoPlace then
                 local cur, max = GetGlobalTowerInfo()
                 if cur and max and cur < max then
-                    local farmLimit = 10
-                    if APT.GetPlacementLimit then
-                        farmLimit = APT.GetPlacementLimit("Farm") or 10
-                    end
+                    local farmLimit = APT.GetPlacementLimit and APT.GetPlacementLimit("Farm") or 10
                     if farmLimit == math.huge then farmLimit = 999 end
-
                     local owned = 0
                     local tf = workspace:FindFirstChild("Towers")
                     if tf then
                         for _, m in ipairs(tf:GetChildren()) do
                             local rep = m:FindFirstChild("TowerReplicator")
-                            if rep
-                            and rep:GetAttribute("Name") == "Farm"
-                            and rep:GetAttribute("OwnerId") == LocalPlayer.UserId then
+                            if rep and rep:GetAttribute("Name") == "Farm" and rep:GetAttribute("OwnerId") == LocalPlayer.UserId then
                                 owned += 1
                             end
                         end
                     end
-
                     local want = math.min(10, farmLimit - owned, max - cur)
                     if want > 0 and APT.PlaceFarHoneycomb then
                         SetSAPStatus("Placing farms", ("0 / %d far from path"):format(want))
-                        Globals.Window:Notify({
-                            Title = "Smart Auto Place",
-                            Desc  = ("Farm priority: placing up to %d farm(s) far from path..."):format(want),
-                            Time  = 5, Type = "normal"
-                        })
-
                         local placed = APT.PlaceFarHoneycomb("Farm", want, {
-                            pathName        = "1",
-                            gridStep        = 8,
-                            mapMargin       = 80,
-                            cellAttempts    = 1,
-                            waitBetween     = 0.05,
-                            expandStep      = 0.5,
-                            maxExpandRadius = 5,
-                            expandAttempts  = 3,
-                            expandWait      = 0.05,
-                            maxTotalFails   = 30,
+                            pathName = "1", gridStep = 8, mapMargin = 80,
+                            cellAttempts = 1, waitBetween = 0.05,
+                            expandStep = 0.5, maxExpandRadius = 5,
+                            expandAttempts = 3, expandWait = 0.05,
+                            maxTotalFails = 30,
                         })
-
                         SetSAPStatus("Farms placed", ("%d / %d"):format(placed, want))
-                        Globals.Window:Notify({
-                            Title = "Smart Auto Place",
-                            Desc  = ("Farm priority: placed %d / %d"):format(placed, want),
-                            Time  = 5, Type = placed > 0 and "normal" or "error"
-                        })
                     end
                 end
             end
         end
 
-        if Globals.AutoUpgradeFarms and not Globals.AutoUpgradeFarmsRunning then
-            StartAutoUpgradeFarms()
+        -- Kick off upgrade loop (parallel)
+        if Globals.AutoUpgradeFarms and not Globals.SAPUpgradeLoopRunning then
+            task.spawn(function()
+                SAPScheduler.StartUpgradeLoop(Globals, SAPDeps)
+            end)
         end
 
-        -- NORMAL SWEEP
-        SetSAPStatus("Normal sweep", "Placing remaining loadout")
-        local Asset = require(ReplicatedStorage.Shared.Modules.Asset)
+        -- Run per-slot placement scheduler
+        SAPScheduler.StartPlacement(Globals, SAPDeps)
 
-        for _, towerName in ipairs(equipped) do
-            if not Globals.SmartAutoPlace then break end
-            if towerName ~= "None" then
-                local cur, max = GetGlobalTowerInfo()
-                if cur and max and cur >= max then
-                    SetSAPStatus("Global cap reached", ("%d/%d"):format(cur, max))
-                    break
-                end
-
-                local towerLimit = 1
-                if APT.GetPlacementLimit then
-                    towerLimit = APT.GetPlacementLimit(towerName) or 1
-                end
-
-                local owned = 0
-                local towersFolder = workspace:FindFirstChild("Towers")
-                if towersFolder then
-                    for _, m in ipairs(towersFolder:GetChildren()) do
-                        local rep = m:FindFirstChild("TowerReplicator")
-                        if rep
-                        and rep:GetAttribute("Name") == towerName
-                        and rep:GetAttribute("OwnerId") == LocalPlayer.UserId then
-                            owned += 1
-                        end
-                    end
-                end
-
-                if owned >= towerLimit then continue end
-
-                local class = "0"
-                local ok, asset = pcall(Asset, "Troops", towerName)
-                if ok and asset and asset.Properties then
-                    class = tostring(asset.Properties.Class)
-                end
-
-                local startPct = Globals.GroundPercentage
-                if class == "3" then
-                    startPct = Globals.CliffPercentage
-                end
-
-                local placed = false
-                local pct = startPct
-                while pct <= 100 and not placed and Globals.SmartAutoPlace do
-                    SetSAPStatus("Placing " .. towerName, ("%d%% along path"):format(pct))
-                    local count = APT.PlaceHoneycomb(towerName, pct, 1, {
-                        cellAttempts    = 1,
-                        waitBetween     = 0.02,
-                        maxExpandRadius = 3,
-                        expandStep      = 0.2,
-                        expandAttempts  = 5,
-                        expandWait      = 0.02,
-                    })
-                    if count > 0 then placed = true else pct = pct + 10 end
-                    task.wait(0.1)
-                end
-            end
-        end
-
-        SetSAPStatus("Done", "All towers placed")
         Globals.SmartAutoPlaceRunning = false
     end)
 end
@@ -3479,6 +3814,28 @@ task.spawn(function()
     Towers.ChildAdded:Connect(AutoSetDJSong)
 end)
 
+if not Globals.AutoPlaceTowersModule then
+    local ok, res = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/smartautoplace"))()
+    end)
+    if ok and res then Globals.AutoPlaceTowersModule = res end
+end
+
+local SAPDeps = {
+    RemoteFunc          = RemoteFunc,
+    LocalPlayer         = LocalPlayer,
+    ReplicatedStorage   = ReplicatedStorage,
+    Asset               = require(ReplicatedStorage.Shared.Modules.Asset),
+    SetSetting          = SetSetting,
+    SetSAPStatus        = SetSAPStatus,
+    TryUpgradeTowerOnce = TryUpgradeTowerOnce,
+    GetEquippedTowers   = GetEquippedTowers,
+    GetGlobalTowerInfo  = GetGlobalTowerInfo,
+    GetCurrentWave      = GetCurrentWave,
+    AllTowers           = AllTowers,
+    APT                 = Globals.AutoPlaceTowersModule,
+}
+
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources"))()
 
 Globals.Window = Library:Window({
@@ -3920,20 +4277,14 @@ local Interactive = Globals.Window:Tab({Title = "Interactive", Icon = "mouse-poi
 
     Interactive:Toggle({
         Title = "Focus On Upgrading Farms",
-        Desc  = "Keeps upgrading your Farms to max level while Smart Auto Place is on.",
+        Desc  = "Keeps upgrading your Farms while Smart Auto Place is on (uses SAP upgrade rules).",
         Value = Globals.AutoUpgradeFarms,
         Callback = function(v)
             SetSetting("AutoUpgradeFarms", v)
-            if v and Globals.SmartAutoPlace then
-                StartAutoUpgradeFarms()
-            end
         end
     })
 
-    Globals.SAPStatus = Interactive:Label({
-        Title = "Status: Idle",
-        Desc  = "Waiting to start..."
-    })
+    SAPScheduler.BuildUI(Interactive, Globals, Globals.AutoPlaceTowersModule, SAPDeps)
 
     Interactive:Section({Title = "Tower Controls"})
 
@@ -5057,8 +5408,10 @@ task.spawn(function()
         if Globals.AutoUpgradeSelected and not Globals.AutoUpgradeSelectedRunning then StartAutoUpgradeSelected() end
         if Globals.AutoUpgradeAll and not Globals.AutoUpgradeAllRunning then StartAutoUpgradeAll() end
         if Globals.SmartAutoPlace and not Globals.SmartAutoPlaceRunning then StartSmartAutoPlace() end
-        if Globals.AutoUpgradeFarms and Globals.SmartAutoPlace and not Globals.AutoUpgradeFarmsRunning then
-    StartAutoUpgradeFarms()
+if Globals.AutoUpgradeFarms and Globals.SmartAutoPlace and not Globals.SAPUpgradeLoopRunning then
+    task.spawn(function()
+        SAPScheduler.StartUpgradeLoop(Globals, SAPDeps)
+    end)
 end
 
         if Globals.AutoMedic and not Globals.AutoMedicRunning then
