@@ -223,6 +223,155 @@ local function tryPlaceAt(towerName, pos, attempts, delay)
 	return false
 end
 
+-- ============================== Farthest-from-path helpers ==============================
+
+local function distToPath(pos, pts)
+    local minDist = math.huge
+    for i = 1, #pts - 1 do
+        local a, b = pts[i], pts[i + 1]
+        local ab = b - a
+        local len2 = ab:Dot(ab)
+        local t = 0
+        if len2 > 0 then
+            t = math.clamp((pos - a):Dot(ab) / len2, 0, 1)
+        end
+        local closest = a + ab * t
+        local d = (closest * Vector3.new(1,0,1) - pos * Vector3.new(1,0,1)).Magnitude
+        if d < minDist then minDist = d end
+    end
+    return minDist
+end
+
+local function findFarthestSeed(towerName, pathName, gridStep, margin)
+    gridStep = gridStep or 8
+    margin   = margin   or 80
+
+    local pts = getPathPoints(pathName)
+
+    local minX, maxX = math.huge, -math.huge
+    local minZ, maxZ = math.huge, -math.huge
+    for _, p in ipairs(pts) do
+        if p.X < minX then minX = p.X end
+        if p.X > maxX then maxX = p.X end
+        if p.Z < minZ then minZ = p.Z end
+        if p.Z > maxZ then maxZ = p.Z end
+    end
+
+    local bestPos, bestDist = nil, -1
+    local scanned = 0
+    local boundary = getBoundarySize(towerName)
+
+    for x = minX - margin, maxX + margin, gridStep do
+        for z = minZ - margin, maxZ + margin, gridStep do
+            scanned += 1
+            local probe = Vector3.new(x, 0, z)
+            local onG, gp = isOnGround(probe, towerName)
+            if onG then
+                local d = distToPath(gp, pts)
+                if d > bestDist and spacingOk(gp, boundary) then
+                    bestDist = d
+                    bestPos = gp
+                end
+            end
+            if scanned % 250 == 0 then
+                task.wait()
+            end
+        end
+    end
+
+    return bestPos, bestDist
+end
+
+function AutoPlaceTowers.PlaceFarHoneycomb(towerName, count, options)
+    assert(type(towerName) == "string")
+    assert(type(count) == "number" and count > 0)
+    local opts = options or {}
+
+    local pathName        = opts.pathName        or "1"
+    local gridStep        = opts.gridStep        or 8
+    local mapMargin       = opts.mapMargin       or 80
+    local cellAttempts    = opts.cellAttempts    or 1
+    local waitBetween     = opts.waitBetween     or 0.05
+    local expandStep      = opts.expandStep      or 0.5
+    local maxExpandRadius = opts.maxExpandRadius or 5
+    local expandAttempts  = opts.expandAttempts  or 3
+    local expandWait      = opts.expandWait      or 0.05
+    local maxTotalFails   = opts.maxTotalFails   or 30
+
+    local seed = findFarthestSeed(towerName, pathName, gridStep, mapMargin)
+    if not seed then
+        warn("[PlaceFarHoneycomb] No valid seed point found.")
+        return 0, {}
+    end
+
+    local newBoundary = getBoundarySize(towerName)
+    local d = 2 * newBoundary
+
+    local e1 = Vector3.new(d, 0, 0)
+    local e2 = Vector3.new(d / 2, 0, d * math.sqrt(3) / 2)
+
+    local estimatedMaxRadius = math.ceil(math.sqrt(count)) * d + (d * 2)
+    local N = math.ceil(estimatedMaxRadius / d) + 1
+    local candidates = {}
+    for i = -N, N do
+        for j = -N, N do
+            local offset = e1 * i + e2 * j
+            table.insert(candidates, { offset = offset, dist = offset.Magnitude })
+        end
+    end
+    table.sort(candidates, function(a, b) return a.dist < b.dist end)
+
+    local placed = 0
+    local placements = {}
+    local placedCircles = {}
+    local totalFails = 0
+
+    for _, c in ipairs(candidates) do
+        if placed >= count then break end
+        if totalFails >= maxTotalFails then break end
+
+        local targetPos = seed + c.offset
+        local onG, gp = isOnGround(targetPos, towerName)
+        local finalPos = nil
+
+        if onG and spacingOk(gp, newBoundary, placedCircles) then
+            if tryPlaceAt(towerName, gp, cellAttempts, waitBetween) then
+                finalPos = gp
+            end
+        end
+
+        if not finalPos then
+            for r = expandStep, maxExpandRadius, expandStep do
+                local cnt = math.max(8, math.floor((2 * math.pi * r) / expandStep))
+                local found = false
+                for k = 0, cnt - 1 do
+                    local ang = (2 * math.pi / cnt) * k
+                    local test = targetPos + Vector3.new(math.cos(ang) * r, 0, math.sin(ang) * r)
+                    local onG2, gp2 = isOnGround(test, towerName)
+                    if onG2 and spacingOk(gp2, newBoundary, placedCircles) then
+                        if tryPlaceAt(towerName, gp2, expandAttempts, expandWait) then
+                            finalPos = gp2
+                            found = true
+                            break
+                        end
+                    end
+                end
+                if found then break end
+            end
+        end
+
+        if finalPos then
+            placed += 1
+            table.insert(placements, finalPos)
+            table.insert(placedCircles, { pos = finalPos, boundary = newBoundary })
+        else
+            totalFails += 1
+        end
+    end
+
+    return placed, placements
+end
+
 -- ============================== Core ==============================
 
 function AutoPlaceTowers.Run(towerName, count, options)
