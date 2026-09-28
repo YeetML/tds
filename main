@@ -76,6 +76,16 @@ function SAPScheduler.GetDefaultSettings()
         SAPUseOneWaveAll  = false,
         SAPGlobalWave     = 0,
         SAPIgnoreUnits    = {},
+        SAPSlotPaused     = {false, false, false, false, false},
+        SAPPauseMode      = {"Both", "Both", "Both", "Both", "Both"},
+        SAPUpgradeWave    = {0, 0, 0, 0, 0},
+        SAPUseOneUpgradeWaveAll = false,
+        SAPGlobalUpgradeWave = 0,
+        SAPTarget2        = {"Default", "Default", "Default", "Default", "Default"},
+        SAPTargetSwapWave = {0, 0, 0, 0, 0},
+        SAPCashReserve    = 0,
+        SAPReserveMode    = "Upgrades only",
+        SAPMaxUpgradesPerWave = 0,
     }
 end
 
@@ -162,7 +172,7 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
     })
 
     ParentTab:Section({Title = "Placement — Target"})
-    ParentTab:Label({Title = "Rules", Desc = "Applied to each unit as it lands. Farm units ignore targeting."})
+    ParentTab:Label({Title = "Rules", Desc = "Applied to each unit as it lands. Farm units ignore targeting. Swap wave 0 never swaps."})
     for i = 1, 5 do
         ParentTab:Dropdown({
             Title = "Target Priority for Slot " .. i,
@@ -171,6 +181,24 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
             Callback = function(val)
                 Globals.SAPTarget[i] = val
                 if depsTable.SetSetting then depsTable.SetSetting("SAPTarget", Globals.SAPTarget) end
+            end
+        })
+        ParentTab:Dropdown({
+            Title = "Later Target for Slot " .. i,
+            List = {"Default", "First", "Last", "Strongest", "Weakest", "Closest", "Farthest", "Random"},
+            Value = Globals.SAPTarget2[i],
+            Callback = function(val)
+                Globals.SAPTarget2[i] = val
+                if depsTable.SetSetting then depsTable.SetSetting("SAPTarget2", Globals.SAPTarget2) end
+            end
+        })
+        ParentTab:Slider({
+            Title = "Swap Target at Wave for Slot " .. i,
+            Min = 0, Max = 60, Rounding = 0,
+            Value = Globals.SAPTargetSwapWave[i],
+            Callback = function(val)
+                Globals.SAPTargetSwapWave[i] = val
+                if depsTable.SetSetting then depsTable.SetSetting("SAPTargetSwapWave", Globals.SAPTargetSwapWave) end
             end
         })
     end
@@ -183,6 +211,16 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
         Callback = function(val)
             Globals.SAPUpgradeMethod = val
             if depsTable.SetSetting then depsTable.SetSetting("SAPUpgradeMethod", val) end
+        end
+    })
+    ParentTab:Slider({
+        Title = "Max upgrades per wave",
+        Desc = "0 means unlimited.",
+        Min = 0, Max = 50, Rounding = 0,
+        Value = Globals.SAPMaxUpgradesPerWave or 0,
+        Callback = function(val)
+            Globals.SAPMaxUpgradesPerWave = val
+            if depsTable.SetSetting then depsTable.SetSetting("SAPMaxUpgradesPerWave", val) end
         end
     })
 
@@ -228,12 +266,78 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
         })
     end
 
+    ParentTab:Section({Title = "Upgrade — Wave"})
+    ParentTab:Label({Title = "Rules", Desc = "Only start upgrading after the set wave. 0 always upgrades."})
+
+    local globalUpgradeWaveSlider, perSlotUpgradeWaveSliders = nil, {}
+
+    globalUpgradeWaveSlider = ParentTab:Slider({
+        Title = "Upgrade every slot at wave",
+        Min = 0, Max = 60, Rounding = 0,
+        Value = Globals.SAPGlobalUpgradeWave,
+        Callback = function(val)
+            Globals.SAPGlobalUpgradeWave = val
+            if depsTable.SetSetting then depsTable.SetSetting("SAPGlobalUpgradeWave", val) end
+        end
+    })
+    globalUpgradeWaveSlider:SetVisible(Globals.SAPUseOneUpgradeWaveAll)
+
+    for i = 1, 5 do
+        perSlotUpgradeWaveSliders[i] = ParentTab:Slider({
+            Title = "Upgrade Wave for Slot " .. i,
+            Min = 0, Max = 60, Rounding = 0,
+            Value = Globals.SAPUpgradeWave[i],
+            Callback = function(val)
+                Globals.SAPUpgradeWave[i] = val
+                if depsTable.SetSetting then depsTable.SetSetting("SAPUpgradeWave", Globals.SAPUpgradeWave) end
+            end
+        })
+        perSlotUpgradeWaveSliders[i]:SetVisible(not Globals.SAPUseOneUpgradeWaveAll)
+    end
+
+    ParentTab:Toggle({
+        Title = "Use one upgrade wave for every slot",
+        Desc = "",
+        Value = Globals.SAPUseOneUpgradeWaveAll,
+        Callback = function(val)
+            Globals.SAPUseOneUpgradeWaveAll = val
+            if depsTable.SetSetting then depsTable.SetSetting("SAPUseOneUpgradeWaveAll", val) end
+            if globalUpgradeWaveSlider then globalUpgradeWaveSlider:SetVisible(val) end
+            for i = 1, 5 do
+                if perSlotUpgradeWaveSliders[i] then perSlotUpgradeWaveSliders[i]:SetVisible(not val) end
+            end
+        end
+    })
+
     ParentTab:Section({Title = "Live Status"})
     statusLabelRef = ParentTab:Label({Title = "Status: Idle", Desc = ""})
     Globals.SAPStatus = statusLabelRef
 
     local coinsLabel = ParentTab:Label({Title = "Cash: $0", Desc = ""})
     local waveLabel = ParentTab:Label({Title = "Wave: —", Desc = ""})
+
+    ParentTab:Label({Title = "Slot pause", Desc = "Freezes place and/or upgrade for that slot. Independent of -1 / -2 limits."})
+    for i = 1, 5 do
+        ParentTab:Toggle({
+            Title = "Pause Slot " .. i,
+            Desc = "",
+            Value = Globals.SAPSlotPaused[i],
+            Callback = function(val)
+                Globals.SAPSlotPaused[i] = val
+                if depsTable.SetSetting then depsTable.SetSetting("SAPSlotPaused", Globals.SAPSlotPaused) end
+            end
+        })
+        ParentTab:Dropdown({
+            Title = "Pause Mode for Slot " .. i,
+            List = {"Place", "Upgrade", "Both"},
+            Value = Globals.SAPPauseMode[i] or "Both",
+            Callback = function(val)
+                if type(val) == "table" then val = val[1] end
+                Globals.SAPPauseMode[i] = val or "Both"
+                if depsTable.SetSetting then depsTable.SetSetting("SAPPauseMode", Globals.SAPPauseMode) end
+            end
+        })
+    end
 
     task.spawn(function()
         while task.wait(0.5) do
@@ -248,6 +352,28 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
             pcall(function() waveLabel:SetTitle("Wave: " .. wave) end)
         end
     end)
+
+    ParentTab:Section({Title = "Economy"})
+    ParentTab:Slider({
+        Title = "Cash Reserve",
+        Desc = "Keep at least this much cash. 0 disables the reserve.",
+        Min = 0, Max = 50000, Rounding = 0,
+        Value = Globals.SAPCashReserve,
+        Callback = function(val)
+            Globals.SAPCashReserve = val
+            if depsTable.SetSetting then depsTable.SetSetting("SAPCashReserve", val) end
+        end
+    })
+    ParentTab:Dropdown({
+        Title = "Reserve Mode",
+        List = {"Off", "Upgrades only", "Place and upgrade"},
+        Value = Globals.SAPReserveMode or "Upgrades only",
+        Callback = function(val)
+            if type(val) == "table" then val = val[1] end
+            Globals.SAPReserveMode = val or "Upgrades only"
+            if depsTable.SetSetting then depsTable.SetSetting("SAPReserveMode", Globals.SAPReserveMode) end
+        end
+    })
 
     ParentTab:Section({Title = "Equipped Units"})
     ParentTab:Dropdown({
@@ -320,6 +446,11 @@ function SAPScheduler.StartPlacement(Globals, deps)
     for _, slotInfo in ipairs(slots) do
         if not Globals.SmartAutoPlace then return end   
         local i, name = slotInfo.index, slotInfo.name
+        local pauseMode = (Globals.SAPPauseMode and Globals.SAPPauseMode[i]) or "Both"
+        if Globals.SAPSlotPaused and Globals.SAPSlotPaused[i] and (pauseMode == "Place" or pauseMode == "Both") then
+            deps.SetSAPStatus("Paused slot " .. i, name)
+            continue
+        end
         local cur, max = deps.GetGlobalTowerInfo()
         if cur and max and cur >= max then
             deps.SetSAPStatus("Global cap reached", cur .. " / " .. max)
@@ -382,6 +513,24 @@ end
             end
         end
 
+        local reserveMode = Globals.SAPReserveMode or "Upgrades only"
+        local reserve = Globals.SAPCashReserve or 0
+        if reserveMode == "Place and upgrade" and reserve > 0 then
+            local cash = GetCash()
+            local okCost, aCost = pcall(deps.Asset, "Troops", name)
+            local placeCost = okCost and aCost and aCost.Properties and aCost.Properties.Cost or nil
+            local blocked = false
+            if type(placeCost) == "number" then
+                blocked = (cash - placeCost) < reserve
+            else
+                blocked = cash < reserve
+            end
+            if blocked then
+                deps.SetSAPStatus("Holding cash", name .. " reserved")
+                continue
+            end
+        end
+
         if name == "Farm" and deps.APT.PlaceFarHoneycomb then
             deps.APT.PlaceFarHoneycomb("Farm", want, {
                 pathName = "1", gridStep = 8, mapMargin = 80,
@@ -410,6 +559,10 @@ end
         task.wait(0.5)
 
         local tStr = Globals.SAPTarget[i]
+        local swapWave = (Globals.SAPTargetSwapWave and Globals.SAPTargetSwapWave[i]) or 0
+        if swapWave > 0 and GetCurrentWaveSafe(0) >= swapWave then
+            tStr = (Globals.SAPTarget2 and Globals.SAPTarget2[i]) or tStr
+        end
         local isNoTargetTower = (name == "Farm" or name == "Military Base" or name == "Mercenary Base" or name == "DJ Booth")
         if tStr ~= "Default" and not isNoTargetTower and tf then
             for _, t in ipairs(tf:GetChildren()) do
@@ -431,8 +584,16 @@ end
 function SAPScheduler.StartUpgradeLoop(Globals, deps)
     Globals.SAPUpgradeLoopRunning = true
     Globals.SAPMaxed = Globals.SAPMaxed or {}
+    local upgradesThisWave = 0
+    local countedWave = GetCurrentWaveSafe(0)
 
     while Globals.AutoUpgradeFarms and Globals.SmartAutoPlace do
+        local wNow = GetCurrentWaveSafe(0)
+        if wNow ~= countedWave then
+            countedWave = wNow
+            upgradesThisWave = 0
+        end
+
         for tw in pairs(Globals.SAPMaxed) do
             if not tw.Parent then Globals.SAPMaxed[tw] = nil end
         end
@@ -498,8 +659,24 @@ function SAPScheduler.StartUpgradeLoop(Globals, deps)
                 continue
             end
             if Globals.SAPMaxed[tInfo.tower] then continue end
+            local pauseMode = (Globals.SAPPauseMode and Globals.SAPPauseMode[tInfo.slot]) or "Both"
+            if Globals.SAPSlotPaused and Globals.SAPSlotPaused[tInfo.slot] and (pauseMode == "Upgrade" or pauseMode == "Both") then
+                continue
+            end
+            local upgradeWaveGate = Globals.SAPUseOneUpgradeWaveAll and Globals.SAPGlobalUpgradeWave or (Globals.SAPUpgradeWave and Globals.SAPUpgradeWave[tInfo.slot]) or 0
+            if upgradeWaveGate > 0 then
+                local w = GetCurrentWaveSafe(0)
+                if w < upgradeWaveGate then continue end
+            end
             local lim = Globals.SAPUpgradeLimit[tInfo.slot]
             if lim >= 1 and tInfo.level >= lim then continue end
+
+            local maxPerWave = Globals.SAPMaxUpgradesPerWave or 0
+            if maxPerWave > 0 and upgradesThisWave >= maxPerWave then
+                deps.SetSAPStatus("Upgrade cap this wave", tostring(upgradesThisWave) .. " / " .. tostring(maxPerWave))
+                task.wait(0.15)
+                continue
+            end
 
             if lim == -1 then
                 local othersPending = false
@@ -524,7 +701,12 @@ function SAPScheduler.StartUpgradeLoop(Globals, deps)
                 deps.SetSAPStatus("Upgrading " .. tInfo.name,
                     "slot " .. tInfo.slot .. ", level " .. tInfo.level .. " -> " .. tostring((tInfo.level or 0) + 1))
                 didSomething = true
+                upgradesThisWave = upgradesThisWave + 1
                 local tgt = Globals.SAPTarget[tInfo.slot]
+                local swapWave = (Globals.SAPTargetSwapWave and Globals.SAPTargetSwapWave[tInfo.slot]) or 0
+                if swapWave > 0 and GetCurrentWaveSafe(0) >= swapWave then
+                    tgt = (Globals.SAPTarget2 and Globals.SAPTarget2[tInfo.slot]) or tgt
+                end
                 local isNoTargetTower = (tInfo.name == "Farm" or tInfo.name == "Military Base"
                     or tInfo.name == "Mercenary Base" or tInfo.name == "DJ Booth")
                 if tgt and tgt ~= "Default" and not isNoTargetTower then
@@ -615,6 +797,16 @@ local DefaultSettings = {
     CliffPercentage = 10,
     FocusOnFarms = false,
     AutoUpgradeFarms = false,
+    SAPSlotPaused = {false, false, false, false, false},
+    SAPPauseMode = {"Both", "Both", "Both", "Both", "Both"},
+    SAPUpgradeWave = {0, 0, 0, 0, 0},
+    SAPUseOneUpgradeWaveAll = false,
+    SAPGlobalUpgradeWave = 0,
+    SAPTarget2 = {"Default", "Default", "Default", "Default", "Default"},
+    SAPTargetSwapWave = {0, 0, 0, 0, 0},
+    SAPCashReserve = 0,
+    SAPReserveMode = "Upgrades only",
+    SAPMaxUpgradesPerWave = 0,
 }
 
 for k, v in pairs(SAPScheduler.GetDefaultSettings()) do
@@ -3305,6 +3497,13 @@ function TryUpgradeTowerOnce(tower, pathOverride)
     if cash < cost then
         -- Not enough cash — the loop will retry later
         return "broke", before
+    end
+    local reserveMode = Globals.SAPReserveMode or "Upgrades only"
+    local reserve = Globals.SAPCashReserve or 0
+    if reserve > 0 and (reserveMode == "Upgrades only" or reserveMode == "Place and upgrade") then
+        if (cash - cost) < reserve then
+            return "broke", before
+        end
     end
 
     pcall(function()
