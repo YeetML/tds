@@ -1876,7 +1876,7 @@ function Library:Window(p)
 		addToTheme('Text & Icon', Title_3)
 
 		UIListLayout_9.Parent = Func
-		UIListLayout_9.Padding = UDim.new(0,8)
+		UIListLayout_9.Padding = UDim.new(0,5)
 		UIListLayout_9.FillDirection = Enum.FillDirection.Horizontal
 		UIListLayout_9.SortOrder = Enum.SortOrder.LayoutOrder
 		UIListLayout_9.VerticalAlignment = Enum.VerticalAlignment.Center
@@ -1895,7 +1895,7 @@ function Library:Window(p)
 		addToTheme('Text & Icon', ImageLabel_2)
 
 		UIPadding_14.Parent = Func
-		UIPadding_14.PaddingLeft = UDim.new(0,8)
+		UIPadding_14.PaddingLeft = UDim.new(0,5)
 
 		UIStroke_2.Parent = Title_3
 		UIStroke_2.Color = Color3.fromRGB(24,24,31)
