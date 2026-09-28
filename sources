@@ -1205,7 +1205,7 @@ function Library:Window(p)
 
 	UIPadding_2.Parent = Page_1
 	UIPadding_2.PaddingBottom = UDim.new(0,5)
-	UIPadding_2.PaddingLeft = UDim.new(0,178)
+	UIPadding_2.PaddingLeft = UDim.new(0,140)
 	UIPadding_2.PaddingRight = UDim.new(0,5)
 	UIPadding_2.PaddingTop = UDim.new(0,45)
 
@@ -1423,7 +1423,7 @@ function Library:Window(p)
 	SidebarTopLine.BorderColor3 = Color3.fromRGB(0,0,0)
 	SidebarTopLine.BorderSizePixel = 0
 	SidebarTopLine.Position = UDim2.new(0, 0,0, 42)
-	SidebarTopLine.Size = UDim2.new(0, 170,0, 1)
+	SidebarTopLine.Size = UDim2.new(0, 130,0, 1)
 	SidebarTopLine.ZIndex = 5
 
 	addToTheme('Page', SidebarTopLine)
@@ -1708,7 +1708,7 @@ function Library:Window(p)
 	Frame_6.BackgroundTransparency = 1
 	Frame_6.BorderColor3 = Color3.fromRGB(0,0,0)
 	Frame_6.BorderSizePixel = 0
-	Frame_6.Size = UDim2.new(0, 168,1, 0)
+	Frame_6.Size = UDim2.new(0, 130,1, 0)
 	Frame_6.Visible = true
 
 	ScrollingFrame_2.Name = "ScrollingFrame"
@@ -1785,7 +1785,7 @@ function Library:Window(p)
 	SidebarVerticalLine.BackgroundColor3 = Color3.fromRGB(24,24,31)
 	SidebarVerticalLine.BorderColor3 = Color3.fromRGB(0,0,0)
 	SidebarVerticalLine.BorderSizePixel = 0
-	SidebarVerticalLine.Position = UDim2.new(0, 170,0, 42)
+	SidebarVerticalLine.Position = UDim2.new(0, 132,0, 42)
 	SidebarVerticalLine.Size = UDim2.new(0, 1,1, -42)
 	SidebarVerticalLine.ZIndex = 5
 
@@ -1914,8 +1914,8 @@ function Library:Window(p)
 		InPage_1.BackgroundColor3 = Color3.fromRGB(24,24,31)
 		InPage_1.BorderColor3 = Color3.fromRGB(0,0,0)
 		InPage_1.BorderSizePixel = 0
-		InPage_1.Size = UDim2.new(0.9, 0,1, 0)
-		InPage_1.Position = UDim2.new(0.55, 0, 0.5, 0)
+		InPage_1.Size = UDim2.new(1, 0, 1, 0)
+		InPage_1.Position = UDim2.new(0.5, 0, 0.5, 0)
 		InPage_1.Visible = false
 
 		addToTheme('Page', InPage_1)
