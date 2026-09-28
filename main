@@ -3481,7 +3481,9 @@ function GetCash()
         return PlayerGui.ReactUniversalHotbar.Frame.values.cash.amount.Text
     end)
     if ok and type(raw) == "string" and raw ~= "" then
-        local n = tonumber(raw:gsub("[^%d]", ""))
+        -- Wrap gsub's two returns — assigning to a local forces single-value
+        local digits = raw:gsub("[^%d]", "")
+        local n = tonumber(digits)
         if n then return n end
     end
 
