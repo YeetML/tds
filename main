@@ -5240,7 +5240,7 @@ Globals.Window:Line()
 Globals.Logger = Globals.Window:Tab({Title = "Logger", Icon = "terminal"}) do
     Globals.Logger = Globals.Logger:CreateLogger({
         Title = "STRATEGY LOGGER:",
-        Size = UDim2.new(0, 330, 0, 300)
+        Size = UDim2.new(1, 0, 0, 400)
     })
 end
 
