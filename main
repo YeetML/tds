@@ -301,7 +301,7 @@ function SAPScheduler.StartPlacement(Globals, deps)
             for _, ign in ipairs(Globals.SAPIgnoreUnits or {}) do
                 if ign == name then ignored = true break end
             end
-            if not ignored and Globals.SAPLimit[i] ~= -1 then
+            if not ignored and Globals.SAPLimit[i] ~= -1 and name ~= "Farm" then
                 table.insert(slots, {index = i, name = name, order = Globals.SAPOrder[i]})
             end
         end
@@ -3280,17 +3280,26 @@ function StartSmartAutoPlace()
             return
         end
 
-        -- Farm priority (unchanged, runs first)
-        if Globals.FocusOnFarms then
+        do
             local hasFarm = false
-            for _, t in ipairs(equipped) do
-                if t == "Farm" then hasFarm = true break end
+            local farmSlot = nil
+            for i, t in ipairs(equipped) do
+                if t == "Farm" then hasFarm = true; farmSlot = i; break end
             end
+            if hasFarm and farmSlot and Globals.SAPLimit and Globals.SAPLimit[farmSlot] == -1 then
+                hasFarm = false
+            end
+
             if hasFarm and Globals.SmartAutoPlace then
                 local cur, max = GetGlobalTowerInfo()
                 if cur and max and cur < max then
                     local farmLimit = APT.GetPlacementLimit and APT.GetPlacementLimit("Farm") or 10
                     if farmLimit == math.huge then farmLimit = 999 end
+                    local slotLimit = farmSlot and Globals.SAPLimit and Globals.SAPLimit[farmSlot] or 0
+                    if slotLimit > 0 then
+                        farmLimit = math.min(farmLimit, slotLimit)
+                    end
+
                     local owned = 0
                     local tf = workspace:FindFirstChild("Towers")
                     if tf then
@@ -3301,6 +3310,7 @@ function StartSmartAutoPlace()
                             end
                         end
                     end
+
                     local want = math.min(10, farmLimit - owned, max - cur)
                     if want > 0 and APT.PlaceFarHoneycomb then
                         SetSAPStatus("Placing farms", ("0 / %d far from path"):format(want))
@@ -3317,14 +3327,12 @@ function StartSmartAutoPlace()
             end
         end
 
-        -- Kick off upgrade loop (parallel)
         if Globals.AutoUpgradeFarms and not Globals.SAPUpgradeLoopRunning then
             task.spawn(function()
                 SAPScheduler.StartUpgradeLoop(Globals, SAPDeps)
             end)
         end
 
-        -- Run per-slot placement scheduler
         SAPScheduler.StartPlacement(Globals, SAPDeps)
 
         Globals.SmartAutoPlaceRunning = false
