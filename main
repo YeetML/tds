@@ -301,7 +301,7 @@ function SAPScheduler.StartPlacement(Globals, deps)
             for _, ign in ipairs(Globals.SAPIgnoreUnits or {}) do
                 if ign == name then ignored = true break end
             end
-            if not ignored and Globals.SAPLimit[i] ~= -1 and name ~= "Farm" then
+            if not ignored and Globals.SAPLimit[i] ~= -1 then
                 table.insert(slots, {index = i, name = name, order = Globals.SAPOrder[i]})
             end
         end
@@ -366,10 +366,20 @@ end
             end
         end
 
-        deps.APT.PlaceHoneycomb(name, startPct, want, {
-            cellAttempts = 1, waitBetween = 0.02, maxExpandRadius = 3,
-            expandStep = 0.2, expandAttempts = 5, expandWait = 0.02
-        })
+        if name == "Farm" and deps.APT.PlaceFarHoneycomb then
+            deps.APT.PlaceFarHoneycomb("Farm", want, {
+                pathName = "1", gridStep = 8, mapMargin = 80,
+                cellAttempts = 1, waitBetween = 0.05,
+                expandStep = 0.5, maxExpandRadius = 5,
+                expandAttempts = 3, expandWait = 0.05,
+                maxTotalFails = 30,
+            })
+        else
+            deps.APT.PlaceHoneycomb(name, startPct, want, {
+                cellAttempts = 1, waitBetween = 0.02, maxExpandRadius = 3,
+                expandStep = 0.2, expandAttempts = 5, expandWait = 0.02
+            })
+        end
         task.wait(0.5)
 
         local tStr = Globals.SAPTarget[i]
@@ -3280,12 +3290,19 @@ function StartSmartAutoPlace()
             return
         end
 
-        do
+        if Globals.FocusOnFarms then
             local hasFarm = false
             local farmSlot = nil
             for i, t in ipairs(equipped) do
                 if t == "Farm" then hasFarm = true; farmSlot = i; break end
             end
+
+            if hasFarm then
+                for _, ign in ipairs(Globals.SAPIgnoreUnits or {}) do
+                    if ign == "Farm" then hasFarm = false; break end
+                end
+            end
+
             if hasFarm and farmSlot and Globals.SAPLimit and Globals.SAPLimit[farmSlot] == -1 then
                 hasFarm = false
             end
