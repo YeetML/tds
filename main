@@ -68,7 +68,7 @@ function SAPScheduler.GetDefaultSettings()
         SAPOrder          = {1, 2, 3, 4, 5},
         SAPLimit          = {0, 0, 0, 0, 0},
         SAPWave           = {0, 0, 0, 0, 0},
-        SAPTarget         = {"Default", "Default", "Default", "Default", "Default"},
+        SAPTarget         = {"First", "First", "First", "First", "First"},
         SAPUpgradeLimit   = {0, 0, 0, 0, 0},
         SAPUpgradeOrder   = {1, 2, 3, 4, 5},
         SAPUpgradePath    = {1, 1, 1, 1, 1},
@@ -81,7 +81,7 @@ function SAPScheduler.GetDefaultSettings()
         SAPUpgradeWave    = {0, 0, 0, 0, 0},
         SAPUseOneUpgradeWaveAll = false,
         SAPGlobalUpgradeWave = 0,
-        SAPTarget2        = {"Default", "Default", "Default", "Default", "Default"},
+        SAPTarget2        = {"First", "First", "First", "First", "First"},
         SAPTargetSwapWave = {0, 0, 0, 0, 0},
         SAPCashReserve    = 0,
         SAPReserveMode    = "Upgrades only",
@@ -176,7 +176,7 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
     for i = 1, 5 do
         ParentTab:Dropdown({
             Title = "Target Priority for Slot " .. i,
-            List = {"Default", "First", "Last", "Strongest", "Weakest", "Closest", "Farthest", "Random"},
+            List = {"First", "Last", "Strongest", "Weakest", "Closest", "Farthest", "Random"},
             Value = Globals.SAPTarget[i],
             Callback = function(val)
                 Globals.SAPTarget[i] = val
@@ -185,7 +185,7 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
         })
         ParentTab:Dropdown({
             Title = "Later Target for Slot " .. i,
-            List = {"Default", "First", "Last", "Strongest", "Weakest", "Closest", "Farthest", "Random"},
+            List = {"First", "Last", "Strongest", "Weakest", "Closest", "Farthest", "Random"},
             Value = Globals.SAPTarget2[i],
             Callback = function(val)
                 Globals.SAPTarget2[i] = val
@@ -864,7 +864,7 @@ local DefaultSettings = {
     SAPUpgradeWave = {0, 0, 0, 0, 0},
     SAPUseOneUpgradeWaveAll = false,
     SAPGlobalUpgradeWave = 0,
-    SAPTarget2 = {"Default", "Default", "Default", "Default", "Default"},
+    SAPTarget2 = {"First", "First", "First", "First", "First"},
     SAPTargetSwapWave = {0, 0, 0, 0, 0},
     SAPCashReserve = 0,
     SAPReserveMode = "Upgrades only",
