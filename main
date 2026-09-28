@@ -232,7 +232,7 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
     statusLabelRef = ParentTab:Label({Title = "Status: Idle", Desc = ""})
     Globals.SAPStatus = statusLabelRef
 
-    local coinsLabel = ParentTab:Label({Title = "Coins: 0", Desc = ""})
+    local coinsLabel = ParentTab:Label({Title = "Cash: $0", Desc = ""})
     local waveLabel = ParentTab:Label({Title = "Wave: —", Desc = ""})
 
     task.spawn(function()
@@ -243,16 +243,8 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
             end)
             if okW and w then wave = w end
 
-            local coins = 0
-            local cObj = LocalPlayer:FindFirstChild("Coins") or LocalPlayer:FindFirstChild("Cash")
-            if cObj then
-                local okC, v = pcall(function() return cObj.Value end)
-                if okC and v then coins = v end
-            else
-                coins = LocalPlayer:GetAttribute("Coins") or LocalPlayer:GetAttribute("Cash") or 0
-            end
-
-            pcall(function() coinsLabel:SetTitle("Coins: " .. tostring(coins)) end)
+            local cash = GetCash()
+            pcall(function() coinsLabel:SetTitle("Cash: $" .. tostring(cash)) end)
             pcall(function() waveLabel:SetTitle("Wave: " .. wave) end)
         end
     end)
@@ -3229,6 +3221,29 @@ local function SAPGetAsset()
     return _SAPAsset
 end
 
+function GetCash()
+    -- Primary source: the hotbar cash display (e.g. "$9,999,999,999")
+    local ok, raw = pcall(function()
+        local node = PlayerGui.ReactUniversalHotbar.Frame.values.cash.amount
+        return node.Value or node.Text
+    end)
+    if ok and type(raw) == "string" then
+        local digits = raw:gsub("[^%d]", "")
+        local n = tonumber(digits)
+        if n then return n end
+    end
+
+    -- Fallbacks in case the UI hasn't loaded yet
+    local cObj = LocalPlayer:FindFirstChild("Cash") or LocalPlayer:FindFirstChild("Coins")
+    if cObj and typeof(cObj) == "Instance" then
+        local ok2, v = pcall(function() return cObj.Value end)
+        if ok2 and type(v) == "number" then return v end
+    end
+    local attr = LocalPlayer:GetAttribute("Cash") or LocalPlayer:GetAttribute("Coins")
+    if type(attr) == "number" then return attr end
+    return 0
+end
+
 -- Returns the cost of the NEXT upgrade for a tower, or nil if truly maxed.
 -- Also returns the tower's current level as the 2nd value.
 function GetNextUpgradeCost(tower)
@@ -3277,12 +3292,6 @@ function GetNextUpgradeCost(tower)
     return nextUp.Cost, level
 end
 
--- Upgrade once with full coin awareness.
--- Returns: status, newLevel
---   "upgraded" = success, level went up
---   "maxed"    = no next upgrade exists (truly maxed)
---   "broke"    = not enough coins, DO NOT blacklist
---   "failed"   = had coins but upgrade was refused → treat as maxed
 function TryUpgradeTowerOnce(tower, pathOverride)
     local rep = tower and tower:FindFirstChild("TowerReplicator")
     if not rep then return "failed", 0 end
@@ -3292,12 +3301,9 @@ function TryUpgradeTowerOnce(tower, pathOverride)
         return "maxed", before or (rep:GetAttribute("Upgrade") or 0)
     end
 
-    local coins = 0
-    local cObj = LocalPlayer:FindFirstChild("Coins")
-    if cObj then coins = cObj.Value or 0 end
-
-    if coins < cost then
-        -- Not enough money — the loop will retry later
+    local cash = GetCash()
+    if cash < cost then
+        -- Not enough cash — the loop will retry later
         return "broke", before
     end
 
@@ -3312,7 +3318,7 @@ function TryUpgradeTowerOnce(tower, pathOverride)
         return "upgraded", after
     end
 
-    -- Had enough coins, still failed → genuinely maxed (or server refused)
+    -- Had enough cash, still failed → genuinely maxed (or server refused)
     return "maxed", after
 end
 
