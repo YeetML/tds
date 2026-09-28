@@ -494,6 +494,58 @@ end
         end
         local want = limit - ownedCount
 
+        -- Fair-share budget: reserve room for later slots so an unlimited tower
+        -- (e.g. Minigunner, natural 999) can't eat the entire global cap.
+        if cur and max and max > 0 then
+            local globalRoom = math.max(0, max - cur)
+            if globalRoom > 0 then
+                local laterSlots = {}
+                for _, otherSI in ipairs(slots) do
+                    if otherSI.order > slotInfo.order then
+                        table.insert(laterSlots, otherSI)
+                    end
+                end
+                local pendingCount = #laterSlots + 1
+                local fairShare = math.floor(globalRoom / pendingCount)
+
+                local reserved = 0
+                for _, otherSI in ipairs(laterSlots) do
+                    local oName = otherSI.name
+                    local oExplicit = Globals.SAPLimit[otherSI.index]
+                    if oExplicit ~= -1 then
+                        local oNat = (deps.APT and deps.APT.GetPlacementLimit and deps.APT.GetPlacementLimit(oName)) or 1
+                        if oNat == math.huge then oNat = 999 end
+                        local oLim
+                        if oExplicit == 0 then oLim = oNat
+                        else oLim = math.min(oExplicit, oNat) end
+                        local oOwned = 0
+                        if tf then
+                            for _, t in ipairs(tf:GetChildren()) do
+                                local rep = t:FindFirstChild("TowerReplicator")
+                                if rep and rep:GetAttribute("Name") == oName
+                                   and rep:GetAttribute("OwnerId") == deps.LocalPlayer.UserId then
+                                    oOwned = oOwned + 1
+                                end
+                            end
+                        end
+                        local oNeed = math.max(0, oLim - oOwned)
+                        reserved = reserved + math.min(oNeed, fairShare)
+                    end
+                end
+
+                local capForThisSlot = math.max(0, globalRoom - reserved)
+                if want > capForThisSlot then
+                    want = capForThisSlot
+                    deps.SetSAPStatus("Capping " .. name, "reserved " .. reserved .. " for later slots")
+                end
+            end
+        end
+
+        if want <= 0 then
+            deps.SetSAPStatus(name .. " no room", "deferred")
+            continue
+        end
+
         local waveGate = Globals.SAPUseOneWaveAll and Globals.SAPGlobalWave or Globals.SAPWave[i]
         if waveGate > 0 then
             while true do
@@ -4272,6 +4324,8 @@ SAPDeps = {
     AllTowers           = AllTowers,
     APT                 = Globals.AutoPlaceTowersModule,    
 }
+getgenv().SAPDeps = SAPDeps
+_G.SAPDeps = SAPDeps
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources"))()
 
