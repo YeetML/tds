@@ -71,6 +71,7 @@ function SAPScheduler.GetDefaultSettings()
         SAPTarget         = {"Default", "Default", "Default", "Default", "Default"},
         SAPUpgradeLimit   = {0, 0, 0, 0, 0},
         SAPUpgradeOrder   = {1, 2, 3, 4, 5},
+        SAPUpgradePath    = {1, 1, 1, 1, 1},
         SAPUpgradeMethod  = "Hotbar left to right (until Max)",
         SAPUseOneWaveAll  = false,
         SAPGlobalWave     = 0,
@@ -185,6 +186,19 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
         end
     })
 
+    for i = 1, 5 do
+        ParentTab:Dropdown({
+            Title = "Upgrade Path for Slot " .. i,
+            List = {1, 2, 3, 4},
+            Value = Globals.SAPUpgradePath[i] or 1,
+            Callback = function(val)
+                if type(val) == "table" then val = val[1] end
+                Globals.SAPUpgradePath[i] = tonumber(val) or 1
+                if depsTable.SetSetting then depsTable.SetSetting("SAPUpgradePath", Globals.SAPUpgradePath) end
+            end
+        })
+    end
+
     ParentTab:Section({Title = "Upgrade — Limit (UL)"})
     ParentTab:Label({Title = "Rules", Desc = "1 or higher stops at that level. 0 upgrades to max. -1 waits until everything else is done. -2 never upgrades."})
     for i = 1, 5 do
@@ -224,19 +238,22 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
     task.spawn(function()
         while task.wait(0.5) do
             local wave = "-"
-            if depsTable.GetCurrentWave then
-                local w = depsTable.GetCurrentWave()
-                if w then wave = tostring(w) end
-            end
-            local coins = 0
-            if depsTable.LocalPlayer then
-                local cObj = depsTable.LocalPlayer:FindFirstChild("Coins") or depsTable.LocalPlayer:FindFirstChild("Cash")
-                if cObj then coins = cObj.Value or 0 end
-            end
-            pcall(function()
-                coinsLabel:SetTitle("Coins: " .. tostring(coins))
-                waveLabel:SetTitle("Wave: " .. wave)
+            local okW, w = pcall(function()
+                return LocalPlayer.PlayerGui.ReactGameTopGameDisplay.Frame.wave.container.value.Text:match("(%d+)")
             end)
+            if okW and w then wave = w end
+
+            local coins = 0
+            local cObj = LocalPlayer:FindFirstChild("Coins") or LocalPlayer:FindFirstChild("Cash")
+            if cObj then
+                local okC, v = pcall(function() return cObj.Value end)
+                if okC and v then coins = v end
+            else
+                coins = LocalPlayer:GetAttribute("Coins") or LocalPlayer:GetAttribute("Cash") or 0
+            end
+
+            pcall(function() coinsLabel:SetTitle("Coins: " .. tostring(coins)) end)
+            pcall(function() waveLabel:SetTitle("Wave: " .. wave) end)
         end
     end)
 
@@ -311,6 +328,11 @@ function SAPScheduler.StartPlacement(Globals, deps)
     for _, slotInfo in ipairs(slots) do
         if not Globals.SmartAutoPlace then return end   
         local i, name = slotInfo.index, slotInfo.name
+        local cur, max = deps.GetGlobalTowerInfo()
+        if cur and max and cur >= max then
+            deps.SetSAPStatus("Global cap reached", cur .. " / " .. max)
+            return
+        end
         local sapL = Globals.SAPLimit[i]
 local natural = (deps.APT and deps.APT.GetPlacementLimit and deps.APT.GetPlacementLimit(name)) or 1
 if natural == math.huge then natural = 999 end
@@ -341,8 +363,10 @@ end
 
         local waveGate = Globals.SAPUseOneWaveAll and Globals.SAPGlobalWave or Globals.SAPWave[i]
         if waveGate > 0 then
-            while deps.GetCurrentWave() < waveGate do
-                if not Globals.SmartAutoPlace then return end 
+            while true do
+                local w = GetCurrentWaveSafe(0)
+                if w >= waveGate then break end
+                if not Globals.SmartAutoPlace then return end
                 task.wait(1)
             end
         end
@@ -375,10 +399,21 @@ end
                 maxTotalFails = 30,
             })
         else
-            deps.APT.PlaceHoneycomb(name, startPct, want, {
+            local placed, _ = deps.APT.PlaceHoneycomb(name, startPct, want, {
                 cellAttempts = 1, waitBetween = 0.02, maxExpandRadius = 3,
                 expandStep = 0.2, expandAttempts = 5, expandWait = 0.02
             })
+            if placed == 0 then
+                deps.SetSAPStatus(name .. " failed to place", "retrying with wider search")
+                placed = deps.APT.PlaceHoneycomb(name, startPct, want, {
+                    cellAttempts = 3, waitBetween = 0.02, maxExpandRadius = 6,
+                    expandStep = 0.2, expandAttempts = 5, expandWait = 0.02,
+                    maxTotalFails = 40,
+                })
+                if placed == 0 then
+                    continue
+                end
+            end
         end
         task.wait(0.5)
 
@@ -403,9 +438,12 @@ end
 
 function SAPScheduler.StartUpgradeLoop(Globals, deps)
     Globals.SAPUpgradeLoopRunning = true
-    local maxed = {}
+    Globals.SAPMaxed = Globals.SAPMaxed or {}
 
     while Globals.AutoUpgradeFarms and Globals.SmartAutoPlace do
+        for tw in pairs(Globals.SAPMaxed) do
+            if not tw.Parent then Globals.SAPMaxed[tw] = nil end
+        end
         local equipped = deps.GetEquippedTowers()
         local myTowers = {}
 
@@ -429,11 +467,11 @@ function SAPScheduler.StartUpgradeLoop(Globals, deps)
 
         local allMaxed = true
         for _, tInfo in ipairs(myTowers) do
-            if not maxed[tInfo.tower] then
+            if not Globals.SAPMaxed[tInfo.tower] then
                 local lim = Globals.SAPUpgradeLimit[tInfo.slot]
                 if lim == -1 or lim == 0 then allMaxed = false
                 elseif lim >= 1 and tInfo.level < lim then allMaxed = false
-                elseif lim >= 1 and tInfo.level >= lim then maxed[tInfo.tower] = true end
+                elseif lim >= 1 and tInfo.level >= lim then Globals.SAPMaxed[tInfo.tower] = true end
             end
         end
         if allMaxed and #myTowers > 0 then break end
@@ -460,9 +498,14 @@ function SAPScheduler.StartUpgradeLoop(Globals, deps)
         end
 
         local didSomething = false
+        local sawBroke = false
         for _, tInfo in ipairs(myTowers) do
             if not (Globals.AutoUpgradeFarms and Globals.SmartAutoPlace) then break end
-            if maxed[tInfo.tower] then continue end
+            if not tInfo.tower.Parent then
+                Globals.SAPMaxed[tInfo.tower] = nil
+                continue
+            end
+            if Globals.SAPMaxed[tInfo.tower] then continue end
             local lim = Globals.SAPUpgradeLimit[tInfo.slot]
             if lim >= 1 and tInfo.level >= lim then continue end
 
@@ -473,7 +516,7 @@ function SAPScheduler.StartUpgradeLoop(Globals, deps)
                         local oLim = Globals.SAPUpgradeLimit[otherInfo.slot]
                         if oLim ~= -1 then
                             local effLim = (oLim == 0) and 999 or oLim
-                            if otherInfo.level < effLim and not maxed[otherInfo.tower] then
+                            if otherInfo.level < effLim and not Globals.SAPMaxed[otherInfo.tower] then
                                 othersPending = true break
                             end
                         end
@@ -482,27 +525,38 @@ function SAPScheduler.StartUpgradeLoop(Globals, deps)
                 if othersPending then continue end
             end
 
-            local status = deps.TryUpgradeTowerOnce(tInfo.tower)
+            local status = deps.TryUpgradeTowerOnce(tInfo.tower,
+                Globals.SAPUpgradePath and Globals.SAPUpgradePath[tInfo.slot])
 
             if status == "upgraded" then
                 deps.SetSAPStatus("Upgrading " .. tInfo.name,
                     "slot " .. tInfo.slot .. ", level " .. tInfo.level .. " -> " .. tostring((tInfo.level or 0) + 1))
                 didSomething = true
+                local tgt = Globals.SAPTarget[tInfo.slot]
+                local isNoTargetTower = (tInfo.name == "Farm" or tInfo.name == "Military Base"
+                    or tInfo.name == "Mercenary Base" or tInfo.name == "DJ Booth")
+                if tgt and tgt ~= "Default" and not isNoTargetTower then
+                    pcall(function()
+                        RemoteFunc:InvokeServer("Troops", "Target", "Set",
+                            { Troop = tInfo.tower, Target = tgt })
+                    end)
+                end
             elseif status == "maxed" then
-                maxed[tInfo.tower] = true
+                Globals.SAPMaxed[tInfo.tower] = true
                 deps.SetSAPStatus(tInfo.name .. " maxed",
                     "slot " .. tInfo.slot .. " at level " .. tInfo.level)
             elseif status == "broke" then
                 deps.SetSAPStatus("Waiting for coins",
                     "need upgrade for " .. tInfo.name .. " (slot " .. tInfo.slot .. ")")
-                -- Do NOT blacklist — the loop will retry when we have money
+                sawBroke = true
+                continue
             else -- "failed"
-                maxed[tInfo.tower] = true
+                Globals.SAPMaxed[tInfo.tower] = true
             end
 
             task.wait(0.15)
         end
-        if not didSomething then task.wait(2) end
+        if not didSomething then task.wait(sawBroke and 0.5 or 2) end
     end
     Globals.SAPUpgradeLoopRunning = false
 end
@@ -661,6 +715,7 @@ Globals.StartGems = 0
 Globals.CurrentTotalGems = 0
 Globals.AutoUpgradeFarmsRunning = Globals.AutoUpgradeFarmsRunning or false
 Globals.SAPStatus = Globals.SAPStatus or nil
+Globals.SAPMaxed = Globals.SAPMaxed or {}
 for k, v in pairs(SAPScheduler.GetGlobals()) do
     Globals[k] = Globals[k] or v
 end
@@ -2143,6 +2198,20 @@ function GetCurrentWave()
     return tonumber(WaveNum) or 0
 end
 
+function GetCurrentWaveSafe(default)
+    local deadline = os.clock() + 3
+    repeat
+        local ok, text = pcall(function()
+            return PlayerGui.ReactGameTopGameDisplay.Frame.wave.container.value.Text
+        end)
+        if ok and type(text) == "string" then
+            return tonumber(text:match("(%d+)")) or default or 0
+        end
+        task.wait(0.1)
+    until os.clock() >= deadline
+    return default or 0
+end
+
 function DoPlaceTower(TName, TPos, ...)
     local args = {...}
     Globals.Logger:Log("Placing tower: " .. TName)
@@ -3167,6 +3236,7 @@ function GetNextUpgradeCost(tower)
     if not rep then return nil, nil end
     local name  = rep:GetAttribute("Name")
     local level = rep:GetAttribute("Upgrade") or 0
+    local path  = rep:GetAttribute("Path") or 1
 
     local asset = SAPGetAsset()
     if not asset then return nil, level end
@@ -3174,10 +3244,33 @@ function GetNextUpgradeCost(tower)
     local ok, a = pcall(asset, "Troops", name)
     if not ok or not a then return nil, level end
 
-    local upgrades = a.Stats and a.Stats.Default and a.Stats.Default.Upgrades
+    local pathKey = "Path" .. tostring(path)
+    local upgrades = a.Stats and a.Stats[pathKey] and a.Stats[pathKey].Upgrades
+    if not upgrades then
+        upgrades = a.Stats and a.Stats.Default and a.Stats.Default.Upgrades
+    end
     if not upgrades then return nil, level end
 
     local nextUp = upgrades[level + 1]
+
+    -- Multi-path towers: past the split, an entry is { [1] = branchA, [2] = branchB }
+    if type(nextUp) == "table" and nextUp.Cost == nil and (nextUp[1] ~= nil or nextUp[2] ~= nil) then
+        local prev = upgrades[level]
+        local committed = type(prev) == "table" and (prev[1] ~= nil or prev[2] ~= nil)
+        local branch = rep:GetAttribute("Path")
+        if not committed then
+            -- first split step: branch not chosen yet, use the path SAP will send
+            branch = nil
+            for i, eqName in ipairs(GetEquippedTowers()) do
+                if eqName == name then
+                    branch = Globals.SAPUpgradePath and Globals.SAPUpgradePath[i]
+                    break
+                end
+            end
+        end
+        nextUp = nextUp[tonumber(branch) or 1]
+    end
+
     if not nextUp or not nextUp.Cost then
         return nil, level  -- no next entry → truly maxed
     end
@@ -3190,7 +3283,7 @@ end
 --   "maxed"    = no next upgrade exists (truly maxed)
 --   "broke"    = not enough coins, DO NOT blacklist
 --   "failed"   = had coins but upgrade was refused → treat as maxed
-function TryUpgradeTowerOnce(tower)
+function TryUpgradeTowerOnce(tower, pathOverride)
     local rep = tower and tower:FindFirstChild("TowerReplicator")
     if not rep then return "failed", 0 end
 
@@ -3209,7 +3302,8 @@ function TryUpgradeTowerOnce(tower)
     end
 
     pcall(function()
-        RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", { Troop = tower })
+        RemoteFunc:InvokeServer("Troops", "Upgrade", "Set",
+            { Troop = tower, Path = pathOverride or 1 })
     end)
     task.wait(0.35)
 
@@ -3228,6 +3322,11 @@ function StartAutoUpgradeFarms()
     task.spawn(function()
         local maxed = {}
         while Globals.AutoUpgradeFarms and Globals.SmartAutoPlace do
+            local farmSlot = nil
+            for idx, eqName in ipairs(GetEquippedTowers()) do
+                if eqName == "Farm" then farmSlot = idx; break end
+            end
+            local farmPath = farmSlot and Globals.SAPUpgradePath and Globals.SAPUpgradePath[farmSlot] or nil
             local towersFolder = workspace:FindFirstChild("Towers")
             local didSomething = false
             if towersFolder then
@@ -3240,12 +3339,17 @@ function StartAutoUpgradeFarms()
                         and not maxed[tower] then
                         local lvl = rep:GetAttribute("Upgrade") or 0
                         SetSAPStatus("Upgrading Farm", "Level " .. tostring(lvl))
-                        local progressed, newLvl = TryUpgradeTowerOnce(tower)
-                        if progressed then
+                        local status, newLvl = TryUpgradeTowerOnce(tower, farmPath)
+                        if status == "upgraded" then
                             didSomething = true
-                        else
+                        elseif status == "maxed" then
                             maxed[tower] = true
                             SetSAPStatus("Farm maxed", "Level " .. tostring(newLvl))
+                        elseif status == "broke" then
+                            SetSAPStatus("Waiting for coins", "need upgrade for Farm")
+                            -- Do NOT blacklist — retry when we have money
+                        else -- "failed"
+                            maxed[tower] = true
                         end
                         task.wait(0.15)
                     end
@@ -3308,6 +3412,16 @@ function StartSmartAutoPlace()
             end
 
             if hasFarm and Globals.SmartAutoPlace then
+                local farmWave = Globals.SAPUseOneWaveAll and Globals.SAPGlobalWave or Globals.SAPWave[farmSlot] or 0
+                if farmWave > 0 then
+                    while GetCurrentWaveSafe(0) < farmWave do
+                        if not Globals.SmartAutoPlace then
+                            Globals.SmartAutoPlaceRunning = false
+                            return
+                        end
+                        task.wait(1)
+                    end
+                end
                 local cur, max = GetGlobalTowerInfo()
                 if cur and max and cur < max then
                     local farmLimit = APT.GetPlacementLimit and APT.GetPlacementLimit("Farm") or 10
