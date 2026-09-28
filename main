@@ -419,6 +419,16 @@ function SAPScheduler.BuildUI(ParentTab, Globals, APT, deps)
     })
 
     task.defer(function() task.wait(1) refreshSlotLabels() end)
+
+    -- Keep refreshing until the APT module is loaded so limits show real values
+    task.spawn(function()
+        while task.wait(1) do
+            if depsTable.APT and depsTable.APT.GetPlacementLimit then
+                refreshSlotLabels()
+                break
+            end
+        end
+    end)
 end
 
 function SAPScheduler.StartPlacement(Globals, deps)
@@ -3414,15 +3424,20 @@ local function SAPGetAsset()
 end
 
 function GetCash()
-    -- Primary source: the hotbar cash display (e.g. "$9,999,999,999")
+    -- Primary source: the hotbar cash display. `.Value` is usually a number;
+    -- `.Text` is a formatted string like "$9,999,999,999". Handle both.
     local ok, raw = pcall(function()
         local node = PlayerGui.ReactUniversalHotbar.Frame.values.cash.amount
-        return node.Value or node.Text
+        local v = node.Value
+        if v == nil or v == "" then v = node.Text end
+        return v
     end)
-    if ok and type(raw) == "string" then
-        local digits = raw:gsub("[^%d]", "")
-        local n = tonumber(digits)
-        if n then return n end
+    if ok and raw ~= nil then
+        if type(raw) == "number" then return raw end
+        if type(raw) == "string" and raw ~= "" then
+            local n = tonumber(raw:gsub("[^%d]", ""))
+            if n then return n end
+        end
     end
 
     -- Fallbacks in case the UI hasn't loaded yet
