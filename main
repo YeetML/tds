@@ -4332,6 +4332,7 @@ getgenv().SAPDeps = SAPDeps
 _G.SAPDeps = SAPDeps
 
 local EP
+local RMB_HANDLED = false
 local SP = {
     running        = false,
     rmbConn        = nil,
@@ -4754,9 +4755,11 @@ function StartTowerSpectate()
 
     SP.rmbConn = UserInputService.InputBegan:Connect(function(input)
         if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
+        RMB_HANDLED = false                        -- new click cycle
         if EP and EP.spectating then return end
         if SP.spectating then
             SP_exitSpectate()
+            RMB_HANDLED = true                     -- tell EP this click is used
         end
     end)
 
@@ -5156,8 +5159,10 @@ function StartEnemySpectate()
         if held > EP_CLICK_MAX_TIME then return end
         if rmbMoved > EP_CLICK_MAX_DRAG then return end
 
-        -- don't latch onto a click that just closed a tower session
-        if SP.spectating then return end
+        -- consume the "handled by SP" flag; if SP already used this click, skip
+        local wasHandled = RMB_HANDLED
+        RMB_HANDLED = false
+        if wasHandled then return end
 
         -- tap → toggle
         if EP.spectating then
