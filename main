@@ -20,6 +20,10 @@ local PathfindingService = game:GetService("PathfindingService")
 local HttpService = game:GetService("HttpService")
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local mouse = LocalPlayer:GetMouse()
+local camera = workspace.CurrentCamera
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    camera = workspace.CurrentCamera
+end)
 local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
 local RemoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent")
 local FileName = "YEETML_Config.json"
@@ -4496,6 +4500,8 @@ local function SP_updateCamera()
         SP_exitSpectate()
         return
     end
+    if not camera then camera = workspace.CurrentCamera end
+    if not camera then return end
 
     local mode = SP_MODES[SP.currentMode]
 
@@ -4541,6 +4547,8 @@ end
 ------------------------------------------------------------
 function SP_applyMode()
     if not SP.spectating then return end
+    if not camera then camera = workspace.CurrentCamera end
+    if not camera then return end
     SP_clearFirstPersonHead()
 
     local mode = SP_MODES[SP.currentMode]
@@ -4582,8 +4590,10 @@ function SP_exitSpectate()
     SP_clearFirstPersonHead()
     SP.spectating = nil
 
-    camera.CameraType = Enum.CameraType.Custom
-    camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+    if camera then
+        camera.CameraType = Enum.CameraType.Custom
+        camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+    end
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
     UserInputService.MouseIconEnabled = true
 
@@ -4694,6 +4704,8 @@ local function SP_startWatcher()
     SP.wasVisible = false
 
     SP.watcherConn = RunService.Heartbeat:Connect(function()
+        if not camera then camera = workspace.CurrentCamera end
+        if not camera then return end
         local reactGui = LocalPlayer.PlayerGui:FindFirstChild("ReactUpgrades")
         if not reactGui then
             SP_removeEyeButton()
@@ -4794,8 +4806,10 @@ function StopTowerSpectate()
     if sg then sg:Destroy() end
     SP.modeLabel = nil
 
-    camera.CameraType = Enum.CameraType.Custom
-    camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+    if camera then
+        camera.CameraType = Enum.CameraType.Custom
+        camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+    end
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
     UserInputService.MouseIconEnabled = true
 end
@@ -4894,6 +4908,8 @@ end
 local function getEnemyUnderCursor()
     local npcs = workspace:FindFirstChild("NPCs")
     if not npcs then return nil end
+    if not camera then camera = workspace.CurrentCamera end
+    if not camera then return nil end
     local mousePos = UserInputService:GetMouseLocation()
     local bestEnemy, bestDist = nil, EP_HOVER_TOLERANCE
     for _, enemy in ipairs(npcs:GetChildren()) do
@@ -4975,6 +4991,8 @@ local function EP_updateCamera()
         EP_exitSpectate()
         return
     end
+    if not camera then camera = workspace.CurrentCamera end
+    if not camera then return end
     local mode = EP_MODES[EP.currentMode]
     if mode == "Default" then
         local focus = EP_getFocusCFrame(EP.spectating)
@@ -5016,6 +5034,8 @@ end
 ------------------------------------------------------------
 function EP_applyMode()
     if not EP.spectating then return end
+    if not camera then camera = workspace.CurrentCamera end
+    if not camera then return end
     EP_clearFirstPersonHead()
     local mode = EP_MODES[EP.currentMode]
     if mode == "Default" then
@@ -5052,8 +5072,10 @@ function EP_exitSpectate()
     if EP.camConn then EP.camConn:Disconnect() EP.camConn = nil end
     EP_clearFirstPersonHead()
     EP.spectating = nil
-    camera.CameraType = Enum.CameraType.Custom
-    camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+    if camera then
+        camera.CameraType = Enum.CameraType.Custom
+        camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+    end
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
     UserInputService.MouseIconEnabled = true
     if EP.modeLabel then EP.modeLabel.Visible = false end
@@ -5175,6 +5197,8 @@ function StartEnemySpectate()
 
     -- hover highlight
     EP.moveConn = RunService.Heartbeat:Connect(function()
+        if not camera then camera = workspace.CurrentCamera end
+        if not camera then return end
         if EP.spectating then
             if EP.highlight then clearHighlight() end
             EP.hovered = nil
@@ -5222,8 +5246,10 @@ function StopEnemySpectate()
     if gui then gui:Destroy() end
     EP.modeLabel = nil
 
-    camera.CameraType = Enum.CameraType.Custom
-    camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+    if camera then
+        camera.CameraType = Enum.CameraType.Custom
+        camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+    end
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
     UserInputService.MouseIconEnabled = true
 end
