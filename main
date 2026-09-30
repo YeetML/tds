@@ -4353,6 +4353,8 @@ local SP = {
     modeLabel      = nil,
     panelTower     = nil,
     wasVisible     = false,
+    clickConn      = nil,
+    pendingTower   = nil,
 }
 
 local SP_MODES = {
@@ -4698,6 +4700,29 @@ local function SP_ensureEyeButton(parent)
 end
 
 ------------------------------------------------------------
+-- raycast: which tower is the mouse over right now?
+------------------------------------------------------------
+local function SP_towerUnderCursor()
+    if not camera then camera = workspace.CurrentCamera end
+    if not camera then return nil end
+    local towersFolder = workspace:FindFirstChild("Towers")
+    if not towersFolder then return nil end
+    local mp = UserInputService:GetMouseLocation()
+    local ray = camera:ViewportPointToRay(mp.X, mp.Y)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Include
+    params.FilterDescendantsInstances = {towersFolder}
+    local result = workspace:Raycast(ray.Origin, ray.Direction * 2000, params)
+    if not result then return nil end
+    local inst = result.Instance
+    while inst and inst ~= towersFolder do
+        if inst:FindFirstChild("TowerReplicator") then return inst end
+        inst = inst.Parent
+    end
+    return nil
+end
+
+------------------------------------------------------------
 -- watcher
 ------------------------------------------------------------
 local function SP_startWatcher()
@@ -4710,22 +4735,34 @@ local function SP_startWatcher()
         if not reactGui then
             SP_removeEyeButton()
             if SP.spectating then SP_exitSpectate() end
+            SP.panelTower = nil
+            SP.pendingTower = nil
             SP.wasVisible = false
             return
         end
 
         local visible = reactGui.Enabled
 
+        -- Panel just opened: prefer the tower we just clicked,
+        -- fall back to name matching only if the click raycast failed.
         if visible and not SP.wasVisible then
-            print("[Spectate] panel opened")
+            if SP.pendingTower and SP.pendingTower.Parent then
+                SP.panelTower = SP.pendingTower
+                print(("[Spectate] target → %s (via click)"):format(SP.panelTower.Name))
+            else
+                local title = SP_getTitleText()
+                local t = SP_findTowerByTitle(title)
+                SP.panelTower = t
+                print(("[Spectate] target → %s (fallback by name)"):format(t and t.Name or "?"))
+            end
+            SP.pendingTower = nil
         end
 
         if visible then
-            local title = SP_getTitleText()
-            local t = SP_findTowerByTitle(title)
-            if t and t ~= SP.panelTower then
-                SP.panelTower = t
-                print(("[Spectate] target → %s (display=%s)"):format(t.Name, title or "?"))
+            -- If the tracked tower dies (sold), try to recover the target.
+            if not SP.panelTower or not SP.panelTower.Parent then
+                local hit = SP_towerUnderCursor()
+                if hit then SP.panelTower = hit end
             end
 
             local upgrades = reactGui:FindFirstChild("upgrades")
@@ -4737,6 +4774,7 @@ local function SP_startWatcher()
         else
             SP_removeEyeButton()
             if SP.spectating then SP_exitSpectate() end
+            SP.panelTower = nil
         end
 
         SP.wasVisible = visible
@@ -4775,6 +4813,22 @@ function StartTowerSpectate()
         end
     end)
 
+    -- left-click: remember which tower the cursor is over
+    SP.clickConn = UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+        local hit = SP_towerUnderCursor()
+        if not hit then return end
+        SP.pendingTower = hit
+        -- If the panel is already open (user clicked a different tower),
+        -- update the target right away.
+        local reactGui = LocalPlayer.PlayerGui:FindFirstChild("ReactUpgrades")
+        if reactGui and reactGui.Enabled then
+            SP.panelTower = hit
+            print(("[Spectate] target → %s (re-click)"):format(hit.Name))
+        end
+    end)
+
     -- orbit mouse handler (Default mode only)
     SP.orbitConn = UserInputService.InputChanged:Connect(function(input)
         if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
@@ -4799,6 +4853,8 @@ function StopTowerSpectate()
     if SP.keyConn then SP.keyConn:Disconnect() SP.keyConn = nil end
     if SP.orbitConn then SP.orbitConn:Disconnect() SP.orbitConn = nil end
     if SP.rmbConn then SP.rmbConn:Disconnect() SP.rmbConn = nil end
+    if SP.clickConn then SP.clickConn:Disconnect() SP.clickConn = nil end
+    SP.pendingTower = nil
     SP_removeEyeButton()
     SP_clearFirstPersonHead()
 
