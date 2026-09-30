@@ -36,6 +36,14 @@ if not SendRequest then
     return
 end
 
+local ExecutorIsWeak = false
+pcall(function()
+    local name = identifyexecutor()
+    if name == "Xeno" or name == "Solara" then
+        ExecutorIsWeak = true
+    end
+end)
+
 local AllTowers = {
     "Scout", "Sniper", "Paintballer", "Demoman", "Boomerang", "Slime Trooper", "Soldier",
     "Freezer", "Assassin", "Militant", "Shotgunner", "Hunter", "Pyromancer", "Ace Pilot",
@@ -5940,51 +5948,59 @@ end
 Globals.Window:Line()
 
 local AutoPlace = Globals.Window:Tab({Title = "Auto Play", Icon = "wand-sparkles"}) do
-    AutoPlace:Section({Title = "Smart Auto Place"})
+    if ExecutorIsWeak then
+        AutoPlace:Section({Title = "Unsupported Executor"})
+        AutoPlace:Label({
+            Title = "Smart Auto Place is disabled",
+            Desc  = "Your executor doesn't reliably support the remote-return and JSON APIs this feature depends on. Use Delta, Wave, or Nihon."
+        })
+    else
+        AutoPlace:Section({Title = "Smart Auto Place"})
 
-    AutoPlace:Toggle({
-        Title = "Smart Auto Place",
-        Desc = "Auto-places your equipped towers using honeycomb placement.",
-        Value = Globals.SmartAutoPlace,
-        Callback = function(v)
-            SetSetting("SmartAutoPlace", v)
-            if v then StartSmartAutoPlace() end
-        end
-    })
+        AutoPlace:Toggle({
+            Title = "Smart Auto Place",
+            Desc = "Auto-places your equipped towers using honeycomb placement.",
+            Value = Globals.SmartAutoPlace,
+            Callback = function(v)
+                SetSetting("SmartAutoPlace", v)
+                if v then StartSmartAutoPlace() end
+            end
+        })
 
-    AutoPlace:Slider({
-        Title = "Ground Percentage",
-        Desc = "Starting % along path for ground towers",
-        Min = 0, Max = 100, Rounding = 0,
-        Value = Globals.GroundPercentage,
-        Callback = function(val) SetSetting("GroundPercentage", val) end
-    })
+        AutoPlace:Slider({
+            Title = "Ground Percentage",
+            Desc = "Starting % along path for ground towers",
+            Min = 0, Max = 100, Rounding = 0,
+            Value = Globals.GroundPercentage,
+            Callback = function(val) SetSetting("GroundPercentage", val) end
+        })
 
-    AutoPlace:Slider({
-        Title = "Cliff Percentage",
-        Desc = "Starting % along path for cliff towers",
-        Min = 0, Max = 100, Rounding = 0,
-        Value = Globals.CliffPercentage,
-        Callback = function(val) SetSetting("CliffPercentage", val) end
-    })
+        AutoPlace:Slider({
+            Title = "Cliff Percentage",
+            Desc = "Starting % along path for cliff towers",
+            Min = 0, Max = 100, Rounding = 0,
+            Value = Globals.CliffPercentage,
+            Callback = function(val) SetSetting("CliffPercentage", val) end
+        })
 
-    AutoPlace:Toggle({
-        Title = "Focus On Placing Farms",
-        Desc  = "Place up to 10 Farms far from the path before placing other towers.",
-        Value = Globals.FocusOnFarms,
-        Callback = function(v) SetSetting("FocusOnFarms", v) end
-    })
+        AutoPlace:Toggle({
+            Title = "Focus On Placing Farms",
+            Desc  = "Place up to 10 Farms far from the path before placing other towers.",
+            Value = Globals.FocusOnFarms,
+            Callback = function(v) SetSetting("FocusOnFarms", v) end
+        })
 
-    AutoPlace:Toggle({
-        Title = "Focus On Upgrading Farms",
-        Desc  = "Keeps upgrading your Farms while Smart Auto Place is on (uses SAP upgrade rules).",
-        Value = Globals.AutoUpgradeFarms,
-        Callback = function(v)
-            SetSetting("AutoUpgradeFarms", v)
-        end
-    })
+        AutoPlace:Toggle({
+            Title = "Focus On Upgrading Farms",
+            Desc  = "Keeps upgrading your Farms while Smart Auto Place is on (uses SAP upgrade rules).",
+            Value = Globals.AutoUpgradeFarms,
+            Callback = function(v)
+                SetSetting("AutoUpgradeFarms", v)
+            end
+        })
 
-    SAPScheduler.BuildUI(AutoPlace, Globals, Globals.AutoPlaceTowersModule, SAPDeps)
+        SAPScheduler.BuildUI(AutoPlace, Globals, Globals.AutoPlaceTowersModule, SAPDeps)
+    end
 end
 
 Globals.Window:Line()
@@ -7138,7 +7154,9 @@ task.spawn(function()
         if Globals.Easy and not Globals.EasyModeRunning then StartEasyMode() end
         if Globals.AutoUpgradeSelected and not Globals.AutoUpgradeSelectedRunning then StartAutoUpgradeSelected() end
         if Globals.AutoUpgradeAll and not Globals.AutoUpgradeAllRunning then StartAutoUpgradeAll() end
-        if Globals.SmartAutoPlace and not Globals.SmartAutoPlaceRunning then StartSmartAutoPlace() end
+        if Globals.SmartAutoPlace and not Globals.SmartAutoPlaceRunning and not ExecutorIsWeak then
+            StartSmartAutoPlace()
+        end
 if Globals.AutoUpgradeFarms and Globals.SmartAutoPlace and not Globals.SAPUpgradeLoopRunning then
     task.spawn(function()
         SAPScheduler.StartUpgradeLoop(Globals, SAPDeps)
