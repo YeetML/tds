@@ -2448,8 +2448,11 @@ function GetCurrentWave()
     local label
     repeat
         task.wait(0.5)
-        label = PlayerGui:FindFirstChild("ReactGameTopGameDisplay", true)
-            and PlayerGui.ReactGameTopGameDisplay.Frame.wave.container:FindFirstChild("value")
+        local display   = PlayerGui:FindFirstChild("ReactGameTopGameDisplay")
+        local frame     = display and display:FindFirstChild("Frame")
+        local wave      = frame and frame:FindFirstChild("wave")
+        local container = wave and wave:FindFirstChild("container")
+        label           = container and container:FindFirstChild("value")
     until label ~= nil
     local text = label.Text
     local WaveNum = text:match("(%d+)")
