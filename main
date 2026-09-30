@@ -805,6 +805,7 @@ local DefaultSettings = {
     PathVisuals = true,
     AutoUpgradeSelected = false,
     AutoUpgradeAll = false,
+    TowerSpectate = true, 
     MilitaryPath = 0,
     MercenaryPath = 0,
     AutoSkip = false,
@@ -4329,6 +4330,466 @@ SAPDeps = {
 getgenv().SAPDeps = SAPDeps
 _G.SAPDeps = SAPDeps
 
+local SP = {
+    running        = false,
+    spectating     = nil,
+    camConn        = nil,
+    watcherConn    = nil,
+    keyConn        = nil,
+    orbitConn      = nil,
+    currentMode    = 1,
+    hiddenForFirstPerson = {},
+    orbitYaw       = 0,
+    orbitPitch     = math.rad(15),
+    eyeButton      = nil,
+    modeLabel      = nil,
+    panelTower     = nil,
+    wasVisible     = false,
+}
+
+local SP_MODES = {
+    "Default", "Third Person", "Side View",
+    "Front View", "First Person", "Top-down View",
+}
+
+local SP_ORBIT_SENSITIVITY = 0.4
+local SP_ORBIT_DISTANCE    = 15
+local SP_ORBIT_START_PITCH = math.rad(15)
+local SP_MIN_PITCH         = math.rad(-30)
+local SP_MAX_PITCH         = math.rad(75)
+
+local SP_EXIT_KEY = Enum.KeyCode.P
+local SP_NEXT_KEY = Enum.KeyCode.E
+local SP_PREV_KEY = Enum.KeyCode.Q
+
+local SP_EYE_BG       = Color3.fromRGB(50, 100, 180)
+local SP_EYE_BG_HOVER = Color3.fromRGB(80, 140, 220)
+
+-- forward decls
+local SP_applyMode, SP_exitSpectate, SP_clearFirstPersonHead
+
+------------------------------------------------------------
+-- helpers
+------------------------------------------------------------
+local function SP_findPart(tower, name)
+    local p = tower:FindFirstChild(name)
+    if p and p:IsA("BasePart") then return p end
+    return nil
+end
+
+local function SP_resolveParts(tower)
+    local anchor = tower.PrimaryPart
+    if tower:IsA("BasePart") then anchor = tower end
+    return {
+        anchor  = anchor,
+        head    = SP_findPart(tower, "Head") or anchor,
+        hrp     = SP_findPart(tower, "HumanoidRootPart") or anchor,
+        primary = anchor,
+    }
+end
+
+local function SP_getFocusCFrame(tower)
+    local p = SP_resolveParts(tower)
+    if p.primary then return p.primary.CFrame end
+    if p.head then return p.head.CFrame end
+    return tower:GetPivot()
+end
+
+local function SP_getFrontYaw(tower)
+    local cf = SP_getFocusCFrame(tower)
+    local look = cf.LookVector
+    local flat = Vector3.new(look.X, 0, look.Z)
+    if flat.Magnitude < 1e-4 then return 0 end
+    flat = flat.Unit
+    return math.atan2(flat.X, flat.Z)
+end
+
+------------------------------------------------------------
+-- tower identification via the game's own UI
+------------------------------------------------------------
+local function SP_getTitleText()
+    local react = LocalPlayer:FindFirstChild("PlayerGui")
+    if not react then return nil end
+    react = react:FindFirstChild("ReactUpgrades")
+    if not react then return nil end
+    local upgrades = react:FindFirstChild("upgrades")
+    if not upgrades then return nil end
+    local cp = upgrades:FindFirstChild("controlPanel")
+    if not cp then return nil end
+    local df = cp:FindFirstChild("displayFrame")
+    if not df then return nil end
+    local tt = df:FindFirstChild("titleText")
+    if not tt or not tt:IsA("TextLabel") then return nil end
+    local text = tt.Text
+    if not text or text == "" then return nil end
+    return text
+end
+
+local function SP_getDisplayName(tower)
+    local rep = tower:FindFirstChild("TowerReplicator")
+    local n = rep and rep:GetAttribute("Name")
+    return n or tower.Name
+end
+
+local function SP_getOwnerId(tower)
+    local rep = tower:FindFirstChild("TowerReplicator")
+    return rep and rep:GetAttribute("OwnerId")
+end
+
+local function SP_findTowerByTitle(title)
+    if not title then return nil end
+    local towersFolder = workspace:FindFirstChild("Towers")
+    if not towersFolder then return nil end
+    local localUserId = LocalPlayer.UserId
+    local owned, other = {}, {}
+    for _, t in ipairs(towersFolder:GetChildren()) do
+        if SP_getDisplayName(t) == title then
+            if SP_getOwnerId(t) == localUserId then
+                table.insert(owned, t)
+            else
+                table.insert(other, t)
+            end
+        end
+    end
+    return owned[1] or other[1]
+end
+
+------------------------------------------------------------
+-- head transparency (First Person)
+------------------------------------------------------------
+function SP_clearFirstPersonHead()
+    for _, e in ipairs(SP.hiddenForFirstPerson) do
+        pcall(function() e.o[e.p] = e.v end)
+    end
+    SP.hiddenForFirstPerson = {}
+end
+
+local function SP_applyFirstPersonHead(tower)
+    SP_clearFirstPersonHead()
+    local head = SP_findPart(tower, "Head") or (tower:IsA("Model") and tower.PrimaryPart)
+    if not head then return end
+
+    local function hide(obj)
+        if obj:IsA("BasePart") then
+            table.insert(SP.hiddenForFirstPerson, {o = obj, p = "Transparency", v = obj.Transparency})
+            obj.Transparency = 1
+            table.insert(SP.hiddenForFirstPerson, {o = obj, p = "LocalTransparencyModifier", v = obj.LocalTransparencyModifier})
+            obj.LocalTransparencyModifier = 1
+        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+            table.insert(SP.hiddenForFirstPerson, {o = obj, p = "Transparency", v = obj.Transparency})
+            obj.Transparency = 1
+        end
+    end
+    hide(head)
+    for _, child in ipairs(head:GetChildren()) do hide(child) end
+end
+
+------------------------------------------------------------
+-- camera per mode
+------------------------------------------------------------
+local function SP_updateCamera()
+    if not SP.spectating or not SP.spectating.Parent then
+        SP_exitSpectate()
+        return
+    end
+
+    local mode = SP_MODES[SP.currentMode]
+
+    if mode == "Default" then
+        local focus = SP_getFocusCFrame(SP.spectating)
+        local cosP = math.cos(SP.orbitPitch)
+        local offset = Vector3.new(
+            SP_ORBIT_DISTANCE * cosP * math.sin(SP.orbitYaw),
+            SP_ORBIT_DISTANCE * math.sin(SP.orbitPitch),
+            SP_ORBIT_DISTANCE * cosP * math.cos(SP.orbitYaw)
+        )
+        camera.CFrame = CFrame.lookAt(focus.Position + offset, focus.Position)
+        return
+    end
+
+    local p = SP_resolveParts(SP.spectating)
+
+    if mode == "Third Person" and p.hrp and p.head then
+        local pos = p.hrp.CFrame * CFrame.new(0, 1, 4)
+        camera.CFrame = CFrame.lookAt(pos.Position, p.head.Position)
+    elseif mode == "Side View" and p.hrp and p.head then
+        local pos = p.hrp.CFrame * CFrame.new(4, 1, 0) * CFrame.Angles(0, math.pi / 2, 0)
+        camera.CFrame = CFrame.lookAt(pos.Position, p.head.Position)
+    elseif mode == "Front View" and p.hrp and p.head then
+        local pos = p.hrp.CFrame * CFrame.new(0, 1, -4)
+        camera.CFrame = CFrame.lookAt(pos.Position, p.head.Position)
+    elseif mode == "First Person" and p.head then
+        camera.CFrame = p.head.CFrame
+    elseif mode == "Top-down View" and p.hrp and p.primary then
+        local look = p.hrp.CFrame.LookVector
+        local flat = Vector3.new(look.X, 0, look.Z)
+        if flat.Magnitude < 0.001 then flat = Vector3.new(0, 0, 1) end
+        flat = flat.Unit
+        camera.CFrame =
+            CFrame.lookAt(p.primary.Position, p.primary.Position + flat)
+            * CFrame.new(0, 30, 0)
+            * CFrame.Angles(-math.pi / 2, 0, 0)
+    end
+end
+
+------------------------------------------------------------
+-- mode application
+------------------------------------------------------------
+function SP_applyMode()
+    if not SP.spectating then return end
+    SP_clearFirstPersonHead()
+
+    local mode = SP_MODES[SP.currentMode]
+
+    if mode == "Default" then
+        SP.orbitYaw = SP_getFrontYaw(SP.spectating)
+        SP.orbitPitch = SP_ORBIT_START_PITCH
+        camera.CameraType = Enum.CameraType.Scriptable
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+        UserInputService.MouseIconEnabled = false
+    else
+        camera.CameraType = Enum.CameraType.Scriptable
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        UserInputService.MouseIconEnabled = true
+        if mode == "First Person" then
+            SP_applyFirstPersonHead(SP.spectating)
+        end
+    end
+
+    SP_updateCamera()
+
+    if SP.modeLabel then
+        SP.modeLabel.Text = ("%s  •  Q ◀  ▶ E  •  P to exit"):format(mode)
+    end
+end
+
+local function SP_changeMode(delta)
+    SP.currentMode = SP.currentMode + delta
+    if SP.currentMode < 1 then SP.currentMode = #SP_MODES end
+    if SP.currentMode > #SP_MODES then SP.currentMode = 1 end
+    SP_applyMode()
+end
+
+------------------------------------------------------------
+-- spectate start/stop
+------------------------------------------------------------
+function SP_exitSpectate()
+    if SP.camConn then SP.camConn:Disconnect() SP.camConn = nil end
+    SP_clearFirstPersonHead()
+    SP.spectating = nil
+
+    camera.CameraType = Enum.CameraType.Custom
+    camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    UserInputService.MouseIconEnabled = true
+
+    if SP.modeLabel then SP.modeLabel.Visible = false end
+end
+
+local function SP_spectate(tower)
+    if not tower or not tower.Parent then return end
+
+    if SP.camConn then SP.camConn:Disconnect() SP.camConn = nil end
+    SP_clearFirstPersonHead()
+    SP.spectating = tower
+    SP.currentMode = 1
+    SP.orbitYaw = SP_getFrontYaw(tower)
+    SP.orbitPitch = SP_ORBIT_START_PITCH
+    SP_applyMode()
+    SP.camConn = RunService.RenderStepped:Connect(SP_updateCamera)
+    if SP.modeLabel then SP.modeLabel.Visible = true end
+    print(("[Spectate] now spectating: %s (%s)"):format(tower.Name, SP_getDisplayName(tower)))
+end
+
+------------------------------------------------------------
+-- mode label
+------------------------------------------------------------
+local function SP_buildModeLabel()
+    local old = LocalPlayer.PlayerGui:FindFirstChild("SpectateModeLabel")
+    if old then old:Destroy() end
+
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "SpectateModeLabel"
+    sg.ResetOnSpawn = false
+    sg.IgnoreGuiInset = true
+    sg.DisplayOrder = 999
+    sg.Parent = LocalPlayer.PlayerGui
+
+    SP.modeLabel = Instance.new("TextLabel")
+    SP.modeLabel.Size = UDim2.fromOffset(400, 36)
+    SP.modeLabel.Position = UDim2.new(0.5, -200, 1, -50)
+    SP.modeLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+    SP.modeLabel.BackgroundTransparency = 0.15
+    SP.modeLabel.BorderSizePixel = 0
+    SP.modeLabel.Text = ""
+    SP.modeLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
+    SP.modeLabel.Font = Enum.Font.GothamBold
+    SP.modeLabel.TextSize = 14
+    SP.modeLabel.Visible = false
+    SP.modeLabel.Parent = sg
+
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 8)
+    c.Parent = SP.modeLabel
+end
+
+------------------------------------------------------------
+-- eye button
+------------------------------------------------------------
+local function SP_removeEyeButton()
+    if SP.eyeButton then SP.eyeButton:Destroy() SP.eyeButton = nil end
+end
+
+local function SP_ensureEyeButton(parent)
+    if SP.eyeButton and SP.eyeButton.Parent == parent then return end
+    SP_removeEyeButton()
+    if not parent then return end
+
+    local btn = Instance.new("TextButton")
+    btn.Name = "SpectateEyeButton"
+    btn.Size = UDim2.fromOffset(48, 48)
+    btn.AnchorPoint = Vector2.new(0.5, 0.5)
+    btn.Position = UDim2.new(1, 30, 0, 0)
+    btn.BackgroundColor3 = SP_EYE_BG
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.Text = "👁"
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 26
+    btn.ZIndex = 9999
+    btn.Parent = parent
+
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(1, 0)
+    c.Parent = btn
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.5
+    stroke.Parent = btn
+
+    btn.MouseEnter:Connect(function() btn.BackgroundColor3 = SP_EYE_BG_HOVER end)
+    btn.MouseLeave:Connect(function() btn.BackgroundColor3 = SP_EYE_BG end)
+    btn.MouseButton1Click:Connect(function()
+        if not SP.panelTower or not SP.panelTower.Parent then
+            warn("[Spectate] no tower to spectate")
+            return
+        end
+        SP_spectate(SP.panelTower)
+    end)
+
+    SP.eyeButton = btn
+end
+
+------------------------------------------------------------
+-- watcher
+------------------------------------------------------------
+local function SP_startWatcher()
+    SP.wasVisible = false
+
+    SP.watcherConn = RunService.Heartbeat:Connect(function()
+        local reactGui = LocalPlayer.PlayerGui:FindFirstChild("ReactUpgrades")
+        if not reactGui then
+            SP_removeEyeButton()
+            if SP.spectating then SP_exitSpectate() end
+            SP.wasVisible = false
+            return
+        end
+
+        local visible = reactGui.Enabled
+
+        if visible and not SP.wasVisible then
+            print("[Spectate] panel opened")
+        end
+
+        if visible then
+            local title = SP_getTitleText()
+            local t = SP_findTowerByTitle(title)
+            if t and t ~= SP.panelTower then
+                SP.panelTower = t
+                print(("[Spectate] target → %s (display=%s)"):format(t.Name, title or "?"))
+            end
+
+            local upgrades = reactGui:FindFirstChild("upgrades")
+            if upgrades then
+                SP_ensureEyeButton(upgrades)
+            else
+                SP_removeEyeButton()
+            end
+        else
+            SP_removeEyeButton()
+            if SP.spectating then SP_exitSpectate() end
+        end
+
+        SP.wasVisible = visible
+    end)
+end
+
+------------------------------------------------------------
+-- Start / Stop
+------------------------------------------------------------
+function StartTowerSpectate()
+    if SP.running then return end
+    SP.running = true
+
+    print("[Spectate] starting")
+
+    SP_buildModeLabel()
+    SP_startWatcher()
+
+    -- key handler
+    SP.keyConn = UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.KeyCode == SP_EXIT_KEY then
+            if SP.spectating then
+                SP_exitSpectate()
+                print("[Spectate] exited")
+            end
+        elseif input.KeyCode == SP_NEXT_KEY and SP.spectating then
+            SP_changeMode(1)
+        elseif input.KeyCode == SP_PREV_KEY and SP.spectating then
+            SP_changeMode(-1)
+        end
+    end)
+
+    -- orbit mouse handler (Default mode only)
+    SP.orbitConn = UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+        if not SP.spectating then return end
+        if SP_MODES[SP.currentMode] ~= "Default" then return end
+        SP.orbitYaw = SP.orbitYaw - math.rad(input.Delta.X * SP_ORBIT_SENSITIVITY)
+        SP.orbitPitch = math.clamp(
+            SP.orbitPitch + math.rad(input.Delta.Y * SP_ORBIT_SENSITIVITY),
+            SP_MIN_PITCH, SP_MAX_PITCH
+        )
+    end)
+end
+
+function StopTowerSpectate()
+    if not SP.running then return end
+    SP.running = false
+
+    print("[Spectate] stopping")
+
+    if SP.spectating then SP_exitSpectate() end
+    if SP.watcherConn then SP.watcherConn:Disconnect() SP.watcherConn = nil end
+    if SP.keyConn then SP.keyConn:Disconnect() SP.keyConn = nil end
+    if SP.orbitConn then SP.orbitConn:Disconnect() SP.orbitConn = nil end
+    SP_removeEyeButton()
+    SP_clearFirstPersonHead()
+
+    local sg = LocalPlayer.PlayerGui:FindFirstChild("SpectateModeLabel")
+    if sg then sg:Destroy() end
+    SP.modeLabel = nil
+
+    camera.CameraType = Enum.CameraType.Custom
+    camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    UserInputService.MouseIconEnabled = true
+end
+
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources"))()
 
 Globals.Window = Library:Window({
@@ -5173,6 +5634,22 @@ local Configuration = Globals.Window:Tab({Title = "Configuration", Icon = "slide
         Callback = function(v) SetSetting("Disable3DRendering", v) Apply3dRendering() end
     })
 
+    Configuration:Section({Title = "Camera & Spectate"})
+
+    Configuration:Toggle({
+        Title = "Tower Spectate",
+        Desc = "Click a tower to open its info panel — an eye button appears in the top-right corner. Click the eye to orbit-spectate that tower. Q/E cycle view modes, P exits.",
+        Value = Globals.TowerSpectate ~= false,
+        Callback = function(v)
+            SetSetting("TowerSpectate", v)
+            if v then
+                StartTowerSpectate()
+            else
+                StopTowerSpectate()
+            end
+        end
+    })
+
     Configuration:Section({Title = "Privacy & Identity"})
 
     Configuration:Toggle({
@@ -5921,6 +6398,7 @@ end
         elseif not Globals.AutoBounty and Globals.AutoBountyRunning then
             StopBountyChain()
         end
+        if Globals.TowerSpectate ~= false and not SP.running then StartTowerSpectate() end
         if Globals.AutoRedeemCodes and not Globals.CodesRedeemed and not Globals.AutoRedeemRunning then
             redeemCodesFromBeebom()
         end
@@ -5933,5 +6411,8 @@ if Globals.ClaimRewards and not Globals.AutoClaimRewards then
 end
 
 MissionsUIFix()
+if Globals.TowerSpectate ~= false then
+    task.spawn(StartTowerSpectate)
+end
 getgenv().SmartTeleportToLobby = SmartTeleportToLobby
 return TDS
