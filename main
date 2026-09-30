@@ -6398,21 +6398,28 @@ local Configuration = Globals.Window:Tab({Title = "Configuration", Icon = "slide
 
     Configuration:Section({Title = "Camera & Spectate"})
 
-    Configuration:Toggle({
-        Title = "Tower Spectate",
-        Desc = "Click a tower to open its info panel — an eye button appears in the top-right corner. Click the eye to orbit-spectate that tower. Q/E cycle view modes, Right-click exits.",
-        Value = Globals.TowerSpectate ~= false,
-        Callback = function(v)
-            SetSetting("TowerSpectate", v)
-            if v then
-                StartTowerSpectate()
-            else
-                StopTowerSpectate()
-            end
-        end
-    })
-
+    if ExecutorIsWeak then
+        Configuration:Label({
+            Title = "Tower Spectate disabled",
+            Desc  = "Your executor's require() implementation breaks the game's React UI when Tower Spectate hooks the upgrade panel. Use Delta, Wave, or Nihon to enable this feature."
+        })
+    else
         Configuration:Toggle({
+            Title = "Tower Spectate",
+            Desc = "Click a tower to open its info panel — an eye button appears in the top-right corner. Click the eye to orbit-spectate that tower. Q/E cycle view modes, Right-click exits.",
+            Value = Globals.TowerSpectate ~= false,
+            Callback = function(v)
+                SetSetting("TowerSpectate", v)
+                if v then
+                    StartTowerSpectate()
+                else
+                    StopTowerSpectate()
+                end
+            end
+        })
+    end
+
+    Configuration:Toggle({
         Title = "Enemy Spectate",
         Desc = "Hover an enemy — it gets a red outline. Right-click to spectate. Right-click again to exit. Q/E cycle modes.",
         Value = Globals.EnemySpectate ~= false,
@@ -6421,7 +6428,6 @@ local Configuration = Globals.Window:Tab({Title = "Configuration", Icon = "slide
             if v then StartEnemySpectate() else StopEnemySpectate() end
         end
     })
-
     Configuration:Section({Title = "Privacy & Identity"})
 
     Configuration:Toggle({
@@ -7173,7 +7179,9 @@ end
         elseif not Globals.AutoBounty and Globals.AutoBountyRunning then
             StopBountyChain()
         end
-        if Globals.TowerSpectate ~= false and not SP.running then StartTowerSpectate() end
+        if Globals.TowerSpectate ~= false and not SP.running and not ExecutorIsWeak then
+            StartTowerSpectate()
+        end
         if Globals.EnemySpectate ~= false and not EP.running then StartEnemySpectate() end
         if Globals.AutoRedeemCodes and not Globals.CodesRedeemed and not Globals.AutoRedeemRunning then
             redeemCodesFromBeebom()
@@ -7187,7 +7195,7 @@ if Globals.ClaimRewards and not Globals.AutoClaimRewards then
 end
 
 MissionsUIFix()
-if Globals.TowerSpectate ~= false then
+if Globals.TowerSpectate ~= false and not ExecutorIsWeak then
     task.spawn(StartTowerSpectate)
 end
 if Globals.EnemySpectate ~= false then
