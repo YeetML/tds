@@ -811,7 +811,6 @@ local DefaultSettings = {
     AutoUpgradeAll = false,
     TowerSpectate = true, 
     EnemySpectate = true,
-    MilitaryPath = 0,
     MercenaryPath = 0,
     AutoSkip = false,
     AutoOpenCrates = false,
@@ -1690,9 +1689,6 @@ function CalcLength()
             Globals.MaxPathDistance = TotalLength(PathNodes)
             if Globals.MercenarySlider then
                 Globals.MercenarySlider:SetMax(Globals.MaxPathDistance)
-            end
-            if Globals.MilitarySlider then
-                Globals.MilitarySlider:SetMax(Globals.MaxPathDistance)
             end
             if Globals.MaxLenght then
                 Globals.MaxLenght = Globals.MaxPathDistance
@@ -3367,30 +3363,204 @@ function StartAutoMercenary()
     end)
 end
 
+local AIRSTRIKE_LEAD_TIME      = 1.75 
+local AIRSTRIKE_BATCH_INTERVAL = 0.5    
+
 function StartAutoMilitary()
     if not Globals.AutoMilitary then return end
     if Globals.AutoMilitaryBaseRunning then return end
     Globals.AutoMilitaryBaseRunning = true
+
+    local function AsTotalLength(nodes)
+        local total = 0
+        for i = 1, #nodes - 1 do
+            total += (nodes[i + 1].Position - nodes[i].Position).Magnitude
+        end
+        return total
+    end
+
+    local function AsFindPath()
+        local map = workspace:FindFirstChild("Map")
+        local paths = map and map:FindFirstChild("Paths")
+        if not paths then return nil end
+        local bestNodes, bestLen = nil, -1
+        for _, folder in ipairs(paths:GetChildren()) do
+            local nodes = {}
+            for _, n in ipairs(folder:GetChildren()) do
+                if n:IsA("BasePart") and tonumber(n.Name) then
+                    table.insert(nodes, n)
+                end
+            end
+            if #nodes >= 2 then
+                table.sort(nodes, function(a, b) return tonumber(a.Name) < tonumber(b.Name) end)
+                local len = AsTotalLength(nodes)
+                if len > bestLen then
+                    bestLen = len
+                    bestNodes = nodes
+                end
+            end
+        end
+        return bestNodes
+    end
+
+    local function AsGetPointAtDistance(nodes, d)
+        if not nodes or #nodes < 2 then return nil end
+        d = math.max(d, 0)
+        local cur = 0
+        for i = 1, #nodes - 1 do
+            local a, b = nodes[i].Position, nodes[i + 1].Position
+            local seg = (b - a).Magnitude
+            if seg > 0 and cur + seg >= d then
+                return a + (b - a).Unit * (d - cur)
+            end
+            cur += seg
+        end
+        return nodes[#nodes].Position
+    end
+
+    local function AsProjectOnPath(nodes, pos)
+        local bestDist, bestGap, cum = 0, math.huge, 0
+        for i = 1, #nodes - 1 do
+            local a, b = nodes[i].Position, nodes[i + 1].Position
+            local ab = b - a
+            local segLen = ab.Magnitude
+            if segLen > 0 then
+                local t = math.clamp((pos - a):Dot(ab) / (segLen * segLen), 0, 1)
+                local gap = (pos - (a + ab * t)).Magnitude
+                if gap < bestGap then
+                    bestGap = gap
+                    bestDist = cum + segLen * t
+                end
+            end
+            cum += segLen
+        end
+        return bestDist
+    end
+
+    local cachedPath, cachedTotal, cachedAt = nil, 0, 0
+    local function AsGetPath()
+        if not cachedPath or os.clock() - cachedAt > 1 then
+            local p = AsFindPath()
+            if p then
+                cachedTotal = AsTotalLength(p)
+                cachedPath = p
+            end
+            cachedAt = os.clock()
+        end
+        return cachedPath, cachedTotal
+    end
+
+    local tracker = setmetatable({}, { __mode = "k" })
+
     task.spawn(function()
         while Globals.AutoMilitary do
-            local TowersFolder = workspace:FindFirstChild("Towers")
-            if TowersFolder then
-                for _, towers in ipairs(TowersFolder:GetDescendants()) do
-                    if towers:IsA("Folder") and towers.Name == "TowerReplicator"
-                    and towers:GetAttribute("Name") == "Military Base"
-                    and towers:GetAttribute("OwnerId") == game.Players.LocalPlayer.UserId
-                    and (towers:GetAttribute("Upgrade") or 0) >= 4 then
-                        RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
-                            Troop = towers.Parent, Name = "Airstrike",
-                            Data = { pathName = 1, pointToEnd = CFrame.new(), dist = Globals.MilitaryPath or 195 }
-                        })
-                        task.wait(0.5)
-                        if not Globals.AutoMilitary then break end
+            local path = AsGetPath()
+            local npcs = workspace:FindFirstChild("NPCs")
+            if path and npcs then
+                local now = os.clock()
+                for _, npc in ipairs(npcs:GetChildren()) do
+                    local hrp = npc:FindFirstChild("HumanoidRootPart")
+                    if npc:IsA("Model") and hrp then
+                        local p = AsProjectOnPath(path, hrp.Position)
+                        local rec = tracker[npc]
+                        if rec then
+                            local dt = now - rec.t
+                            if dt > 0 then
+                                local inst = math.clamp((p - rec.p) / dt, 0, 80)
+                                rec.speed = rec.n == 1 and inst or (rec.speed * 0.6 + inst * 0.4)
+                                rec.n += 1
+                            end
+                            rec.p, rec.t = p, now
+                        else
+                            tracker[npc] = { p = p, t = now, speed = 0, n = 1 }
+                        end
                     end
                 end
             end
-            task.wait(0.5)
+            task.wait(0.1)
         end
+    end)
+
+    local function AsFindLeader(path)
+        local npcs = workspace:FindFirstChild("NPCs")
+        if not npcs then return nil end
+        local leader, leaderProj
+        for _, npc in ipairs(npcs:GetChildren()) do
+            if npc:IsA("Model") and npc:FindFirstChild("HumanoidRootPart") then
+                local proj = AsProjectOnPath(path, npc.HumanoidRootPart.Position)
+                if not leaderProj or proj > leaderProj then
+                    leader, leaderProj = npc, proj
+                end
+            end
+        end
+        return leader, leaderProj
+    end
+
+    local function AsBuildStrike()
+        local path, totalLen = AsGetPath()
+        if not path then return nil end
+        local leader, leaderProj = AsFindLeader(path)
+        if not leader then return nil end
+
+        local rec = tracker[leader]
+        if not rec then return nil end
+        local speed   = rec.speed
+        local aimDist = math.clamp(leaderProj + speed * AIRSTRIKE_LEAD_TIME, 0, totalLen)
+
+        local targetPos = AsGetPointAtDistance(path, aimDist)
+        local ahead     = AsGetPointAtDistance(path, math.min(aimDist + 5, totalLen))
+        local pathDir   = ahead - targetPos
+        if pathDir.Magnitude < 1 then
+            pathDir = targetPos - AsGetPointAtDistance(path, math.max(aimDist - 5, 0))
+        end
+        pathDir = pathDir.Magnitude < 0.001 and Vector3.new(0, 0, -1) or pathDir.Unit
+
+        return {
+            pointToEnd      = totalLen - aimDist,
+            directionCFrame = CFrame.lookAt(targetPos, targetPos + pathDir),
+            leader          = leader,
+            leaderProj      = leaderProj,
+            speed           = speed,
+            aimDist         = aimDist,
+        }
+    end
+
+    task.spawn(function()
+        print("[AutoMilitary] Started (predicted batch mode).")
+        while Globals.AutoMilitary do
+            local tf = workspace:FindFirstChild("Towers")
+            if tf then
+                local strike = AsBuildStrike()
+
+                if strike then
+                    for _, tower in ipairs(tf:GetChildren()) do
+                        if not Globals.AutoMilitary then break end
+                        local rep = tower:FindFirstChild("TowerReplicator")
+                        if rep
+                            and rep:GetAttribute("Name") == "Military Base"
+                            and rep:GetAttribute("OwnerId") == LocalPlayer.UserId
+                            and (rep:GetAttribute("Upgrade") or 0) >= 4 then
+                            local ok, res = pcall(function()
+                                return RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
+                                    Troop = tower,
+                                    Name  = "Airstrike",
+                                    Data  = {
+                                        pathName        = 1,
+                                        pointToEnd      = strike.pointToEnd,
+                                        directionCFrame = strike.directionCFrame,
+                                    },
+                                })
+                            end)
+                            if not ok then
+                                warn("[AutoMilitary] error: " .. tostring(res))
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(AIRSTRIKE_BATCH_INTERVAL)
+        end
+        print("[AutoMilitary] Ended.")
         Globals.AutoMilitaryBaseRunning = false
     end)
 end
