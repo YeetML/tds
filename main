@@ -4538,14 +4538,22 @@ task.spawn(function()
     Towers.ChildAdded:Connect(AutoSetDJSong)
 end)
 
-local SafeAsset
-pcall(function() SafeAsset = require(ReplicatedStorage.Shared.Modules.Asset) end)
+-- Lazy proxy: defers the require() until SAP actually needs it.
+-- This prevents the executor from pre-loading Asset in a non-RobloxScript
+-- context, which was breaking the game's own require(Asset) calls.
+local AssetProxy = setmetatable({}, {
+    __call = function(_, ...)
+        local mod = SAPGetAsset()
+        if not mod then return nil end
+        return mod(...)
+    end
+})
 
 SAPDeps = {
     RemoteFunc          = RemoteFunc,
     LocalPlayer         = LocalPlayer,
     ReplicatedStorage   = ReplicatedStorage,
-    Asset               = SafeAsset,                      
+    Asset               = AssetProxy,
     SetSetting          = SetSetting,
     SetSAPStatus        = SetSAPStatus,
     TryUpgradeTowerOnce = TryUpgradeTowerOnce,
