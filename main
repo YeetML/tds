@@ -806,6 +806,7 @@ local DefaultSettings = {
     AutoUpgradeSelected = false,
     AutoUpgradeAll = false,
     TowerSpectate = true, 
+    EnemySpectate = true,
     MilitaryPath = 0,
     MercenaryPath = 0,
     AutoSkip = false,
@@ -4332,6 +4333,7 @@ _G.SAPDeps = SAPDeps
 
 local SP = {
     running        = false,
+    rmbConn        = nil,
     spectating     = nil,
     camConn        = nil,
     watcherConn    = nil,
@@ -4559,7 +4561,7 @@ function SP_applyMode()
     SP_updateCamera()
 
     if SP.modeLabel then
-        SP.modeLabel.Text = ("%s  •  Q ◀  ▶ E  •  P to exit"):format(mode)
+        SP.modeLabel.Text = ("%s  •  Q ◀  ▶ E  •  Right-click to exit"):format(mode)
     end
 end
 
@@ -4742,15 +4744,18 @@ function StartTowerSpectate()
     -- key handler
     SP.keyConn = UserInputService.InputBegan:Connect(function(input, gpe)
         if gpe then return end
-        if input.KeyCode == SP_EXIT_KEY then
-            if SP.spectating then
-                SP_exitSpectate()
-                print("[Spectate] exited")
-            end
-        elseif input.KeyCode == SP_NEXT_KEY and SP.spectating then
+        if input.KeyCode == SP_NEXT_KEY and SP.spectating then
             SP_changeMode(1)
         elseif input.KeyCode == SP_PREV_KEY and SP.spectating then
             SP_changeMode(-1)
+        end
+    end)
+
+    -- right-click exits tower spectate
+    SP.rmbConn = UserInputService.InputBegan:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
+        if SP.spectating then
+            SP_exitSpectate()
         end
     end)
 
@@ -4777,6 +4782,7 @@ function StopTowerSpectate()
     if SP.watcherConn then SP.watcherConn:Disconnect() SP.watcherConn = nil end
     if SP.keyConn then SP.keyConn:Disconnect() SP.keyConn = nil end
     if SP.orbitConn then SP.orbitConn:Disconnect() SP.orbitConn = nil end
+    if SP.rmbConn then SP.rmbConn:Disconnect() SP.rmbConn = nil end
     SP_removeEyeButton()
     SP_clearFirstPersonHead()
 
@@ -4789,6 +4795,432 @@ function StopTowerSpectate()
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
     UserInputService.MouseIconEnabled = true
 end
+
+-- ============================================================
+-- ENEMY SPECTATE MODULE — no UI, hover + right-click toggle
+-- ============================================================
+local EP = {
+    running    = false,
+    spectating = nil,
+    hovered    = nil,
+    camConn    = nil,
+    keyConn    = nil,
+    orbitConn  = nil,
+    clickConn  = nil,
+    moveConn   = nil,
+    rmbMoveConn= nil,
+    rmbUpConn  = nil,
+    currentMode = 1,
+    hiddenForFirstPerson = {},
+    orbitYaw   = 0,
+    orbitPitch = math.rad(15),
+    modeLabel  = nil,
+    highlight  = nil,
+}
+
+local EP_MODES = {
+    "Default", "Third Person", "Side View",
+    "Front View", "First Person", "Top-down View",
+}
+
+local EP_ORBIT_SENSITIVITY = 0.4
+local EP_ORBIT_DISTANCE    = 15
+local EP_ORBIT_START_PITCH = math.rad(15)
+local EP_MIN_PITCH         = math.rad(-30)
+local EP_MAX_PITCH         = math.rad(75)
+
+local EP_NEXT_KEY = Enum.KeyCode.E
+local EP_PREV_KEY = Enum.KeyCode.Q
+
+local EP_HOVER_TOLERANCE = 80
+local EP_HIGHLIGHT_COLOR = Color3.fromRGB(255, 80, 80)
+local EP_CLICK_MAX_TIME  = 0.35
+local EP_CLICK_MAX_DRAG  = 6
+
+local EP_applyMode, EP_exitSpectate, EP_clearFirstPersonHead
+
+------------------------------------------------------------
+-- helpers
+------------------------------------------------------------
+local function EP_findPart(model, name)
+    local p = model:FindFirstChild(name)
+    if p and p:IsA("BasePart") then return p end
+    return nil
+end
+
+local function EP_resolveParts(model)
+    if model:IsA("BasePart") then
+        return { anchor = model, head = model, hrp = model, primary = model }
+    end
+    local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+    local head = EP_findPart(model, "Head") or primary
+    local hrp  = EP_findPart(model, "HumanoidRootPart") or primary
+    return { anchor = primary, head = head, hrp = hrp, primary = primary }
+end
+
+local function EP_getFocusCFrame(model)
+    local p = EP_resolveParts(model)
+    if p.primary then return p.primary.CFrame end
+    if p.head then return p.head.CFrame end
+    return model:GetPivot()
+end
+
+local function EP_getFrontYaw(model)
+    local cf = EP_getFocusCFrame(model)
+    local look = cf.LookVector
+    local flat = Vector3.new(look.X, 0, look.Z)
+    if flat.Magnitude < 1e-4 then return 0 end
+    flat = flat.Unit
+    return math.atan2(flat.X, flat.Z)
+end
+
+------------------------------------------------------------
+-- hover detection
+------------------------------------------------------------
+local function EP_center(enemy)
+    local primary = enemy.PrimaryPart
+    if primary then return primary.Position end
+    local ok, cf = pcall(function() return enemy:GetBoundingBox() end)
+    if ok and cf then return cf.Position end
+    local part = enemy:FindFirstChildWhichIsA("BasePart", true)
+    if part then return part.Position end
+    return nil
+end
+
+local function getEnemyUnderCursor()
+    local npcs = workspace:FindFirstChild("NPCs")
+    if not npcs then return nil end
+    local mousePos = UserInputService:GetMouseLocation()
+    local bestEnemy, bestDist = nil, EP_HOVER_TOLERANCE
+    for _, enemy in ipairs(npcs:GetChildren()) do
+        if enemy:IsA("Model") and enemy.Parent == npcs then
+            local pos = EP_center(enemy)
+            if pos then
+                local screen = camera:WorldToViewportPoint(pos)
+                if screen.Z > 0 then
+                    local dx = screen.X - mousePos.X
+                    local dy = screen.Y - mousePos.Y
+                    local dist = math.sqrt(dx * dx + dy * dy)
+                    if dist < bestDist then
+                        bestDist = dist
+                        bestEnemy = enemy
+                    end
+                end
+            end
+        end
+    end
+    return bestEnemy
+end
+
+------------------------------------------------------------
+-- highlight
+------------------------------------------------------------
+local function showHighlight(enemy)
+    if EP.highlight and EP.highlight.Adornee == enemy then return end
+    if EP.highlight then EP.highlight:Destroy() end
+    local hl = Instance.new("SelectionBox")
+    hl.Name = "EPSpectateHighlight"
+    hl.Adornee = enemy
+    hl.Color3 = EP_HIGHLIGHT_COLOR
+    hl.LineThickness = 0.15
+    hl.Transparency = 0.3
+    hl.SurfaceTransparency = 0.85
+    hl.SurfaceColor3 = EP_HIGHLIGHT_COLOR
+    hl.Parent = LocalPlayer.PlayerGui
+    EP.highlight = hl
+end
+
+local function clearHighlight()
+    if EP.highlight then EP.highlight:Destroy() EP.highlight = nil end
+end
+
+------------------------------------------------------------
+-- head transparency
+------------------------------------------------------------
+function EP_clearFirstPersonHead()
+    for _, e in ipairs(EP.hiddenForFirstPerson) do
+        pcall(function() e.o[e.p] = e.v end)
+    end
+    EP.hiddenForFirstPerson = {}
+end
+
+local function EP_applyFirstPersonHead(model)
+    EP_clearFirstPersonHead()
+    local head = EP_findPart(model, "Head") or EP_resolveParts(model).primary
+    if not head then return end
+    local function hide(obj)
+        if obj:IsA("BasePart") then
+            table.insert(EP.hiddenForFirstPerson, {o = obj, p = "Transparency", v = obj.Transparency})
+            obj.Transparency = 1
+            table.insert(EP.hiddenForFirstPerson, {o = obj, p = "LocalTransparencyModifier", v = obj.LocalTransparencyModifier})
+            obj.LocalTransparencyModifier = 1
+        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+            table.insert(EP.hiddenForFirstPerson, {o = obj, p = "Transparency", v = obj.Transparency})
+            obj.Transparency = 1
+        end
+    end
+    hide(head)
+    for _, child in ipairs(head:GetChildren()) do hide(child) end
+end
+
+------------------------------------------------------------
+-- camera
+------------------------------------------------------------
+local function EP_updateCamera()
+    if not EP.spectating or not EP.spectating.Parent then
+        EP_exitSpectate()
+        return
+    end
+    local mode = EP_MODES[EP.currentMode]
+    if mode == "Default" then
+        local focus = EP_getFocusCFrame(EP.spectating)
+        local cosP = math.cos(EP.orbitPitch)
+        local offset = Vector3.new(
+            EP_ORBIT_DISTANCE * cosP * math.sin(EP.orbitYaw),
+            EP_ORBIT_DISTANCE * math.sin(EP.orbitPitch),
+            EP_ORBIT_DISTANCE * cosP * math.cos(EP.orbitYaw)
+        )
+        camera.CFrame = CFrame.lookAt(focus.Position + offset, focus.Position)
+        return
+    end
+    local p = EP_resolveParts(EP.spectating)
+    if mode == "Third Person" and p.hrp and p.head then
+        local pos = p.hrp.CFrame * CFrame.new(0, 1, 4)
+        camera.CFrame = CFrame.lookAt(pos.Position, p.head.Position)
+    elseif mode == "Side View" and p.hrp and p.head then
+        local pos = p.hrp.CFrame * CFrame.new(4, 1, 0) * CFrame.Angles(0, math.pi / 2, 0)
+        camera.CFrame = CFrame.lookAt(pos.Position, p.head.Position)
+    elseif mode == "Front View" and p.hrp and p.head then
+        local pos = p.hrp.CFrame * CFrame.new(0, 1, -4)
+        camera.CFrame = CFrame.lookAt(pos.Position, p.head.Position)
+    elseif mode == "First Person" and p.head then
+        camera.CFrame = p.head.CFrame
+    elseif mode == "Top-down View" and p.hrp and p.primary then
+        local look = p.hrp.CFrame.LookVector
+        local flat = Vector3.new(look.X, 0, look.Z)
+        if flat.Magnitude < 0.001 then flat = Vector3.new(0, 0, 1) end
+        flat = flat.Unit
+        camera.CFrame =
+            CFrame.lookAt(p.primary.Position, p.primary.Position + flat)
+            * CFrame.new(0, 30, 0)
+            * CFrame.Angles(-math.pi / 2, 0, 0)
+    end
+end
+
+------------------------------------------------------------
+-- mode application
+------------------------------------------------------------
+function EP_applyMode()
+    if not EP.spectating then return end
+    EP_clearFirstPersonHead()
+    local mode = EP_MODES[EP.currentMode]
+    if mode == "Default" then
+        EP.orbitYaw = EP_getFrontYaw(EP.spectating)
+        EP.orbitPitch = EP_ORBIT_START_PITCH
+        camera.CameraType = Enum.CameraType.Scriptable
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+        UserInputService.MouseIconEnabled = false
+    else
+        camera.CameraType = Enum.CameraType.Scriptable
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        UserInputService.MouseIconEnabled = true
+        if mode == "First Person" then
+            EP_applyFirstPersonHead(EP.spectating)
+        end
+    end
+    EP_updateCamera()
+    if EP.modeLabel then
+        EP.modeLabel.Text = ("ENEMY: %s  •  Q ◀ ▶ E  •  Right-click to exit"):format(mode)
+    end
+end
+
+local function EP_changeMode(delta)
+    EP.currentMode = EP.currentMode + delta
+    if EP.currentMode < 1 then EP.currentMode = #EP_MODES end
+    if EP.currentMode > #EP_MODES then EP.currentMode = 1 end
+    EP_applyMode()
+end
+
+------------------------------------------------------------
+-- start / stop
+------------------------------------------------------------
+function EP_exitSpectate()
+    if EP.camConn then EP.camConn:Disconnect() EP.camConn = nil end
+    EP_clearFirstPersonHead()
+    EP.spectating = nil
+    camera.CameraType = Enum.CameraType.Custom
+    camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    UserInputService.MouseIconEnabled = true
+    if EP.modeLabel then EP.modeLabel.Visible = false end
+end
+
+local function EP_spectate(enemy)
+    if not enemy or not enemy.Parent then return end
+    if EP.camConn then EP.camConn:Disconnect() EP.camConn = nil end
+    EP_clearFirstPersonHead()
+    EP.spectating = enemy
+    EP.currentMode = 1
+    EP.orbitYaw = EP_getFrontYaw(enemy)
+    EP.orbitPitch = EP_ORBIT_START_PITCH
+    clearHighlight()
+    EP_applyMode()
+    EP.camConn = RunService.RenderStepped:Connect(EP_updateCamera)
+    if EP.modeLabel then EP.modeLabel.Visible = true end
+    print(("[EnemySpectate] spectating: %s"):format(enemy.Name))
+end
+
+------------------------------------------------------------
+-- mode label UI
+------------------------------------------------------------
+local function EP_buildUI()
+    local old = LocalPlayer.PlayerGui:FindFirstChild("EnemySpectateGui")
+    if old then old:Destroy() end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "EnemySpectateGui"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.DisplayOrder = 999
+    gui.Parent = LocalPlayer.PlayerGui
+
+    EP.modeLabel = Instance.new("TextLabel")
+    EP.modeLabel.Size = UDim2.fromOffset(420, 36)
+    EP.modeLabel.Position = UDim2.new(0.5, -210, 1, -50)
+    EP.modeLabel.BackgroundColor3 = Color3.fromRGB(30, 10, 12)
+    EP.modeLabel.BackgroundTransparency = 0.15
+    EP.modeLabel.BorderSizePixel = 0
+    EP.modeLabel.Text = ""
+    EP.modeLabel.TextColor3 = Color3.fromRGB(255, 220, 220)
+    EP.modeLabel.Font = Enum.Font.GothamBold
+    EP.modeLabel.TextSize = 14
+    EP.modeLabel.Visible = false
+    EP.modeLabel.Parent = gui
+
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 8)
+    c.Parent = EP.modeLabel
+end
+
+------------------------------------------------------------
+-- Start
+------------------------------------------------------------
+function StartEnemySpectate()
+    if EP.running then return end
+    EP.running = true
+    print("[EnemySpectate] starting")
+
+    EP_buildUI()
+
+    -- Q / E to cycle modes (no exit key — right-click exits)
+    EP.keyConn = UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.KeyCode == EP_NEXT_KEY and EP.spectating then
+            EP_changeMode(1)
+        elseif input.KeyCode == EP_PREV_KEY and EP.spectating then
+            EP_changeMode(-1)
+        end
+    end)
+
+    -- right-click: tap toggles, drag = camera rotate
+    local rmbDownTime = 0
+    local rmbDownPos  = Vector2.new(0, 0)
+    local rmbMoved    = 0
+
+    EP.clickConn = UserInputService.InputBegan:Connect(function(input, gpe)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
+        rmbDownTime = os.clock()
+        rmbMoved = 0
+        local mp = UserInputService:GetMouseLocation()
+        rmbDownPos = Vector2.new(mp.X, mp.Y)
+    end)
+
+    EP.rmbMoveConn = UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+        if rmbDownTime == 0 then return end
+        local mp = UserInputService:GetMouseLocation()
+        local dx = mp.X - rmbDownPos.X
+        local dy = mp.Y - rmbDownPos.Y
+        local d = math.sqrt(dx * dx + dy * dy)
+        if d > rmbMoved then rmbMoved = d end
+    end)
+
+    EP.rmbUpConn = UserInputService.InputEnded:Connect(function(input, gpe)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
+        if rmbDownTime == 0 then return end
+        local held = os.clock() - rmbDownTime
+        rmbDownTime = 0
+
+        -- drag or long hold → treat as camera rotate
+        if held > EP_CLICK_MAX_TIME then return end
+        if rmbMoved > EP_CLICK_MAX_DRAG then return end
+
+        -- tap → toggle
+        if EP.spectating then
+            EP_exitSpectate()
+        else
+            local enemy = getEnemyUnderCursor()
+            if enemy then EP_spectate(enemy) end
+        end
+    end)
+
+    -- hover highlight
+    EP.moveConn = RunService.Heartbeat:Connect(function()
+        if EP.spectating then
+            if EP.highlight then clearHighlight() end
+            EP.hovered = nil
+            return
+        end
+        local enemy = getEnemyUnderCursor()
+        if enemy ~= EP.hovered then
+            EP.hovered = enemy
+            if enemy then showHighlight(enemy) else clearHighlight() end
+        end
+    end)
+
+    -- orbit while in Default mode
+    EP.orbitConn = UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+        if not EP.spectating then return end
+        if EP_MODES[EP.currentMode] ~= "Default" then return end
+        EP.orbitYaw = EP.orbitYaw - math.rad(input.Delta.X * EP_ORBIT_SENSITIVITY)
+        EP.orbitPitch = math.clamp(
+            EP.orbitPitch + math.rad(input.Delta.Y * EP_ORBIT_SENSITIVITY),
+            EP_MIN_PITCH, EP_MAX_PITCH
+        )
+    end)
+end
+
+------------------------------------------------------------
+-- Stop
+------------------------------------------------------------
+function StopEnemySpectate()
+    if not EP.running then return end
+    EP.running = false
+    print("[EnemySpectate] stopping")
+
+    if EP.spectating then EP_exitSpectate() end
+    if EP.keyConn then EP.keyConn:Disconnect() EP.keyConn = nil end
+    if EP.clickConn then EP.clickConn:Disconnect() EP.clickConn = nil end
+    if EP.moveConn then EP.moveConn:Disconnect() EP.moveConn = nil end
+    if EP.orbitConn then EP.orbitConn:Disconnect() EP.orbitConn = nil end
+    if EP.rmbMoveConn then EP.rmbMoveConn:Disconnect() EP.rmbMoveConn = nil end
+    if EP.rmbUpConn then EP.rmbUpConn:Disconnect() EP.rmbUpConn = nil end
+    EP_clearFirstPersonHead()
+    clearHighlight()
+
+    local gui = LocalPlayer.PlayerGui:FindFirstChild("EnemySpectateGui")
+    if gui then gui:Destroy() end
+    EP.modeLabel = nil
+
+    camera.CameraType = Enum.CameraType.Custom
+    camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    UserInputService.MouseIconEnabled = true
+end
+-- ============================================================
+-- END ENEMY SPECTATE MODULE
+-- ============================================================
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/sources"))()
 
@@ -5650,6 +6082,16 @@ local Configuration = Globals.Window:Tab({Title = "Configuration", Icon = "slide
         end
     })
 
+        Configuration:Toggle({
+        Title = "Enemy Spectate",
+        Desc = "Hover an enemy — it gets a red outline. Right-click to spectate. Right-click again to exit. Q/E cycle modes.",
+        Value = Globals.EnemySpectate ~= false,
+        Callback = function(v)
+            SetSetting("EnemySpectate", v)
+            if v then StartEnemySpectate() else StopEnemySpectate() end
+        end
+    })
+
     Configuration:Section({Title = "Privacy & Identity"})
 
     Configuration:Toggle({
@@ -6399,6 +6841,7 @@ end
             StopBountyChain()
         end
         if Globals.TowerSpectate ~= false and not SP.running then StartTowerSpectate() end
+        if Globals.EnemySpectate ~= false and not EP.running then StartEnemySpectate() end
         if Globals.AutoRedeemCodes and not Globals.CodesRedeemed and not Globals.AutoRedeemRunning then
             redeemCodesFromBeebom()
         end
@@ -6413,6 +6856,9 @@ end
 MissionsUIFix()
 if Globals.TowerSpectate ~= false then
     task.spawn(StartTowerSpectate)
+end
+if Globals.EnemySpectate ~= false then
+    task.spawn(StartEnemySpectate)
 end
 getgenv().SmartTeleportToLobby = SmartTeleportToLobby
 return TDS
