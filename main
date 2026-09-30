@@ -5818,13 +5818,6 @@ local Automation = Globals.Window:Tab({Title = "Automation", Icon = "bot"}) do
         Callback = function(v) SetSetting("AutoMilitary", v) end
     })
 
-    Globals.MilitarySlider = Automation:Slider({
-        Title = "Path Distance",
-        Min = 0, Max = 300, Rounding = 0,
-        Value = Globals.MilitaryPath,
-        Callback = function(val) SetSetting("MilitaryPath", val) end
-    })
-
     task.spawn(function()
         while true do
             local success = CalcLength()
