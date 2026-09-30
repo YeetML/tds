@@ -4898,6 +4898,8 @@ end
 local function EP_center(enemy)
     local primary = enemy.PrimaryPart
     if primary then return primary.Position end
+    local head = enemy:FindFirstChild("Head")
+    if head and head:IsA("BasePart") then return head.Position end
     local ok, cf = pcall(function() return enemy:GetBoundingBox() end)
     if ok and cf then return cf.Position end
     local part = enemy:FindFirstChildWhichIsA("BasePart", true)
@@ -4905,25 +4907,32 @@ local function EP_center(enemy)
     return nil
 end
 
+-- Folders that Enemy Spectate scans under the cursor.
+-- Add more entries here if you want more unit containers.
+local EP_SCAN_FOLDERS = {"NPCs", "ClientUnits"}
+
 local function getEnemyUnderCursor()
-    local npcs = workspace:FindFirstChild("NPCs")
-    if not npcs then return nil end
     if not camera then camera = workspace.CurrentCamera end
     if not camera then return nil end
     local mousePos = UserInputService:GetMouseLocation()
     local bestEnemy, bestDist = nil, EP_HOVER_TOLERANCE
-    for _, enemy in ipairs(npcs:GetChildren()) do
-        if enemy:IsA("Model") and enemy.Parent == npcs then
-            local pos = EP_center(enemy)
-            if pos then
-                local screen = camera:WorldToViewportPoint(pos)
-                if screen.Z > 0 then
-                    local dx = screen.X - mousePos.X
-                    local dy = screen.Y - mousePos.Y
-                    local dist = math.sqrt(dx * dx + dy * dy)
-                    if dist < bestDist then
-                        bestDist = dist
-                        bestEnemy = enemy
+    for _, folderName in ipairs(EP_SCAN_FOLDERS) do
+        local folder = workspace:FindFirstChild(folderName)
+        if folder then
+            for _, enemy in ipairs(folder:GetChildren()) do
+                if enemy:IsA("Model") then
+                    local pos = EP_center(enemy)
+                    if pos then
+                        local screen = camera:WorldToViewportPoint(pos)
+                        if screen.Z > 0 then
+                            local dx = screen.X - mousePos.X
+                            local dy = screen.Y - mousePos.Y
+                            local dist = math.sqrt(dx * dx + dy * dy)
+                            if dist < bestDist then
+                                bestDist = dist
+                                bestEnemy = enemy
+                            end
+                        end
                     end
                 end
             end
@@ -4931,7 +4940,6 @@ local function getEnemyUnderCursor()
     end
     return bestEnemy
 end
-
 ------------------------------------------------------------
 -- highlight
 ------------------------------------------------------------
