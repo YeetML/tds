@@ -6074,7 +6074,7 @@ local Configuration = Globals.Window:Tab({Title = "Configuration", Icon = "slide
 
     Configuration:Toggle({
         Title = "Tower Spectate",
-        Desc = "Click a tower to open its info panel — an eye button appears in the top-right corner. Click the eye to orbit-spectate that tower. Q/E cycle view modes, P exits.",
+        Desc = "Click a tower to open its info panel — an eye button appears in the top-right corner. Click the eye to orbit-spectate that tower. Q/E cycle view modes, Right-click exits.",
         Value = Globals.TowerSpectate ~= false,
         Callback = function(v)
             SetSetting("TowerSpectate", v)
