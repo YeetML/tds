@@ -4331,6 +4331,7 @@ SAPDeps = {
 getgenv().SAPDeps = SAPDeps
 _G.SAPDeps = SAPDeps
 
+local EP
 local SP = {
     running        = false,
     rmbConn        = nil,
@@ -4751,9 +4752,9 @@ function StartTowerSpectate()
         end
     end)
 
-    -- right-click exits tower spectate
     SP.rmbConn = UserInputService.InputBegan:Connect(function(input)
         if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
+        if EP and EP.spectating then return end
         if SP.spectating then
             SP_exitSpectate()
         end
@@ -4799,7 +4800,7 @@ end
 -- ============================================================
 -- ENEMY SPECTATE MODULE — no UI, hover + right-click toggle
 -- ============================================================
-local EP = {
+EP = {
     running    = false,
     spectating = nil,
     hovered    = nil,
@@ -5154,6 +5155,9 @@ function StartEnemySpectate()
         -- drag or long hold → treat as camera rotate
         if held > EP_CLICK_MAX_TIME then return end
         if rmbMoved > EP_CLICK_MAX_DRAG then return end
+
+        -- don't latch onto a click that just closed a tower session
+        if SP.spectating then return end
 
         -- tap → toggle
         if EP.spectating then
