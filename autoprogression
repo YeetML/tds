@@ -2310,7 +2310,38 @@ local HardcoreStrategy = {
     autoReady   = true,
 }
 
-local HC_REQUIRED_TOWERS = {"Pyromancer", "Farm", "Shotgunner"}
+-- ═══════════════════════════════════════════════════════════════
+-- Hardcore1 — Crook Boss / Pyromancer / Scout loadout used to
+-- level Scout + Crook Boss to Lv.20 before Fallen is allowed.
+-- ═══════════════════════════════════════════════════════════════
+local Hardcore1Strategy = {
+    name        = "hardcore1",
+    url         = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore1",
+    autoPremium = false,
+    autoSkip    = false,
+    autoRejoin  = false,
+    autoReady   = true,
+}
+
+local HC_REQUIRED_TOWERS  = {"Pyromancer", "Farm", "Shotgunner"}
+local HC1_REQUIRED_TOWERS = {"Crook Boss", "Pyromancer", "Scout"}
+
+-- ═══════════════════════════════════════════════════════════════
+-- Hardcore1 gate — returns true if Scout or Crook Boss is not yet
+-- level 20 (i.e. we still need to farm Hardcore1 before Fallen).
+-- ═══════════════════════════════════════════════════════════════
+local function APR_NeedsHardcore1()
+    local scoutMaxed = IsTowerMaxLevel("Scout")
+    local crookMaxed = IsTowerMaxLevel("Crook Boss")
+    if not scoutMaxed then
+        print("[AutoProgression] Hardcore1 needed – Scout is not level 20 yet")
+    end
+    if not crookMaxed then
+        print("[AutoProgression] Hardcore1 needed – Crook Boss is not level 20 yet")
+    end
+    return not (scoutMaxed and crookMaxed)
+end
+getgenv().APR_NeedsHardcore1 = APR_NeedsHardcore1
 
 local runningHardcore = false
 function RunHardcore()
@@ -2385,6 +2416,84 @@ function RunHardcore()
         runningHardcore = false
     end
 end
+
+-- ═══════════════════════════════════════════════════════════════
+-- RUN HARDCORE1 — uses Crook Boss / Pyromancer / Scout loadout to
+-- level Scout + Crook Boss to 20 before Fallen is allowed.
+-- ═══════════════════════════════════════════════════════════════
+local runningHardcore1 = false
+function RunHardcore1()
+    if runningHardcore1 then return end
+    runningHardcore1 = true
+    getgenv().TimeScaleEnabled = false
+    SetStatus("Starting Hardcore1 strategy...")
+
+    local function getDifficultyDisplay()
+        local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
+        local rep = sr and sr:FindFirstChild("GameStateReplicator")
+        return rep and rep:GetAttribute("DifficultyDisplayName") or nil
+    end
+
+    local function isHardcoreDisplay(display)
+        return display and display ~= ""
+            and tostring(display):lower():find("hardcore", 1, true) ~= nil
+    end
+
+    local function loadHardcore1()
+        ApplyStrategySettings(Hardcore1Strategy)
+        APR_SetCurrentStrategy("Hardcore1", Hardcore1Strategy.name, "Hardcore")
+        task.wait(0.3)
+        print("[AutoProgression] Loading Hardcore1 strategy...")
+        SetStatus("Loading Hardcore1 strategy...")
+        loadstring(game:HttpGet(Hardcore1Strategy.url))()
+    end
+
+    if not IsInLobby() then
+        if APR_IsPizzaPartyMatch() then
+            SetStatus("Already in Pizza Party")
+            runningHardcore1 = false
+            return
+        end
+
+        local display = getDifficultyDisplay()
+        local deadline = os.clock() + 5
+        while not display and os.clock() < deadline do
+            task.wait(0.1)
+            display = getDifficultyDisplay()
+        end
+
+        if not isHardcoreDisplay(display) then
+            SetStatus("Hardcore1: wrong mode – going to lobby")
+            runningHardcore1 = false
+            getgenv().SmartTeleportToLobby()
+            return
+        end
+
+        local buyResult = AutoBuyTowers(HC1_REQUIRED_TOWERS)
+        if buyResult ~= "OK" then
+            SetStatus("Hardcore1: cannot afford towers – Pizza fallback")
+            runningHardcore1 = false
+            RunPizzaParty()
+            return
+        end
+
+        loadHardcore1()
+        runningHardcore1 = false
+    else
+        local buyResult = AutoBuyTowers(HC1_REQUIRED_TOWERS)
+        if buyResult == "Coins" then
+            SetStatus("Hardcore1: no resources – farming Pizza")
+            runningHardcore1 = false
+            RunPizzaParty()
+            return
+        end
+
+        loadHardcore1()
+        runningHardcore1 = false
+    end
+end
+getgenv().RunHardcore1 = RunHardcore1
+
 local APR_HandlingGameOver = false
 
 local function APR_GetGameStateReplicator()
@@ -2750,10 +2859,16 @@ local function RunAutoProgression()
 
     local level = GetStat("Level")
 
-        if level >= 176 then
-        SetStatus("Level " .. level .. " → Fallen path")
-        RunFallenStrategy()
-        elseif level >= 115 then
+    if level >= 176 then
+        if APR_NeedsHardcore1() then
+            SetStatus("Level " .. level .. " → Hardcore1 (Scout/Crook Boss not maxed)")
+            print("[AutoProgression] Routing to Hardcore1 – Scout or Crook Boss not yet level 20")
+            RunHardcore1()
+        else
+            SetStatus("Level " .. level .. " → Fallen path")
+            RunFallenStrategy()
+        end
+    elseif level >= 115 then
         SetStatus("Level " .. level .. " → Hardcore path")
         RunHardcore()
     elseif level >= 50 then
@@ -3183,6 +3298,7 @@ getgenv().RunPizzaParty = RunPizzaParty
 getgenv().RunBootCamp = RunBootCamp
 getgenv().RunFallenStrategy = RunFallenStrategy
 getgenv().RunHardcore = RunHardcore
+getgenv().RunHardcore1 = RunHardcore1
 
 task.spawn(function()
     task.wait(1)
