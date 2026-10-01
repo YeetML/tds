@@ -243,6 +243,43 @@ local function ApplyStrategySettings(strategy)
     end
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- Hard-disable AutoReady across every Globals alias + lock it,
+-- and wait for the main script's 1s lock watcher to propagate.
+-- ═══════════════════════════════════════════════════════════════
+local function APR_ForceDisableAutoReady()
+    local aliases = {
+        getgenv(),
+        _G,
+        getgenv().Globals,
+        _G.Globals,
+    }
+    for _, t in ipairs(aliases) do
+        if type(t) == "table" then
+            pcall(function() t.AutoReady = false end)
+        end
+    end
+
+    _G.AutoProgSettings.AutoReady = false
+    _G.AutoProgSettings.__locked  = true
+
+    local ss = getgenv().SetSetting or _G.SetSetting
+    if type(ss) == "function" then
+        pcall(ss, "AutoReady", false)
+    end
+
+    local g = getgenv().Globals or _G.Globals
+    if type(g) == "table" then
+        g.AutoReady        = false
+        g.AutoReadyRunning = false
+    end
+    getgenv().AutoReady        = false
+    getgenv().AutoReadyRunning = false
+
+    -- wait past the main script's 1-second lock-watcher tick
+    task.wait(1.2)
+end
+
 
 local function BuyTower(towerName)
     SetStatus("Buying " .. towerName .. "...")
@@ -2544,11 +2581,8 @@ local function RunAutoTrial(passedTrialName)
     runningAutoTrial = true
     getgenv().TimeScaleEnabled = false
 
-    -- force AutoReady OFF before anything else
-    getgenv().AutoReady           = false
-    _G.AutoProgSettings.AutoReady = false
-    local MG = getgenv().Globals or _G.Globals
-    if MG then MG.AutoReady = false end
+    -- Hard-disable AutoReady and wait for it to propagate
+    APR_ForceDisableAutoReady()
 
     local trialName = passedTrialName
     if not trialName or trialName == "" then
@@ -2607,6 +2641,8 @@ local function RunAutoTrial(passedTrialName)
         autoPremium = false,
         autoReady   = false,
     })
+
+    APR_ForceDisableAutoReady()
 
     task.wait(0.4)
 
