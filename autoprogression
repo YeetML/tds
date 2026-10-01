@@ -2710,7 +2710,33 @@ local function RunAutoTrial(passedTrialName)
     end
 
     local normalized = APR_NormalizeTrialName(trialName)
-
+    -- ═══ Committed requires a fully maxed skill tree ═══
+    if normalized == "Committed" then
+        local cache = APR_SkillTreeCache and APR_SkillTreeCache.data or {}
+        if #cache == 0 then
+            print("[AutoProgression] Committed skipped – skill tree not cached yet (must be in lobby)")
+            runningAutoTrial = false
+            return
+        end
+        local maxed, total = 0, #cache
+        local missing = {}
+        for _, s in ipairs(cache) do
+            if s.IsMax then
+                maxed = maxed + 1
+            else
+                table.insert(missing, string.format("%s (%d/%d)", s.Name, s.Current, s.Max))
+            end
+        end
+        if maxed < total then
+            print(string.format("[AutoProgression] Committed skipped – skill tree not maxed (%d/%d). Missing: %s",
+                maxed, total, table.concat(missing, ", ")))
+            SetStatus("Committed: skill tree not maxed – skipping")
+            runningAutoTrial = false
+            return
+        end
+        print("[AutoProgression] Committed: skill tree fully maxed ✅")
+    end
+    -- ═══ END Committed gate ═══
     if APR_IsTrialCompleted(normalized) then
         SetStatus("Trial '" .. tostring(normalized) .. "' already done – skipping")
         print("[AutoProgression] Trial already completed:", normalized)
