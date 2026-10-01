@@ -2775,7 +2775,7 @@ end
 -- ═══════════════════════════════════════════════════════════════
 local runningAutoTrial = false
 local function RunAutoTrial(passedTrialName)
-    if runningAutoTrial then return end
+    if runningAutoTrial then return false end
     runningAutoTrial = true
     getgenv().TimeScaleEnabled = false
 
@@ -2795,7 +2795,7 @@ local function RunAutoTrial(passedTrialName)
     if not trialName or trialName == "" then
         SetStatus("No active trial")
         runningAutoTrial = false
-        return
+        return false
     end
 
     local normalized = APR_NormalizeTrialName(trialName)
@@ -2804,7 +2804,7 @@ local function RunAutoTrial(passedTrialName)
         SetStatus("Trial '" .. tostring(normalized) .. "' already done – skipping")
         print("[AutoProgression] Trial already completed:", normalized)
         runningAutoTrial = false
-        return
+        return false
     end
 
     local url = TRIAL_SCRIPTS[normalized]
@@ -2812,16 +2812,15 @@ local function RunAutoTrial(passedTrialName)
         SetStatus("No strategy for trial: " .. tostring(normalized))
         print("[AutoProgression] No strategy for trial:", normalized)
         runningAutoTrial = false
-        return
+        return false
     end
 
     local level = GetStat("Level")
     if level < TRIAL_LEVEL_REQ then
         SetStatus("Need level " .. TRIAL_LEVEL_REQ .. " for trials (have " .. level .. ")")
         runningAutoTrial = false
-        return
+        return false
     end
-
 
     local skillOk, missingSkills = APR_MeetsSkillRequirements(normalized)
     if not skillOk then
@@ -2831,7 +2830,7 @@ local function RunAutoTrial(passedTrialName)
             warn("   → " .. m)
         end
         runningAutoTrial = false
-        return
+        return false
     end
 
     local reqs = TRIAL_TOWER_REQS[normalized] or {}
@@ -2841,7 +2840,7 @@ local function RunAutoTrial(passedTrialName)
             SetStatus("Cannot afford trial towers – " .. tostring(buyResult))
             print("[AutoProgression] Cannot afford towers for trial:", normalized)
             runningAutoTrial = false
-            return
+            return false
         end
     end
 
@@ -2862,7 +2861,7 @@ local function RunAutoTrial(passedTrialName)
         print("[AutoProgression] Loading trial strat:", normalized)
         loadstring(game:HttpGet(url))()
         runningAutoTrial = false
-        return
+        return true
     end
 
     APR_SetCurrentStrategy("Trial", normalized, normalized)
@@ -2872,6 +2871,7 @@ local function RunAutoTrial(passedTrialName)
         RemoteFunc:InvokeServer("Multiplayer", "v2:start", { count = 1, mode = "Trials" })
     end)
     runningAutoTrial = false
+    return true
 end
 getgenv().RunAutoTrial = RunAutoTrial
 
@@ -2913,9 +2913,13 @@ local function RunAutoProgression()
                 SetStatus("Active trial detected: " .. tostring(normalized))
                 print("[AutoProgression] ✅ Trial priority: " .. tostring(normalized)
                       .. (IsInLobby() and "  (lobby → join)" or "  (match → load)"))
-                RunAutoTrial(activeTrial)
-                AutoProgressionRunning = false
-                return
+                local launched = RunAutoTrial(activeTrial)
+                if launched then
+                    AutoProgressionRunning = false
+                    return
+                end
+                print("[AutoProgression] ⚠ Trial cannot launch right now — falling through to normal routing.")
+                -- ↓ intentionally NO return — continue to force-mode / level routing
             else
                 print("[AutoProgression] Trial '" .. tostring(normalized)
                       .. "' already done – falling through to normal routing.")
