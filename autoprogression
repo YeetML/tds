@@ -1091,6 +1091,23 @@ local function RunSkillPurchases()
     end
 
     local targets, phaseLabel = APR_GetActiveSkillTargets()
+
+    -- ── Pre-check: is there anything actually left to buy? ──
+    do
+        local preMap = FindSkillNodes()
+        local hasWork = false
+        for _, t in ipairs(targets) do
+            local e = preMap[t.name]
+            if not e then hasWork = true; break end
+            local cur = ParseSkillLevel(e.lvlLbl.Text)
+            if cur < t.maxLevel then hasWork = true; break end
+        end
+        if not hasWork then
+            SkillBuyingRunning = false
+            return   -- silent no-op
+        end
+    end
+
     print(("[SkillBuyer] Phase = %s  •  %d target skill(s)")
         :format(phaseLabel, #targets))
 
