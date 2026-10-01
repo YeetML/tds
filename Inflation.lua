@@ -2,6 +2,7 @@
 TDS:Loadout("DJ Booth", "Gatling Gun", "Medic", "Ace Pilot", "Trapper")
 TDS:Mode("Trial")
 TDS:Ready()
+TDS:VoteSkip(9)
 
 -- [ Wave 1 ] --
 TDS:VoteSkip(1)
