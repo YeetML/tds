@@ -629,6 +629,36 @@ getgenv().APR_FormatSkillTreeField   = APR_FormatSkillTreeField
 getgenv().APR_FormatTowerExpField    = APR_FormatTowerExpField
 getgenv().APR_SkillTreeCache         = APR_SkillTreeCache
 
+local function APR_MeetsSkillRequirements(trialName)
+    local reqs = TRIAL_SKILL_REQS[trialName]
+    if not reqs then return true, {} end
+
+    local cached = APR_SkillTreeCache.data
+    if not cached or #cached == 0 then
+        -- Cache empty (usually because we're not in the lobby yet).
+        -- Warn but do NOT hard-block, so a match-in-progress can still proceed.
+        warn("[AutoProgression] Skill tree cache empty — cannot verify skill reqs for " .. tostring(trialName))
+        return true, {}
+    end
+
+    local byName = {}
+    for _, s in ipairs(cached) do byName[s.Name] = s end
+
+    local missing = {}
+    for skillName, requiredLvl in pairs(reqs) do
+        local entry = byName[skillName]
+        if not entry then
+            table.insert(missing, string.format("%s (missing, need %d)", skillName, requiredLvl))
+        elseif (entry.Current or 0) < requiredLvl then
+            table.insert(missing, string.format("%s (%d/%d)", skillName, entry.Current or 0, requiredLvl))
+        end
+    end
+
+    return #missing == 0, missing
+end
+getgenv().APR_MeetsSkillRequirements = APR_MeetsSkillRequirements
+getgenv().APR_TRIAL_SKILL_REQS       = TRIAL_SKILL_REQS
+
 -- ═══════════════════════════════════════════════════════════════
 -- STRATEGY TRACKER — remembers which strat is currently being run
 -- so the end-of-match webhook can report it.
@@ -1441,6 +1471,28 @@ local TRIAL_TOWER_REQS = {
     ["Hidden Enemies"]    = {"Gatling Gun", "Hacker", "Mercenary Base", "Trapper", "DJ Booth"},
     ["Broke"]             = {"Gatling Gun", "Militant", "Medic", "Trapper", "DJ Booth"},
     ["Healthy Enemies"]   = {"Ace Pilot", "Mercenary Base", "DJ Booth", "Gatling Gun", "Medic"},
+}
+
+local TRIAL_SKILL_REQS = {
+    ["Committed"] = {
+        ["Accelerator"]          = 25,
+        ["Bandages"]             = 25,
+        ["Beefed Up Minions"]    = 25,
+        ["Bigger Budget"]        = 25,
+        ["Enhanced Optics"]      = 20,
+        ["Expanded Barracks"]    = 20,
+        ["Extreme Conditioning"] = 25,
+        ["Fight Dirty"]          = 25,
+        ["Fortify"]              = 40,
+        ["Improved Gunpowder"]   = 25,
+        ["Over-Heal"]            = 25,
+        ["Precision"]            = 15,
+        ["Re-enforcements"]      = 10,
+        ["Resourcefulness"]      = 25,
+        ["Scavenger"]            = 20,
+        ["Scholar"]              = 20,
+        ["Stonks"]               = 20,
+    },
 }
 
 -- ═══ HARDCODED: trial level requirement is 177 ═══
@@ -2729,6 +2781,18 @@ local function RunAutoTrial(passedTrialName)
     local level = GetStat("Level")
     if level < TRIAL_LEVEL_REQ then
         SetStatus("Need level " .. TRIAL_LEVEL_REQ .. " for trials (have " .. level .. ")")
+        runningAutoTrial = false
+        return
+    end
+
+
+    local skillOk, missingSkills = APR_MeetsSkillRequirements(normalized)
+    if not skillOk then
+        SetStatus("Missing skills for trial: " .. normalized)
+        warn("[AutoProgression] ❌ Missing skill requirements for '" .. normalized .. "':")
+        for _, m in ipairs(missingSkills) do
+            warn("   → " .. m)
+        end
         runningAutoTrial = false
         return
     end
