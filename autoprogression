@@ -629,6 +629,28 @@ getgenv().APR_FormatSkillTreeField   = APR_FormatSkillTreeField
 getgenv().APR_FormatTowerExpField    = APR_FormatTowerExpField
 getgenv().APR_SkillTreeCache         = APR_SkillTreeCache
 
+local TRIAL_SKILL_REQS = {
+    ["Committed"] = {
+        ["Accelerator"]          = 25,
+        ["Bandages"]             = 25,
+        ["Beefed Up Minions"]    = 25,
+        ["Bigger Budget"]        = 25,
+        ["Enhanced Optics"]      = 20,
+        ["Expanded Barracks"]    = 20,
+        ["Extreme Conditioning"] = 25,
+        ["Fight Dirty"]          = 25,
+        ["Fortify"]              = 40,
+        ["Improved Gunpowder"]   = 25,
+        ["Over-Heal"]            = 25,
+        ["Precision"]            = 15,
+        ["Re-enforcements"]      = 10,
+        ["Resourcefulness"]      = 25,
+        ["Scavenger"]            = 20,
+        ["Scholar"]              = 20,
+        ["Stonks"]               = 20,
+    },
+}
+
 local function APR_MeetsSkillRequirements(trialName)
     local reqs = TRIAL_SKILL_REQS[trialName]
     if not reqs then return true, {} end
@@ -1527,27 +1549,6 @@ local TRIAL_TOWER_REQS = {
     ["Healthy Enemies"]   = {"Ace Pilot", "Mercenary Base", "DJ Booth", "Gatling Gun", "Medic"},
 }
 
-local TRIAL_SKILL_REQS = {
-    ["Committed"] = {
-        ["Accelerator"]          = 25,
-        ["Bandages"]             = 25,
-        ["Beefed Up Minions"]    = 25,
-        ["Bigger Budget"]        = 25,
-        ["Enhanced Optics"]      = 20,
-        ["Expanded Barracks"]    = 20,
-        ["Extreme Conditioning"] = 25,
-        ["Fight Dirty"]          = 25,
-        ["Fortify"]              = 40,
-        ["Improved Gunpowder"]   = 25,
-        ["Over-Heal"]            = 25,
-        ["Precision"]            = 15,
-        ["Re-enforcements"]      = 10,
-        ["Resourcefulness"]      = 25,
-        ["Scavenger"]            = 20,
-        ["Scholar"]              = 20,
-        ["Stonks"]               = 20,
-    },
-}
 
 -- ═══ HARDCODED: trial level requirement is 177 ═══
 local TRIAL_LEVEL_REQ = 177
