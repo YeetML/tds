@@ -988,12 +988,45 @@ end
 getgenv().CheckAndBuyEvolvedTowers = CheckAndBuyEvolvedTowers
 getgenv().EVOLVED_TOWER_MAP        = EVOLVED_TOWER_MAP
 
-local SKILL_TARGETS = {
+local SKILL_TARGETS_EARLY = {
     { name = "Enhanced Optics", maxLevel = 20 },
     { name = "Resourcefulness", maxLevel = 10 },
     { name = "Bigger Budget",   maxLevel = 20 },
     { name = "Stonks",          maxLevel = 15 },
 }
+
+local SKILL_TARGETS_MAX = {
+    { name = "Accelerator",          maxLevel = 25 },
+    { name = "Bandages",             maxLevel = 25 },
+    { name = "Beefed Up Minions",    maxLevel = 25 },
+    { name = "Bigger Budget",        maxLevel = 25 },
+    { name = "Enhanced Optics",      maxLevel = 20 },
+    { name = "Expanded Barracks",    maxLevel = 20 },
+    { name = "Extreme Conditioning", maxLevel = 25 },
+    { name = "Fight Dirty",          maxLevel = 25 },
+    { name = "Fortify",              maxLevel = 40 },
+    { name = "Improved Gunpowder",   maxLevel = 25 },
+    { name = "Over-Heal",            maxLevel = 25 },
+    { name = "Precision",            maxLevel = 15 },
+    { name = "Re-enforcements",      maxLevel = 10 },
+    { name = "Resourcefulness",      maxLevel = 25 },
+    { name = "Scavenger",            maxLevel = 20 },
+    { name = "Scholar",              maxLevel = 20 },
+    { name = "Stonks",               maxLevel = 20 },
+}
+
+-- Decide which list to use right now.
+-- "Hardcore1 done" == Scout AND Crook Boss both maxed (level 20).
+local function APR_GetActiveSkillTargets()
+    local level      = GetStat("Level")
+    local scoutMaxed = IsTowerMaxLevel("Scout")
+    local crookMaxed = IsTowerMaxLevel("Crook Boss")
+
+    if level >= 176 and scoutMaxed and crookMaxed then
+        return SKILL_TARGETS_MAX, "MAX (Fallen phase)"
+    end
+    return SKILL_TARGETS_EARLY, "EARLY"
+end
 
 local function ParseSkillLevel(text)
     text = tostring(text or "")
@@ -1057,7 +1090,11 @@ local function RunSkillPurchases()
         return
     end
 
-    for _, target in ipairs(SKILL_TARGETS) do
+    local targets, phaseLabel = APR_GetActiveSkillTargets()
+    print(("[SkillBuyer] Phase = %s  •  %d target skill(s)")
+        :format(phaseLabel, #targets))
+
+    for _, target in ipairs(targets) do
         while true do
             if not IsInLobby() then
                 SkillBuyingRunning = false
