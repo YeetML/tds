@@ -180,12 +180,15 @@ do
 end
 
 local function SetStatus(text)
-    local ui = getgenv().AutoProgressionUI
-    if ui and ui.status then
-        ui.status.Text = "Status: " .. text
-    else
-        _G._pendingStatus = text
-    end
+    local ok = pcall(function()
+        local ui = getgenv().AutoProgressionUI
+        if ui and ui.status then
+            ui.status.Text = "Status: " .. text
+        else
+            _G._pendingStatus = text
+        end
+    end)
+    if not ok then _G._pendingStatus = text end
 end
 getgenv().SetStatus = SetStatus
 
@@ -2896,9 +2899,7 @@ getgenv().RunAutoTrial = RunAutoTrial
 local AutoProgressionRunning = false
 local AutoProgressionEnabled = false
 
-local function RunAutoProgression()
-    if AutoProgressionRunning then return end
-    AutoProgressionRunning = true
+local function RunAutoProgressionInner()
     task.wait(0.5)
 
     local stateRep = ReplicatedStorage:FindFirstChild("StateReplicators")
@@ -3000,6 +3001,16 @@ local function RunAutoProgression()
     else
         SetStatus("Level " .. level .. " → Farming Easy")
         RunYeetEasy()
+    end
+    AutoProgressionRunning = false
+end
+
+local function RunAutoProgression()
+    if AutoProgressionRunning then return end
+    AutoProgressionRunning = true
+    local ok, err = pcall(RunAutoProgressionInner)
+    if not ok then
+        warn("[AutoProgression] crashed: " .. tostring(err))
     end
     AutoProgressionRunning = false
 end
@@ -3384,6 +3395,10 @@ local function CreateUI()
             levelDisplay.Text = "Level: " .. tostring(level)
             coinsDisplay.Text = "Coins: " .. tostring(coins)
             gemsDisplay.Text = "Gems: " .. tostring(gems)
+            if _G._pendingStatus then
+                statusDisplay.Text = "Status: " .. _G._pendingStatus
+                _G._pendingStatus = nil
+            end
         end
     end)
 
