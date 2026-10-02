@@ -3888,12 +3888,12 @@ function GetCash()
     end
 
     -- Fallbacks in case the UI hasn't loaded yet
-    local cObj = LocalPlayer:FindFirstChild("Cash") or LocalPlayer:FindFirstChild("Coins")
+    local cObj = LocalPlayer:FindFirstChild("Cash")
     if cObj and typeof(cObj) == "Instance" then
         local ok2, v = pcall(function() return cObj.Value end)
         if ok2 and type(v) == "number" then return v end
     end
-    local attr = LocalPlayer:GetAttribute("Cash") or LocalPlayer:GetAttribute("Coins")
+    local attr = LocalPlayer:GetAttribute("Cash")
     if type(attr) == "number" then return attr end
     return 0
 end
