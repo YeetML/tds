@@ -2914,6 +2914,9 @@ local function RunAutoProgressionInner()
         end
     end
 
+    -- If the user has explicitly forced a mode, skip the trial-priority
+    -- block entirely so their choice wins.
+    if not IsAnyForceOn() then
     do
         local sr  = ReplicatedStorage:FindFirstChild("StateReplicators")
         local gsr = sr and sr:FindFirstChild("GameStateReplicator")
@@ -2946,6 +2949,7 @@ local function RunAutoProgressionInner()
         else
             print("[AutoProgression] No active trial – normal routing (Fallen/etc.)")
         end
+    end
     end
 
     local forceEasy = _G.AutoProgSettings.ForceEasy or false
