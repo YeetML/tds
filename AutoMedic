@@ -43,8 +43,10 @@ local AutoMedic = {}
 ----------------------------------------------------------------
 local ABILITY_NAME     = "Ubercharge"
 local UBER_DURATION    = { [3] = 7.5, [4] = 10, [5] = 10 } -- real seconds at 1x; key = medic level
-local UBER_COOLDOWN    = 60
+local UBER_COOLDOWN    = 60   -- base debounce, BEFORE the Accelerator skill
 local INITIAL_COOLDOWN = 30
+local ACCEL_PER_LEVEL  = 0.5  -- SkillAccelerator: % cooldown reduction per level (game's valuePerLevel)
+local ACCEL_LEVEL_CAP  = 25
 local CAPACITY_BY_LEVEL = { [0] = 1, [1] = 2, [2] = 3, [3] = 3, [4] = 4, [5] = 5 }
 local EXCLUDED_TOWERS  = { ["farm"] = true, ["dj booth"] = true, ["djbooth"] = true }
 
@@ -168,20 +170,66 @@ end
 
 local function parallel(fns) return join(dispatch(fns)) end
 
+-- Round-trip floor: single samples spike (measured 0.06s typical, 0.325s on a spike), the minimum
+-- of recent samples is the stable estimate of the real network delay.
+local rttSamples = {}
+local function recordRtt(x)
+    rttSamples[#rttSamples + 1] = x
+    if #rttSamples > 30 then table.remove(rttSamples, 1) end
+end
+local function rttFloor()
+    local m = math.huge
+    for _, v in ipairs(rttSamples) do if v < m then m = v end end
+    return m == math.huge and 0.06 or m
+end
+
 -- true = flipped, false/nil = refused or error
 local function toggleTower(medic, tower)
+    local s = os.clock()
     local ok, res = pcall(function()
         return RemoteFunction:InvokeServer("Troops", "TowerServerEvent", "ToggleSelectedTower", medic.Tower, tower.Tower)
     end)
     if not ok then return nil end
+    recordRtt(os.clock() - s)
     return res == true
+end
+
+-- Ubercharge cooldown reduction (%) from the Accelerator skill tree node, read straight from the
+-- replicated skill levels (no require() of game modules: weak executors choke on that).
+-- Honors the game's own switches: GameRules SkillsEnabled and the per-skill enabled flag.
+local function getSkillCooldownPct()
+    local pct = 0
+    pcall(function()
+        local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
+        local g = sr and sr:FindFirstChild("GameStateReplicator")
+        local raw = g and g:GetAttribute("Skills")
+        if type(raw) ~= "string" then return end
+        raw = raw:gsub("^[%c%s]+", "")
+        local all = HttpService:JSONDecode(raw)
+        local mine = all[tostring(PlayerUserId)]
+        local lvl = mine and tonumber(mine.SkillAccelerator) or 0
+        pct = math.min(math.max(lvl, 0), ACCEL_LEVEL_CAP) * ACCEL_PER_LEVEL
+
+        local rules = sr:FindFirstChild("GameRulesReplicator")
+        if rules then
+            if rules:GetAttribute("SkillsEnabled") == false then pct = 0 end
+            local flagsRaw = rules:GetAttribute("Skills")
+            if type(flagsRaw) == "string" then
+                flagsRaw = flagsRaw:gsub("^[%c%s]+", "")
+                local flags = HttpService:JSONDecode(flagsRaw)
+                if flags and flags.SkillAccelerator == false then pct = 0 end
+            end
+        end
+    end)
+    return pct
 end
 
 ----------------------------------------------------------------
 -- Per-medic bookkeeping
 ----------------------------------------------------------------
 local records = {}          -- [medicUID] = { readyAt, lastFiredAt, accepted, blocked, fails }
-local learnedDuration = {}  -- [speedKey] = measured real uber duration
+local learnedDuration = {}  -- [speedKey] = measured real uber duration (FreezeImmune ON->OFF)
+local cooldownObserved = {} -- [speedKey] = cooldown measured from the server's own false->true flip
 
 local function speedKey(s) return string.format("%.3f", s) end
 
@@ -194,7 +242,8 @@ local function getRecord(m)
         if st and m.CreatedAt ~= math.huge then
             readyIn = math.max(0, m.CreatedAt + INITIAL_COOLDOWN - st) / getSpeed()
         end
-        rec = { readyAt = os.clock() + readyIn, lastFiredAt = 0, accepted = {}, blocked = {}, fails = 0 }
+        rec = { readyAt = os.clock() + readyIn, lastFiredAt = 0, lastSentAt = 0,
+                accepted = {}, blocked = {}, fails = 0 }
         records[m.UID] = rec
     end
     return rec
@@ -373,8 +422,9 @@ local function fireUber(m, rec)
         end)
         local ackAt = os.clock()
         inflight -= 1
+        if ok then recordRtt(ackAt - sentAt) end
         if ok and res == true and not state.fired then
-            state.fired, state.ackAt, state.rtt = true, ackAt, ackAt - sentAt
+            state.fired, state.ackAt, state.sentAt, state.rtt = true, ackAt, sentAt, ackAt - sentAt
         end
     end
 
@@ -384,22 +434,23 @@ local function fireUber(m, rec)
     end
     local limit = os.clock() + 0.5
     while not state.fired and inflight > 0 and os.clock() < limit do task.wait(0.01) end
-    return state.fired, state.ackAt, state.rtt, state.attempts
+    return state
 end
 
--- Swap selection to `m` and fire. Returns fired, ackAt, rtt, attempts.
+-- Swap selection to `m` and fire. Returns { fired, ackAt, sentAt, rtt, attempts, how }.
 local function engage(m, rec, ownAll, byUID, list)
     local desired = pickTargets(m, list, rec)
-    if #desired == 0 then return false, nil, nil, 0, "no targets in range" end
+    if #desired == 0 then return { fired = false, attempts = 0, how = "no targets in range" } end
 
     local ops, meta, confirmed = planSelection(m, rec, desired, byUID, ownAll)
     local handle = dispatch(ops)
 
     if confirmed then
         -- every select was accepted before: fire in the same frame as the swap
-        local fired, ackAt, rtt, attempts = fireUber(m, rec)
+        local res = fireUber(m, rec)
         applyResults(meta, join(handle), rec, false)
-        return fired, ackAt, rtt, attempts, "pipelined"
+        res.how = "pipelined"
+        return res
     end
 
     applyResults(meta, join(handle), rec, false)
@@ -407,31 +458,38 @@ local function engage(m, rec, ownAll, byUID, list)
         if syncSelection(m, rec) then break end
     end
     if next(decodeSelected(m.Rep)) == nil then
-        return false, nil, nil, 0, "nothing selectable"
+        return { fired = false, attempts = 0, how = "nothing selectable" }
     end
-    local fired, ackAt, rtt, attempts = fireUber(m, rec)
-    return fired, ackAt, rtt, attempts, "verified"
+    local res = fireUber(m, rec)
+    res.how = "verified"
+    return res
 end
 
 ----------------------------------------------------------------
--- Uber window tracking (medic's own FreezeImmune = uninfluenced end clock)
+-- Uber window tracking
+-- Duration = FreezeImmune ON -> OFF. Both are replication events on the same path, so network
+-- delay cancels out (measuring from the Activate ack picked up a latency spike: 9.77s vs 10.0s).
 ----------------------------------------------------------------
 local function trackUber(u)
     local se = u.m.Rep:FindFirstChild("StatusEffects")
     if not se then return end
-    u.sawActive = se:GetAttribute("FreezeImmune") ~= nil
+    if se:GetAttribute("FreezeImmune") ~= nil then
+        u.sawActive, u.onSeenAt = true, os.clock()
+    end
     local conn
     conn = se:GetAttributeChangedSignal("FreezeImmune"):Connect(function()
         if se:GetAttribute("FreezeImmune") ~= nil then
-            u.sawActive = true
+            if not u.onSeenAt then u.sawActive, u.onSeenAt = true, os.clock() end
         elseif u.sawActive and not u.endSeenAt then
             u.endSeenAt = os.clock()
-            local d = u.endSeenAt - u.ackAt
-            local nominal = u.nominal / u.speed
-            if d > nominal * 0.5 and d < nominal * 1.5 + 0.5 then
-                local old = learnedDuration[u.key]
-                learnedDuration[u.key] = old and (old * 0.5 + d * 0.5) or d
-                dbg(string.format("uber ended: measured %.3fs (learned %.3fs)", d, learnedDuration[u.key]))
+            if u.onSeenAt then
+                local d = u.endSeenAt - u.onSeenAt
+                local nominal = u.nominal / u.speed
+                if d > nominal * 0.5 and d < nominal * 1.5 + 0.5 then
+                    local old = learnedDuration[u.key]
+                    learnedDuration[u.key] = old and (old * 0.5 + d * 0.5) or d
+                    dbg(string.format("uber ended: ON->OFF %.3fs (learned %.3fs)", d, learnedDuration[u.key]))
+                end
             end
             conn:Disconnect()
         end
@@ -439,14 +497,21 @@ local function trackUber(u)
     task.delay(u.nominal / u.speed + 6, function() if conn then conn:Disconnect() end end)
 end
 
+-- "ended" once it is time to send the hand-off. The hand-off is timed so it LANDS on the server
+-- exactly when the buff would end: replicated-ON time + duration - one network delay.
 local function uberStatus(u, now)
     if not u or not IsAlive(u.m.Tower) then return "ended" end
     if u.endSeenAt then return "ended" end
     local nominal = u.nominal / u.speed
-    if not u.sawActive and not u.predictSendAt and now > u.ackAt + 0.6 then
-        u.predictSendAt = u.ackAt + nominal - u.rtt -- signal never appeared: use the nominal clock
+    local L = learnedDuration[u.key]
+    if L then
+        local sendAt
+        if u.onSeenAt then sendAt = u.onSeenAt + L - rttFloor() + PREDICT_BIAS
+        else sendAt = u.sentAt + L + PREDICT_BIAS end
+        if now >= sendAt then return "ended" end
+    elseif not u.sawActive and now > u.ackAt + 0.6 then
+        if now >= u.ackAt + nominal - rttFloor() then return "ended" end -- signal never appeared
     end
-    if u.predictSendAt and now >= u.predictSendAt then return "ended" end
     if now >= u.ackAt + nominal + END_GRACE then return "ended" end
     return "active"
 end
@@ -539,34 +604,54 @@ local function coordinator()
         -- fresh state for the swap itself
         list, byUID = scanTowers()
         ownAll = collectMedics(list)
-        local fired, ackAt, rtt, attempts, how = engage(nextM, nextRec, ownAll, byUID, list)
+        local res = engage(nextM, nextRec, ownAll, byUID, list)
         holder = nextM
         holderUIDs = decodeSelected(nextM.Rep)
 
-        if fired then
+        if res.fired then
             local speed = getSpeed()
             local key = speedKey(speed)
-            nextRec.fails = 0
-            nextRec.lastFiredAt = ackAt
-            nextRec.readyAt = ackAt + UBER_COOLDOWN / speed - rtt
+            local pct = getSkillCooldownPct()
+            local formulaCd = (UBER_COOLDOWN * (1 - pct / 100)) / speed
 
-            local u = { m = nextM, ackAt = ackAt, rtt = rtt, speed = speed, key = key,
-                        nominal = UBER_DURATION[nextM.Upgrade] }
-            local L = learnedDuration[key]
-            if L then u.predictSendAt = ackAt + L - rtt + PREDICT_BIAS end
+            -- self-correct from what the server actually did. Only the send->send gap is used (acks
+            -- carry latency spikes). A false->true flip (attempts > 1) pins the cooldown to ~1 stagger.
+            -- A first-try success only proves "cooldown <= gap", so it can shorten the estimate, never grow it.
+            if nextRec.lastSentAt > 0 then
+                local gap = res.sentAt - nextRec.lastSentAt
+                local obs = cooldownObserved[key]
+                if res.attempts > 1 and gap > formulaCd * 0.4 and gap < formulaCd * 1.6 then
+                    local x = gap - ACTIVATE_STAGGER * 0.5
+                    cooldownObserved[key] = obs and (obs * 0.5 + x * 0.5) or x
+                    dbg(string.format("cooldown observed %.2fs (skill formula %.2fs, accelerator -%.1f%%)",
+                        cooldownObserved[key], formulaCd, pct))
+                elseif res.attempts == 1 then
+                    local x = gap - 0.05
+                    if x >= formulaCd * 0.6 and x < (obs or formulaCd) then cooldownObserved[key] = x end
+                end
+            end
+            local cd = cooldownObserved[key] or formulaCd
+
+            nextRec.fails = 0
+            nextRec.lastFiredAt = res.ackAt
+            nextRec.lastSentAt = res.sentAt
+            nextRec.readyAt = res.sentAt + cd -- send->send tracks the server cooldown directly
+
+            local u = { m = nextM, ackAt = res.ackAt, sentAt = res.sentAt, rtt = res.rtt,
+                        speed = speed, key = key, nominal = UBER_DURATION[nextM.Upgrade] }
             trackUber(u)
             cur = u
 
             local n = 0
             for _ in pairs(holderUIDs) do n += 1 end
-            dbg(string.format("FIRED %s %s  towers=%d  rtt=%.3f  attempts=%d  nextReadyIn=%.1fs  predictive=%s",
-                string.sub(nextM.UID, 1, 6), how or "?", n, rtt, attempts,
-                nextRec.readyAt - os.clock(), tostring(u.predictSendAt ~= nil)))
+            dbg(string.format("FIRED %s %s  towers=%d  rtt=%.3f  attempts=%d  cooldown=%.2fs (-%.1f%%)  predictive=%s",
+                string.sub(nextM.UID, 1, 6), res.how or "?", n, res.rtt, res.attempts, cd, pct,
+                tostring(learnedDuration[key] ~= nil)))
         else
             nextRec.fails += 1
             nextRec.readyAt = os.clock() + math.min(1 + nextRec.fails * 1.5, 10)
             dbg(string.format("fire failed %s (%s) fails=%d retry in %.1fs",
-                string.sub(nextM.UID, 1, 6), tostring(how), nextRec.fails, nextRec.readyAt - os.clock()))
+                string.sub(nextM.UID, 1, 6), tostring(res.how), nextRec.fails, nextRec.readyAt - os.clock()))
         end
     end
 end
