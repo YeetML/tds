@@ -1,913 +1,620 @@
+--[[
+    AutoMedic v2  (YeetML/tds)
+
+    Facts this is built on (all measured in-game, not assumed):
+      * ToggleSelectedTower is a TOGGLE and replies true (flipped) / false (refused, e.g. tower is
+        claimed by another medic). It applies server-side before the reply arrives.
+      * Activate "Ubercharge" replies true when it fires and false while on cooldown.
+        Cooldown (Debounce) = 60s, duration = 10s (L4/L5) / 7.5s (L3).
+      * Releasing a target mid-uber removes its buff instantly -> selection must be held for the
+        whole window, and must be released for the next medic to be able to claim the same towers.
+      * The medic's own StatusEffects.FreezeImmune runs for the full duration no matter what we do
+        with the selection, so it is a clean "uber ended" clock.
+      * Game speed is GameStateReplicator.TimeScale.
+
+    Design:
+      * ONE coordinator thread = at most one of your medics holds a selection, always.
+      * Selection changes are state-checked (never blind-toggled twice) and sent as one pipelined
+        batch: release old medic -> select on new medic -> Activate, all in the same frame.
+      * The hand-off is sent so it lands exactly when the previous uber ends (duration is learned
+        from FreezeImmune), so there is ~0 buff gap whenever the next medic is off cooldown.
+      * Next medic = the one that becomes ready first; unavoidable gaps are only cooldown gaps.
+]]
+
 local Players           = game:GetService("Players")
 local Workspace         = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService       = game:GetService("HttpService")
+local RunService        = game:GetService("RunService")
+
 local LocalPlayer    = Players.LocalPlayer
 local PlayerUserId   = LocalPlayer.UserId
 local PlayerName     = LocalPlayer.Name
-local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
-local RemoteFunction = ReplicatedStorage:FindFirstChild("RemoteFunction")
+local RemoteFunction = ReplicatedStorage:WaitForChild("RemoteFunction")
 local Globals        = getgenv()
+
+-- a reload must never leave an old coordinator running
+if Globals.__AutoMedicStop then pcall(Globals.__AutoMedicStop) end
+
 local AutoMedic = {}
-local activeLoops       = {}
-local activeChainThread = nil
-local activeChainMedic     = nil 
-local activeChainStopWatch = nil 
-local RANGE_SLACK        = 0.5
-local CAPACITY_BY_LEVEL = {
-    [0] = 1, [1] = 2, [2] = 3, [3] = 3, [4] = 4, [5] = 5
-}
-local MEDIC_UBER_DATA = {
-    [3] = { DamageBuff = 20,   Duration = 7.5 },
-    [4] = { DamageBuff = 27.5, Duration = 10  },
-    [5] = { DamageBuff = 35,   Duration = 10  },
-}
-local EXCLUDED_TOWERS = {
-    ["farm"] = true,
-    ["dj booth"] = true,
-    ["djbooth"] = true,
-}
--- Batch-toggle tuning
-local BATCH_POLL_INTERVAL = 0.03
-local BATCH_POLL_TIMEOUT  = 0.35
-local MAX_BATCH_ROUNDS    = 4
+
+----------------------------------------------------------------
+-- Constants
+----------------------------------------------------------------
+local ABILITY_NAME     = "Ubercharge"
+local UBER_DURATION    = { [3] = 7.5, [4] = 10, [5] = 10 } -- real seconds at 1x; key = medic level
+local UBER_COOLDOWN    = 60
+local INITIAL_COOLDOWN = 30
+local CAPACITY_BY_LEVEL = { [0] = 1, [1] = 2, [2] = 3, [3] = 3, [4] = 4, [5] = 5 }
+local EXCLUDED_TOWERS  = { ["farm"] = true, ["dj booth"] = true, ["djbooth"] = true }
+
+local REACH_SLACK       = 3     -- studs added to the estimated medic reach (server is the real judge)
+local PRE_LEAD          = 0.12  -- start the swap this long before the next medic is ready
+local ACTIVATE_STAGGER  = 0.03  -- spacing between overlapping Activate attempts
+local ACTIVATE_GRACE    = 1.5   -- keep trying this long after the expected ready time
+local REFUSE_BLOCK_SECS = 30    -- a tower the server refused is skipped for this long
+local END_GRACE         = 1.0   -- fallback if the FreezeImmune signal never shows up
+local PREDICT_BIAS      = 0.0   -- + = send later, - = send earlier
+local MAINT_INTERVAL    = 0.35
+local HOLD_WHILE_IDLE   = true  -- keep the last medic's selection (Medi Gun) until the next swap
+
+----------------------------------------------------------------
+-- Debug log (set getgenv().AutoMedicDebug = true, read getgenv().AutoMedicLog)
+----------------------------------------------------------------
+local function dbg(msg)
+    if not Globals.AutoMedicDebug then return end
+    local log = Globals.AutoMedicLog
+    if type(log) ~= "table" then log = {}; Globals.AutoMedicLog = log end
+    log[#log + 1] = string.format("%9.3f  %s", os.clock(), msg)
+    if #log > 600 then table.remove(log, 1) end
+end
+
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
-local function IsAlive(inst)
-    return inst and inst.Parent ~= nil
+local function IsAlive(inst) return inst ~= nil and inst.Parent ~= nil end
+local function lower(s) return type(s) == "string" and string.lower(s) or "" end
+
+local function getGameState()
+    local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
+    return sr and sr:FindFirstChild("GameStateReplicator")
 end
-local function GetReplicator(tower)
-    return IsAlive(tower) and tower:FindFirstChild("TowerReplicator") or nil
+
+local function getSpeed()
+    local g = getGameState()
+    local v = g and tonumber(g:GetAttribute("TimeScale"))
+    return (v and v > 0) and v or 1
 end
-local function getTimescaleMultiplier()
-    local hotbar = PlayerGui:FindFirstChild("ReactUniversalHotbar")
-    local frame  = hotbar and hotbar:FindFirstChild("Frame")
-    local ts     = frame and frame:FindFirstChild("timescale")
-    if not ts or not ts.Visible then return 1 end
-    if ts:FindFirstChild("Lock") then return 1 end
-    return 2
-end
-local function resolveTargetPlayer(targetInput)
-    if type(targetInput) == "number" then
-        return targetInput, nil
-    elseif type(targetInput) == "string" then
-        local lower = string.lower(targetInput)
-        if lower == "universal" or targetInput == "" then
-            return "universal", "universal"
-        end
-        local numericId = tonumber(targetInput)
-        if numericId then return numericId, nil end
-        return nil, targetInput
-    end
-    return "universal", "universal"
-end
-local function getTowerUID(tower)
-    local rep = GetReplicator(tower)
-    return rep and rep:GetAttribute("UID") or nil
-end
-local function getTowerPosition(tower)
-    local rep = GetReplicator(tower)
-    if not rep then return nil end
-    local p = rep:GetAttribute("Position")
-    if typeof(p) == "Vector3" then return p end
-    if tower:IsA("Model") then
-        if tower.PrimaryPart then return tower.PrimaryPart.Position end
-        local part = tower:FindFirstChildWhichIsA("BasePart")
-        if part then return part.Position end
-    end
-    return nil
-end
-local function getMedicRange(medic)
-    local rep = GetReplicator(medic)
-    if not rep then return 0 end
-    return tonumber(rep:GetAttribute("Range")) or 0
-end
-local function inMedicRange(medic, target, slack)
-    slack = slack or RANGE_SLACK
-    local a = getTowerPosition(medic)
-    local b = getTowerPosition(target)
-    local r = getMedicRange(medic)
-    if not a or not b or r <= 0 then return false end
-    local dx = a.X - b.X
-    local dz = a.Z - b.Z
-    local limit = r + slack
-    return (dx * dx + dz * dz) <= (limit * limit)
-end
-local function getSelectedUIDs(medic)
-    local rep = GetReplicator(medic)
-    if not rep then return {} end
-    local raw = rep:GetAttribute("TowersSelected")
+
+local function decodeSelected(rep)
+    local raw = rep and rep:GetAttribute("TowersSelected")
     if type(raw) ~= "string" or raw == "" then return {} end
     raw = raw:gsub("^[%c%s]+", "")
-    local ok, decoded = pcall(function()
-        return HttpService:JSONDecode(raw)
-    end)
+    local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
     if not ok or type(decoded) ~= "table" then return {} end
     local set = {}
     for k, v in pairs(decoded) do
-        if type(k) == "string" then
-            set[k] = true
-        elseif type(v) == "string" then
-            set[v] = true
-        end
+        if type(k) == "string" then set[k] = true
+        elseif type(v) == "string" then set[v] = true end
     end
     return set
 end
-----------------------------------------------------------------
--- Tower discovery
-----------------------------------------------------------------
-function AutoMedic.GetAllTowers()
-    local towersFolder = Workspace:FindFirstChild("Towers")
-    local allTowers = {}
-    if not towersFolder then return allTowers end
-    for _, tower in ipairs(towersFolder:GetChildren()) do
+
+local function scanTowers()
+    local list, byUID = {}, {}
+    local folder = Workspace:FindFirstChild("Towers")
+    if not folder then return list, byUID end
+    for _, tower in ipairs(folder:GetChildren()) do
         local rep = tower:FindFirstChild("TowerReplicator")
-        if rep and tower.Parent then
-            table.insert(allTowers, {
-                Tower           = tower,
-                Name            = rep:GetAttribute("Name"),
-                UID             = rep:GetAttribute("UID"),
-                CreatedAt       = rep:GetAttribute("CreatedAt") or math.huge,
-                OwnerId         = rep:GetAttribute("OwnerId"),
-                OwnerName       = rep:GetAttribute("OwnerName"),
-                Upgrade         = rep:GetAttribute("Upgrade") or 0,
+        if rep then
+            local d = {
+                Tower = tower, Rep = rep,
+                Name = rep:GetAttribute("Name"),
+                UID = rep:GetAttribute("UID"),
+                CreatedAt = rep:GetAttribute("CreatedAt") or math.huge,
+                OwnerId = rep:GetAttribute("OwnerId"),
+                OwnerName = rep:GetAttribute("OwnerName"),
+                Upgrade = rep:GetAttribute("Upgrade") or 0,
                 TowersCanSelect = rep:GetAttribute("TowersCanSelect"),
-            })
+            }
+            list[#list + 1] = d
+            if d.UID then byUID[d.UID] = d end
         end
     end
-    table.sort(allTowers, function(a, b)
-        return a.CreatedAt < b.CreatedAt
-    end)
-    return allTowers
-end
-local function getMyMedics()
-    local all = AutoMedic.GetAllTowers()
-    local mine = {}
-    for _, data in ipairs(all) do
-        local isOwner = (data.OwnerId and data.OwnerId == PlayerUserId)
-            or (data.OwnerName and data.OwnerName == PlayerName)
-        if isOwner and data.Name and string.lower(data.Name) == "medic" then
-            table.insert(mine, data.Tower)
-        end
-    end
-    return mine
-end
-local function getMedicCapacity(medic)
-    if not IsAlive(medic) then return 0 end
-    local rep = GetReplicator(medic)
-    if not rep then return 0 end
-    local up = rep:GetAttribute("Upgrade") or 0
-    return rep:GetAttribute("TowersCanSelect") or CAPACITY_BY_LEVEL[up] or 1
-end
-local function getUberData(medic)
-    local rep = GetReplicator(medic)
-    if not rep then return nil end
-    return MEDIC_UBER_DATA[rep:GetAttribute("Upgrade") or 0]
-end
-local function getAllMedicClaims(excludeMedicUID)
-    local towersFolder = Workspace:FindFirstChild("Towers")
-    local claims = {}
-    if not towersFolder then return claims end
-    for _, tower in ipairs(towersFolder:GetChildren()) do
-        local rep = GetReplicator(tower)
-        if rep then
-            local name = rep:GetAttribute("Name")
-            if name and string.lower(name) == "medic" then
-                local medicUID = rep:GetAttribute("UID")
-                if medicUID ~= excludeMedicUID then
-                    for targetUID in pairs(getSelectedUIDs(tower)) do
-                        claims[targetUID] = medicUID
-                    end
-                end
-            end
-        end
-    end
-    return claims
-end
-----------------------------------------------------------------
--- Targeting
-----------------------------------------------------------------
-local function getSelfTargets(medic, towersToSelect, maxCapacity)
-    local allTowers = AutoMedic.GetAllTowers()
-    local targetTowers, used = {}, {}
-    local function isOwnedBySelf(data)
-        return (data.OwnerId and data.OwnerId == PlayerUserId)
-            or (data.OwnerName and data.OwnerName == PlayerName)
-    end
-    for _, name in ipairs(towersToSelect or {}) do
-        if #targetTowers >= maxCapacity then break end
-        local nameLower = string.lower(name)
-        for i, data in ipairs(allTowers) do
-            if used[i] then continue end
-            if not data.Name or string.lower(data.Name) == "medic" then continue end
-            if string.lower(data.Name) ~= nameLower then continue end
-            if EXCLUDED_TOWERS[string.lower(data.Name or "")] then continue end
-            if not isOwnedBySelf(data) then continue end
-            if not inMedicRange(medic, data.Tower) then continue end
-            table.insert(targetTowers, data.Tower)
-            used[i] = true
-            if #targetTowers >= maxCapacity then break end
-        end
-    end
-    return targetTowers
-end
-local function getClaimAwareTargets(medic, targetPlayer, towersToSelect, maxCapacity, mode)
-    local allTowers = AutoMedic.GetAllTowers()
-    local targetId, targetName = resolveTargetPlayer(targetPlayer)
-    local isUniversal = (targetId == "universal" or targetName == "universal")
-    local myMedicUID = getTowerUID(medic)
-    local claimed = getAllMedicClaims(myMedicUID)
-    local targetTowers, used = {}, {}
-    local function isOwnedByTarget(data)
-        if isUniversal then return true end
-        if targetId and data.OwnerId and data.OwnerId == targetId then return true end
-        if targetName and data.OwnerName and string.lower(data.OwnerName) == string.lower(targetName) then
-            return true
-        end
-        return false
-    end
-    local function eligible(data)
-        if not data.Name or string.lower(data.Name) == "medic" then return false end
-        if EXCLUDED_TOWERS[string.lower(data.Name or "")] then return false end
-        if not data.UID or claimed[data.UID] then return false end
-        if not inMedicRange(medic, data.Tower) then return false end
-        return true
-    end
-    local function tryAdd(data, i)
-        if #targetTowers >= maxCapacity then return end
-        table.insert(targetTowers, data.Tower)
-        used[i] = true
-    end
-    local function addMatching(ownerCondition)
-        for _, name in ipairs(towersToSelect or {}) do
-            if #targetTowers >= maxCapacity then break end
-            local nameLower = string.lower(name)
-            for i, data in ipairs(allTowers) do
-                if #targetTowers >= maxCapacity then break end
-                if used[i] then continue end
-                if not eligible(data) then continue end
-                if string.lower(data.Name) ~= nameLower then continue end
-                local owned = isOwnedByTarget(data)
-                local ok = (ownerCondition == "self" and owned)
-                    or (ownerCondition == "other" and not owned)
-                    or (ownerCondition == nil)
-                if ok then tryAdd(data, i) end
-            end
-        end
-    end
-    if mode == "self_first" then
-        addMatching("self")
-        if #targetTowers < maxCapacity then
-            addMatching("other")
-        end
-    else
-        addMatching(nil)
-    end
-    -- Fallback only for Universal (fill capacity). Self / Self First stay Towerslot-only.
-    if #targetTowers < maxCapacity and mode ~= "self_first" and mode ~= "self" then
-        local function fallbackAdd()
-            for i, data in ipairs(allTowers) do
-                if #targetTowers >= maxCapacity then break end
-                if used[i] then continue end
-                if not eligible(data) then continue end
-                tryAdd(data, i)
-            end
-        end
-        fallbackAdd()
-    end
-    return targetTowers
-end
-local function getTargetTowersForMedic(medic, targetPlayer, towersToSelect, maxCapacity, mode)
-    if mode == "self" then
-        return getSelfTargets(medic, towersToSelect, maxCapacity)
-    end
-    return getClaimAwareTargets(medic, targetPlayer, towersToSelect, maxCapacity, mode)
-end
-local function getCurrentSettings()
-    local target = "universal"
-    local mode   = "universal"
-    local towers = Globals.Towerslot or {}
-    local medicTarget = Globals.MedicTarget or "Universal"
-    if medicTarget == "Self" then
-        target = LocalPlayer.UserId
-        mode   = "self"
-    elseif medicTarget == "Self First" then
-        target = LocalPlayer.UserId
-        mode   = "self_first"
-    end
-    return target, mode, towers
-end
-----------------------------------------------------------------
--- Remote helpers
-----------------------------------------------------------------
-local function activateUbercharge(medic)
-    if not RemoteFunction or not IsAlive(medic) then return false end
-    return pcall(function()
-        RemoteFunction:InvokeServer("Troops", "Abilities", "Activate", {
-            Troop = medic,
-            Name  = "Ubercharge",
-            Data  = {},
-        })
-    end)
+    table.sort(list, function(a, b) return a.CreatedAt < b.CreatedAt end)
+    return list, byUID
 end
 
--- Fire-and-forget single toggle. No waiting here — this is what keeps
--- batches "instant." Confirmation/retry happens in runToggleBatch.
-local function fireToggle(medic, tower)
-    if not RemoteFunction or not IsAlive(medic) or not IsAlive(tower) then return end
-    task.spawn(function()
-        pcall(function()
-            RemoteFunction:InvokeServer(
-                "Troops", "TowerServerEvent", "ToggleSelectedTower",
-                medic, tower
-            )
+function AutoMedic.GetAllTowers() return (scanTowers()) end
+
+local function isMine(d)
+    return (d.OwnerId and d.OwnerId == PlayerUserId) or (d.OwnerName and d.OwnerName == PlayerName) or false
+end
+local function isMedic(d) return lower(d.Name) == "medic" end
+
+local function currentSettings()
+    local mode = "universal"
+    local mt = Globals.MedicTarget or "Universal"
+    if mt == "Self" then mode = "self" elseif mt == "Self First" then mode = "self_first" end
+    return mode, Globals.Towerslot or {}
+end
+
+----------------------------------------------------------------
+-- Parallel remote batches (calls are dispatched in order, in one frame)
+----------------------------------------------------------------
+local function dispatch(fns)
+    local h = { pending = #fns, results = {} }
+    for i, f in ipairs(fns) do
+        task.spawn(function()
+            h.results[i] = f()
+            h.pending -= 1
+            if h.pending == 0 and h.waiter then
+                local w = h.waiter
+                h.waiter = nil
+                task.spawn(w)
+            end
         end)
+    end
+    return h
+end
+
+local function join(h)
+    if h.pending > 0 then
+        h.waiter = coroutine.running()
+        coroutine.yield()
+    end
+    return h.results
+end
+
+local function parallel(fns) return join(dispatch(fns)) end
+
+-- true = flipped, false/nil = refused or error
+local function toggleTower(medic, tower)
+    local ok, res = pcall(function()
+        return RemoteFunction:InvokeServer("Troops", "TowerServerEvent", "ToggleSelectedTower", medic.Tower, tower.Tower)
     end)
+    if not ok then return nil end
+    return res == true
 end
 
--- Kept so startReattachWatch (below) can keep calling toggleOne(medic, tower)
--- directly for single-target re-nudges without needing the batch machinery.
-local function toggleOne(medic, tower)
-    fireToggle(medic, tower)
-end
+----------------------------------------------------------------
+-- Per-medic bookkeeping
+----------------------------------------------------------------
+local records = {}          -- [medicUID] = { readyAt, lastFiredAt, accepted, blocked, fails }
+local learnedDuration = {}  -- [speedKey] = measured real uber duration
 
--- Waits until every UID in wantMap ({[uid] = true/false}) matches its
--- desired selected-state, or timeout elapses.
-local function waitForBatch(medic, wantMap, timeout)
-    local deadline = os.clock() + timeout
-    while os.clock() < deadline do
-        if not IsAlive(medic) then return false end
-        local sel = getSelectedUIDs(medic)
-        local allMatch = true
-        for uid, want in pairs(wantMap) do
-            if (sel[uid] and true or false) ~= want then
-                allMatch = false
-                break
-            end
+local function speedKey(s) return string.format("%.3f", s) end
+
+local function getRecord(m)
+    local rec = records[m.UID]
+    if not rec then
+        local readyIn = 0
+        local g = getGameState()
+        local st = g and tonumber(g:GetAttribute("ServerTime"))
+        if st and m.CreatedAt ~= math.huge then
+            readyIn = math.max(0, m.CreatedAt + INITIAL_COOLDOWN - st) / getSpeed()
         end
-        if allMatch then return true end
-        task.wait(BATCH_POLL_INTERVAL)
+        rec = { readyAt = os.clock() + readyIn, lastFiredAt = 0, accepted = {}, blocked = {}, fails = 0 }
+        records[m.UID] = rec
     end
-    return false
+    return rec
 end
 
--- Fires every {tower, want} pair concurrently, verifies once, and only
--- re-fires the stragglers on subsequent rounds instead of re-firing
--- the whole batch or waiting on each item one at a time.
-local function runToggleBatch(medic, items) -- items: { {tower=t, want=bool}, ... }
-    if #items == 0 or not IsAlive(medic) then return end
-
-    local pending = items
-    for round = 1, MAX_BATCH_ROUNDS do
-        local wantMap = {}
-        for _, item in ipairs(pending) do
-            local uid = getTowerUID(item.tower)
-            if uid then wantMap[uid] = item.want end
-            fireToggle(medic, item.tower)
-        end
-
-        if next(wantMap) == nil then return end
-
-        local ok = waitForBatch(medic, wantMap, BATCH_POLL_TIMEOUT)
-        if ok or not IsAlive(medic) then return end
-
-        local sel = getSelectedUIDs(medic)
-        local stillPending = {}
-        for _, item in ipairs(pending) do
-            if IsAlive(item.tower) then
-                local uid = getTowerUID(item.tower)
-                if uid and (sel[uid] and true or false) ~= item.want then
-                    table.insert(stillPending, item)
-                end
-            end
-        end
-        pending = stillPending
-        if #pending == 0 then return end
-    end
-    -- Any remaining stragglers here get picked back up by
-    -- startReattachWatch for the rest of the active Uber window (attach
-    -- case), or simply left as-is (clear/detach case, rare).
-end
-
--- Wipe EVERYTHING currently selected on this medic — fired as one
--- concurrent batch, retried only on stragglers.
-local function clearAllSelected(medic)
-    if not IsAlive(medic) then return end
-    local selected = getSelectedUIDs(medic)
-    if next(selected) == nil then return end
-    local folder = Workspace:FindFirstChild("Towers")
-    if not folder then return end
-
-    local items = {}
-    for _, tower in ipairs(folder:GetChildren()) do
-        local uid = getTowerUID(tower)
-        if uid and selected[uid] and IsAlive(tower) then
-            table.insert(items, { tower = tower, want = false })
+local function chooseNext(medics)
+    local best, bestRec
+    for _, m in ipairs(medics) do
+        local rec = getRecord(m)
+        if not best
+            or rec.readyAt < bestRec.readyAt - 1e-3
+            or (math.abs(rec.readyAt - bestRec.readyAt) <= 1e-3 and rec.lastFiredAt < bestRec.lastFiredAt) then
+            best, bestRec = m, rec
         end
     end
-    runToggleBatch(medic, items)
+    return best, bestRec
 end
 
--- Returns true only when the medic is confirmed empty server-side.
-local function clearAllSelectedConfirmed(medic, hardTimeout)
-    if not IsAlive(medic) then return true end
-    local deadline = os.clock() + (hardTimeout or 1.5)
-    while true do
-        clearAllSelected(medic)
-        local sel = getSelectedUIDs(medic)
-        if next(sel) == nil then return true end
-        if os.clock() >= deadline then return false end
-        task.wait(BATCH_POLL_INTERVAL)
+----------------------------------------------------------------
+-- Target picking
+----------------------------------------------------------------
+local function pickTargets(m, list, rec)
+    local capacity = m.TowersCanSelect or CAPACITY_BY_LEVEL[m.Upgrade] or 1
+    local mpos = m.Rep:GetAttribute("Position")
+    if typeof(mpos) ~= "Vector3" or capacity <= 0 then return {} end
+    local reach = (tonumber(m.Rep:GetAttribute("Range")) or 0)
+        * (1 + (tonumber(m.Rep:GetAttribute("RangeBuff")) or 0) / 100) + REACH_SLACK
+
+    -- towers claimed by OTHER players' medics are unavailable (server refuses them).
+    -- our own medics' claims are ignored: they get released as part of the swap.
+    local claimed = {}
+    for _, d in ipairs(list) do
+        if isMedic(d) and not isMine(d) then
+            for uid in pairs(decodeSelected(d.Rep)) do claimed[uid] = true end
+        end
     end
-end
 
--- Force-clear every OTHER medic we own before we attach anything.
-local function purgeOtherMedics(myMedic)
-    local myUID = getTowerUID(myMedic)
-    local folder = Workspace:FindFirstChild("Towers")
-    if not folder then return end
-    for _, tower in ipairs(folder:GetChildren()) do
-        local rep = GetReplicator(tower)
-        if rep then
-            local name = rep:GetAttribute("Name")
-            local uid  = rep:GetAttribute("UID")
-            if name and string.lower(name) == "medic" and uid ~= myUID then
-                local oid = rep:GetAttribute("OwnerId")
-                local onm = rep:GetAttribute("OwnerName")
-                if (oid == PlayerUserId) or (onm == PlayerName) then
-                    local sel = getSelectedUIDs(tower)
-                    if next(sel) ~= nil then
-                        clearAllSelectedConfirmed(tower, 0.8)
+    local now = os.clock()
+    local pool = {}
+    for _, d in ipairs(list) do
+        local n = lower(d.Name)
+        if d.UID and d.UID ~= m.UID and n ~= "" and n ~= "medic"
+            and not EXCLUDED_TOWERS[n] and not claimed[d.UID] then
+            local untilT = rec.blocked[d.UID]
+            if not untilT or untilT <= now then
+                local p = d.Rep:GetAttribute("Position")
+                if typeof(p) == "Vector3" then
+                    local dx, dz = p.X - mpos.X, p.Z - mpos.Z
+                    local dist = math.sqrt(dx * dx + dz * dz)
+                    if dist <= reach then
+                        pool[#pool + 1] = { d = d, dist = dist, mine = isMine(d), name = n }
                     end
                 end
             end
         end
     end
-end
 
--- Only reports targets that were actually confirmed selected server-side
--- (checked against getSelectedUIDs after the toggle batch, not assumed).
-local function attachTargets(medic, targets)
-    local selected = getSelectedUIDs(medic)
-    local items = {}
-    for _, t in ipairs(targets) do
-        if IsAlive(t) then
-            local uid = getTowerUID(t)
-            if not uid or not selected[uid] then
-                table.insert(items, { tower = t, want = true })
+    local mode, wanted = currentSettings()
+    local picked, used = {}, {}
+    local function take(e) picked[#picked + 1] = e.d; used[e] = true end
+    local function pass(filter)
+        for _, name in ipairs(wanted) do
+            local nl = lower(name)
+            for _, e in ipairs(pool) do
+                if #picked >= capacity then return end
+                if not used[e] and e.name == nl and (not filter or filter(e)) then take(e) end
             end
         end
     end
-    runToggleBatch(medic, items)
 
-    local confirmed = getSelectedUIDs(medic)
-    local attached = {}
-    for _, t in ipairs(targets) do
-        if IsAlive(t) then
-            local uid = getTowerUID(t)
-            if uid and confirmed[uid] then
-                table.insert(attached, t)
+    if mode == "self" then
+        pass(function(e) return e.mine end)
+    elseif mode == "self_first" then
+        pass(function(e) return e.mine end)
+        pass(function(e) return not e.mine end)
+    else
+        pass(nil)
+        if #picked < capacity then -- Universal fills spare capacity with the closest towers
+            local rest = {}
+            for _, e in ipairs(pool) do if not used[e] then rest[#rest + 1] = e end end
+            table.sort(rest, function(a, b) return a.dist < b.dist end)
+            for _, e in ipairs(rest) do
+                if #picked >= capacity then break end
+                take(e)
             end
         end
     end
-    return attached
+    return picked
 end
 
-local function detachTargets(medic, attached)
-    if not attached or #attached == 0 or not IsAlive(medic) then return end
-    local items = {}
-    for _, t in ipairs(attached) do
-        if IsAlive(t) then
-            table.insert(items, { tower = t, want = false })
-        end
-    end
-    runToggleBatch(medic, items)
-end
-
-local function startReattachWatch(medic, attached)
-    local rep = GetReplicator(medic)
-    if not rep then
-        return function() end
-    end
-    local desiredUIDs = {}
-    for _, t in ipairs(attached) do
-        local uid = getTowerUID(t)
-        if uid then
-            desiredUIDs[uid] = t
-        end
-    end
-    if next(desiredUIDs) == nil then
-        return function() end
-    end
-    local stopped = false
-    local conn
-    conn = rep:GetAttributeChangedSignal("TowersSelected"):Connect(function()
-        if stopped then return end
-        local current = getSelectedUIDs(medic)
-        for uid, tower in pairs(desiredUIDs) do
-            if not current[uid] and IsAlive(tower) and IsAlive(medic) then
-                toggleOne(medic, tower)
-            end
-        end
-    end)
-    return function()
-        stopped = true
-        if conn then
-            conn:Disconnect()
-            conn = nil
-        end
-    end
-end
 ----------------------------------------------------------------
--- DamageBuff + Uber
+-- Selection planning
 ----------------------------------------------------------------
--- NOTE: this used to also check a shared "Medic ability ready" UI panel
--- (GetMedicAbilityContent/IsMedicReady, reading ReactGameAbilities). That
--- panel is ONE slot per tower TYPE, not per tower instance - with multiple
--- medics it only ever reflects whichever medic last fired, not the one
--- TryStartUber is currently trying. That caused medics further down the
--- round-robin to block on WaitForReady() waiting for a cooldown that
--- wasn't even theirs, then fire in a burst once the wrong medic's cooldown
--- (which the panel was actually showing) finally cleared. Removed entirely -
--- readiness/success is now determined purely by the per-tower DamageBuff
--- signal below, which is the only thing that's actually specific to the
--- medic being processed.
-local function GetDamageBuff(tower)
-    local rep = GetReplicator(tower)
-    if not rep then return 0 end
-    return tonumber(rep:GetAttribute("DamageBuff")) or 0
-end
-local function CaptureDamageBuffs(targets)
-    local baseline = {}
-    for _, t in ipairs(targets) do
-        if IsAlive(t) then
-            baseline[t] = GetDamageBuff(t)
-        end
+-- Ops that make `m` hold exactly `desired` and every other own medic hold nothing.
+-- Order matters: releases first, then selects (same-frame pipelining relies on it).
+local function planSelection(m, rec, desired, byUID, ownAll)
+    local ops, meta = {}, {}
+    local function add(medic, tower, kind)
+        ops[#ops + 1] = function() return toggleTower(medic, tower) end
+        meta[#meta + 1] = { kind = kind, tower = tower }
     end
-    return baseline
-end
-local function HasMedicDamageSignal(tower, baselineValue, expectedBuff)
-    local current = GetDamageBuff(tower)
-    if current <= baselineValue + 0.001 then return false end
-    if current >= expectedBuff - 0.001 then return true end
-    if current - baselineValue >= expectedBuff - 0.001 then return true end
-    return false
-end
-local function WaitForUberStart(medic, targets, baseline, uberData, timeout)
-    local deadline = os.clock() + (timeout or 1.5)
-    while os.clock() < deadline and IsAlive(medic) do
-        for _, t in ipairs(targets) do
-            if IsAlive(t) then
-                local before = baseline[t] or 0
-                if HasMedicDamageSignal(t, before, uberData.DamageBuff) then
-                    return true, true
-                end
+
+    for _, o in ipairs(ownAll) do
+        if o.UID ~= m.UID then
+            for uid in pairs(decodeSelected(o.Rep)) do
+                local t = byUID[uid]
+                if t then add(o, t, "release") end
             end
         end
-        task.wait(0.05)
     end
-    return false, false
-end
-local function WaitForUberEnd(targets, baseline, uberData, activationAt, sawDamageIncrease)
-    local multiplier = getTimescaleMultiplier()
-    local fallbackEnd = activationAt + (uberData.Duration / multiplier)
-    local observed = {}
-    for _, t in ipairs(targets) do
-        if IsAlive(t) then
-            local before = baseline[t] or 0
-            observed[t] = sawDamageIncrease and HasMedicDamageSignal(t, before, uberData.DamageBuff)
+
+    local sel, want = decodeSelected(m.Rep), {}
+    for _, t in ipairs(desired) do want[t.UID] = true end
+    for uid in pairs(sel) do
+        if not want[uid] then
+            local t = byUID[uid]
+            if t then add(m, t, "release") end
         end
     end
-    while true do
-        if os.clock() >= fallbackEnd then
-            return
+
+    local confirmed = true -- every needed select is one the server already accepted before
+    for _, t in ipairs(desired) do
+        if not sel[t.UID] then
+            add(m, t, "select")
+            if not rec.accepted[t.UID] then confirmed = false end
         end
-        local anyObserved = false
-        local allReturned = true
-        for _, t in ipairs(targets) do
-            if IsAlive(t) then
-                local before  = baseline[t] or 0
-                local current = GetDamageBuff(t)
-                if HasMedicDamageSignal(t, before, uberData.DamageBuff) then
-                    observed[t] = true
-                end
-                if observed[t] then
-                    anyObserved = true
-                    if current > before + 0.001 then
-                        allReturned = false
-                    end
-                end
-            end
-        end
-        if anyObserved and allReturned then
-            return
-        end
-        task.wait(0.05)
     end
+    return ops, meta, confirmed
 end
 
--- No longer gates on a "ready" check before each attempt (that was the
--- shared, wrong-medic panel described above) - it just tries, and relies
--- on MAX_UBER_ATTEMPTS + the caller's round-robin to space out real
--- per-medic cooldowns instead of an unreliable proxy for them.
-local MAX_UBER_ATTEMPTS = 1
-local function TryStartUber(medic, targets)
-    local uberData = getUberData(medic)
-    if not uberData then
-        return false, nil, nil, nil, false
-    end
-    local attempts = 0
-    while IsAlive(medic) do
-        local baseline = CaptureDamageBuffs(targets)
-        local activationAt = os.clock()
-        activateUbercharge(medic)
-        local started, saw = WaitForUberStart(medic, targets, baseline, uberData, 1.6)
-        if started then
-            return true, baseline, uberData, activationAt, saw
-        end
-        attempts += 1
-        if attempts >= MAX_UBER_ATTEMPTS then
-            return false, nil, nil, nil, false
-        end
-        task.wait(0.05)
-    end
-    return false, nil, nil, nil, false
-end
-----------------------------------------------------------------
--- Public: Function
-----------------------------------------------------------------
-function AutoMedic.Function(targetPlayer, towersToSelect, toggle, medicIndex)
-    medicIndex = medicIndex or 1
-    if not activeLoops[medicIndex] then
-        activeLoops[medicIndex] = { thread = nil, lastTargets = {}, stopWatch = nil, medic = nil }
-    end
-    if activeLoops[medicIndex].thread then
-        task.cancel(activeLoops[medicIndex].thread)
-        activeLoops[medicIndex].thread = nil
-    end
-    if activeLoops[medicIndex].stopWatch then
-        pcall(activeLoops[medicIndex].stopWatch)
-        activeLoops[medicIndex].stopWatch = nil
-    end
-    if activeLoops[medicIndex].medic then
-        clearAllSelected(activeLoops[medicIndex].medic)
-        activeLoops[medicIndex].medic = nil
-    end
-    local myMedics = getMyMedics()
-    local selected = myMedics[medicIndex]
-    if not selected then return false end
-    if toggle == false then
-        clearAllSelected(selected)
-        activeLoops[medicIndex].lastTargets = {}
-        return true
-    end
-    if not getUberData(selected) then return false end
-    local thread = task.spawn(function()
-        while true do
-            if not IsAlive(selected) then
-                activeLoops[medicIndex].lastTargets = {}
-                break
-            end
-            local liveTarget, liveMode, liveTowers = getCurrentSettings()
-            local capacity = getMedicCapacity(selected)
-            local targets  = getTargetTowersForMedic(selected, liveTarget, liveTowers, capacity, liveMode)
-            if #targets == 0 then
-                clearAllSelected(selected)
-                activeLoops[medicIndex].lastTargets = {}
-                task.wait(0.05)
-                continue
-            end
-            clearAllSelected(selected)
-            local attached = attachTargets(selected, targets)
-            activeLoops[medicIndex].lastTargets = attached
-            if #attached > 0 then
-                activeLoops[medicIndex].medic = selected
-                activeLoops[medicIndex].stopWatch = startReattachWatch(selected, attached)
-                local started, baseline, uberData, at, saw = TryStartUber(selected, attached)
-                if started and baseline and uberData and at then
-                    WaitForUberEnd(attached, baseline, uberData, at, saw)
-                end
-                if activeLoops[medicIndex].stopWatch then
-                    pcall(activeLoops[medicIndex].stopWatch)
-                    activeLoops[medicIndex].stopWatch = nil
-                end
+local function applyResults(meta, results, rec, blockOnRefuse)
+    local now = os.clock()
+    for i, md in ipairs(meta) do
+        if md.kind == "select" then
+            local uid = md.tower.UID
+            if results[i] == true then
+                rec.accepted[uid] = true
+                rec.blocked[uid] = nil
             else
-                task.wait(0.05)
+                rec.accepted[uid] = nil
+                if blockOnRefuse then rec.blocked[uid] = now + REFUSE_BLOCK_SECS end
+                dbg("select refused " .. tostring(md.tower.Name) .. " " .. string.sub(uid, 1, 6)
+                    .. (blockOnRefuse and " (blocked)" or " (will retry)"))
             end
-            clearAllSelected(selected)
-            activeLoops[medicIndex].medic = nil
-            activeLoops[medicIndex].lastTargets = {}
-            task.wait(0.05)
+        end
+    end
+end
+
+-- One clean (non-pipelined) round. Returns true when nothing needed changing.
+local function syncSelection(m, rec)
+    local list, byUID = scanTowers()
+    local ownAll = {}
+    for _, d in ipairs(list) do if isMedic(d) and isMine(d) then ownAll[#ownAll + 1] = d end end
+    local desired = pickTargets(m, list, rec)
+    local ops, meta = planSelection(m, rec, desired, byUID, ownAll)
+    if #ops == 0 then return true end
+    applyResults(meta, parallel(ops), rec, true)
+    return false
+end
+
+----------------------------------------------------------------
+-- Firing
+----------------------------------------------------------------
+local function fireUber(m, rec)
+    local state = { fired = false, attempts = 0 }
+    local inflight = 0
+    local stopAt = math.max(os.clock(), rec.readyAt) + ACTIVATE_GRACE
+
+    local function attempt()
+        inflight += 1
+        state.attempts += 1
+        local sentAt = os.clock()
+        local ok, res = pcall(function()
+            return RemoteFunction:InvokeServer("Troops", "Abilities", "Activate",
+                { Troop = m.Tower, Name = ABILITY_NAME, Data = {} })
+        end)
+        local ackAt = os.clock()
+        inflight -= 1
+        if ok and res == true and not state.fired then
+            state.fired, state.ackAt, state.rtt = true, ackAt, ackAt - sentAt
+        end
+    end
+
+    while not state.fired and IsAlive(m.Tower) and os.clock() < stopAt do
+        task.spawn(attempt)
+        task.wait(ACTIVATE_STAGGER)
+    end
+    local limit = os.clock() + 0.5
+    while not state.fired and inflight > 0 and os.clock() < limit do task.wait(0.01) end
+    return state.fired, state.ackAt, state.rtt, state.attempts
+end
+
+-- Swap selection to `m` and fire. Returns fired, ackAt, rtt, attempts.
+local function engage(m, rec, ownAll, byUID, list)
+    local desired = pickTargets(m, list, rec)
+    if #desired == 0 then return false, nil, nil, 0, "no targets in range" end
+
+    local ops, meta, confirmed = planSelection(m, rec, desired, byUID, ownAll)
+    local handle = dispatch(ops)
+
+    if confirmed then
+        -- every select was accepted before: fire in the same frame as the swap
+        local fired, ackAt, rtt, attempts = fireUber(m, rec)
+        applyResults(meta, join(handle), rec, false)
+        return fired, ackAt, rtt, attempts, "pipelined"
+    end
+
+    applyResults(meta, join(handle), rec, false)
+    for _ = 1, 3 do
+        if syncSelection(m, rec) then break end
+    end
+    if next(decodeSelected(m.Rep)) == nil then
+        return false, nil, nil, 0, "nothing selectable"
+    end
+    local fired, ackAt, rtt, attempts = fireUber(m, rec)
+    return fired, ackAt, rtt, attempts, "verified"
+end
+
+----------------------------------------------------------------
+-- Uber window tracking (medic's own FreezeImmune = uninfluenced end clock)
+----------------------------------------------------------------
+local function trackUber(u)
+    local se = u.m.Rep:FindFirstChild("StatusEffects")
+    if not se then return end
+    u.sawActive = se:GetAttribute("FreezeImmune") ~= nil
+    local conn
+    conn = se:GetAttributeChangedSignal("FreezeImmune"):Connect(function()
+        if se:GetAttribute("FreezeImmune") ~= nil then
+            u.sawActive = true
+        elseif u.sawActive and not u.endSeenAt then
+            u.endSeenAt = os.clock()
+            local d = u.endSeenAt - u.ackAt
+            local nominal = u.nominal / u.speed
+            if d > nominal * 0.5 and d < nominal * 1.5 + 0.5 then
+                local old = learnedDuration[u.key]
+                learnedDuration[u.key] = old and (old * 0.5 + d * 0.5) or d
+                dbg(string.format("uber ended: measured %.3fs (learned %.3fs)", d, learnedDuration[u.key]))
+            end
+            conn:Disconnect()
         end
     end)
-    activeLoops[medicIndex].thread = thread
-    return true
-end
-----------------------------------------------------------------
--- Public: Chain
-----------------------------------------------------------------
--- Force-runs cleanup for whatever medic/watch was active when the
--- chain thread gets cancelled (toggle off, or a fresh restart while
--- one was already running). This is what task.cancel alone can't do,
--- since it kills the coroutine before it reaches its own cleanup code.
-local function chainCleanup()
-    if activeChainStopWatch then
-        pcall(activeChainStopWatch)
-        activeChainStopWatch = nil
-    end
-    if activeChainMedic then
-        clearAllSelected(activeChainMedic)
-        activeChainMedic = nil
-    end
+    task.delay(u.nominal / u.speed + 6, function() if conn then conn:Disconnect() end end)
 end
 
-function AutoMedic.Chain(targetPlayer, towersToSelect, toggle, mode)
-    if activeChainThread then
-        task.cancel(activeChainThread)
-        activeChainThread = nil
+local function uberStatus(u, now)
+    if not u or not IsAlive(u.m.Tower) then return "ended" end
+    if u.endSeenAt then return "ended" end
+    local nominal = u.nominal / u.speed
+    if not u.sawActive and not u.predictSendAt and now > u.ackAt + 0.6 then
+        u.predictSendAt = u.ackAt + nominal - u.rtt -- signal never appeared: use the nominal clock
     end
-    chainCleanup()
-    if toggle == false then return end
+    if u.predictSendAt and now >= u.predictSendAt then return "ended" end
+    if now >= u.ackAt + nominal + END_GRACE then return "ended" end
+    return "active"
+end
 
-    activeChainThread = task.spawn(function()
-        local anchorUID = nil
-        local rotation  = nil
+----------------------------------------------------------------
+-- Coordinator
+----------------------------------------------------------------
+local function collectMedics(list)
+    local ownAll, medics = {}, {}
+    for _, d in ipairs(list) do
+        if isMedic(d) and isMine(d) then
+            ownAll[#ownAll + 1] = d
+            if UBER_DURATION[d.Upgrade] then medics[#medics + 1] = d end
+        end
+    end
+    return ownAll, medics
+end
 
-        local function uidOf(m) return getTowerUID(m) end
+local function coordinator()
+    local cur, holder, holderUIDs = nil, nil, nil
+    local lastMaint = 0
 
-        local function medicUsable(m)
-            if not IsAlive(m) then return false end
-            if not getUberData(m) then return false end
-            local rep = GetReplicator(m)
-            if not rep then return false end
-            local oid = rep:GetAttribute("OwnerId")
-            local onm = rep:GetAttribute("OwnerName")
-            return (oid and oid == PlayerUserId) or (onm and onm == PlayerName)
+    while true do
+        local list, byUID = scanTowers()
+        local ownAll, medics = collectMedics(list)
+        if #medics == 0 then
+            cur, holder, holderUIDs = nil, nil, nil
+            task.wait(0.5)
+            continue
         end
 
-        local function gatherTargets(m)
-            local t, md, tw = getCurrentSettings()
-            return getTargetTowersForMedic(m, t, tw, getMedicCapacity(m), md)
-        end
+        local nextM, nextRec = chooseNext(medics)
+        local abort = false
 
-        -- Attach + ONE fire attempt. No retry. Returns true if uber fired.
-        local function fireOnce(m)
-            purgeOtherMedics(m)
-            local targets = gatherTargets(m)
-            if #targets == 0 then return false end
-
-            clearAllSelected(m)
-            local attached = attachTargets(m, targets)
-            activeChainMedic = m
-            if #attached == 0 then
-                clearAllSelected(m)
-                activeChainMedic = nil
-                return false
-            end
-
-            activeChainStopWatch = startReattachWatch(m, attached)
-            local started, baseline, ud, at, saw = TryStartUber(m, attached)
-            if started and baseline and ud and at then
-                WaitForUberEnd(attached, baseline, ud, at, saw)
-            end
-            if activeChainStopWatch then pcall(activeChainStopWatch) end
-            activeChainStopWatch = nil
-            clearAllSelected(m)
-            activeChainMedic = nil
-            return started and true or false
-        end
-
-        -- Attach + wait-until-ready + fire. Used ONLY for the anchor.
-        -- Anchor fired first, so when we come back to it the cooldown
-        -- should already be over. If not, we wait without spamming.
-        local function fireAnchor(m)
-            purgeOtherMedics(m)
-            local targets = {}
-            repeat
-                if not medicUsable(m) then return false end
-                targets = gatherTargets(m)
-                if #targets == 0 then task.wait(0.3) end
-            until #targets > 0 or not medicUsable(m)
-            if not medicUsable(m) then return false end
-
-            clearAllSelected(m)
-            local attached = attachTargets(m, targets)
-            activeChainMedic = m
-            if #attached == 0 then
-                clearAllSelected(m)
-                activeChainMedic = nil
-                return false
-            end
-            activeChainStopWatch = startReattachWatch(m, attached)
-
-            local started, baseline, ud, at, saw
-            while medicUsable(m) do
-                started, baseline, ud, at, saw = TryStartUber(m, attached)
-                if started then break end
-                if not medicUsable(m) then break end
-                task.wait(0.05)              -- let the cooldown tick down
-                local refreshed = gatherTargets(m)
-                if #refreshed == 0 then break end
-                attached = attachTargets(m, refreshed)
-                if #attached == 0 then break end
-            end
-
-            if started and baseline and ud and at then
-                WaitForUberEnd(attached, baseline, ud, at, saw)
-            end
-            if activeChainStopWatch then pcall(activeChainStopWatch) end
-            activeChainStopWatch = nil
-            clearAllSelected(m)
-            activeChainMedic = nil
-            return started and true or false
-        end
-
+        -- wait for the moment: previous uber over AND next medic about to be ready
         while true do
-            local medics = getMyMedics()
-            if #medics == 0 then task.wait(0.5); continue end
+            local now = os.clock()
+            if not IsAlive(nextM.Tower) then abort = true break end
+            local curDone = uberStatus(cur, now) ~= "active"
+            if curDone and now >= nextRec.readyAt - PRE_LEAD then break end
 
-            local uidToTower = {}
-            for _, m in ipairs(medics) do
-                local u = uidOf(m)
-                if u then uidToTower[u] = m end
-            end
-
-            -- =====================================================
-            -- ANCHOR DISCOVERY
-            -- Find the first medic that actually fires, lock onto it,
-            -- build rotation as [anchor, everyone else in order].
-            -- Then fire the REST of the rotation on this same pass
-            -- (anchor was just fired, so skip it — it will start
-            -- the next lap).
-            -- =====================================================
-            if not anchorUID or not uidToTower[anchorUID] then
-                anchorUID = nil
-                rotation  = nil
-
-                local found = nil
-                for _, m in ipairs(medics) do
-                    if not medicUsable(m) then continue end
-                    if fireAnchor(m) then
-                        found = m
-                        break
+            if curDone and not HOLD_WHILE_IDLE and holder and holderUIDs and next(holderUIDs) then
+                local ops = {}
+                for uid in pairs(holderUIDs) do
+                    local t = byUID[uid]
+                    if t and decodeSelected(holder.Rep)[uid] then
+                        ops[#ops + 1] = function() return toggleTower(holder, t) end
                     end
                 end
-                if not found then
-                    task.wait(0.5)
-                    continue
-                end
-                anchorUID = uidOf(found)
+                if #ops > 0 then parallel(ops) end
+                holderUIDs = nil
+            end
 
-                rotation = { anchorUID }
-                for _, m in ipairs(medics) do
-                    local u = uidOf(m)
-                    if u and u ~= anchorUID then
-                        table.insert(rotation, u)
+            if now - lastMaint >= MAINT_INTERVAL then
+                lastMaint = now
+                local l2, b2 = scanTowers()
+                local own2, med2 = collectMedics(l2)
+                if #med2 == 0 then abort = true break end
+                nextM, nextRec = chooseNext(med2)
+                list, byUID, ownAll = l2, b2, own2
+
+                -- keep the single-holder invariant + repair anything the server dropped
+                local ops = {}
+                for _, o in ipairs(own2) do
+                    if not holder or o.UID ~= holder.UID then
+                        for uid in pairs(decodeSelected(o.Rep)) do
+                            local t = b2[uid]
+                            if t then ops[#ops + 1] = function() return toggleTower(o, t) end end
+                        end
                     end
                 end
-
-                -- Fire the rest of this lap (anchor already just fired).
-                for i = 2, #rotation do
-                    local m = uidToTower[rotation[i]]
-                    if m and medicUsable(m) then
-                        fireOnce(m)
+                if holder and holderUIDs then
+                    local sel = decodeSelected(holder.Rep)
+                    for uid in pairs(holderUIDs) do
+                        local t = b2[uid]
+                        if t and not sel[uid] then
+                            ops[#ops + 1] = function() return toggleTower(holder, t) end
+                        end
                     end
                 end
-                -- Restart outer loop; next lap begins with the anchor.
-                continue
-            end
-
-            -- =====================================================
-            -- REFRESH ROTATION (prune dead, add newly placed medics)
-            -- =====================================================
-            local newRot = {}
-            for _, u in ipairs(rotation) do
-                if uidToTower[u] then table.insert(newRot, u) end
-            end
-            for _, m in ipairs(medics) do
-                local u = uidOf(m)
-                if u and not table.find(newRot, u) then
-                    table.insert(newRot, u)
+                if #ops > 0 then
+                    dbg("maintenance: fixing " .. #ops .. " selection(s)")
+                    parallel(ops)
                 end
             end
-            rotation = newRot
+            RunService.Heartbeat:Wait()
+        end
+        if abort then continue end
 
-            -- =====================================================
-            -- WALK THE ROTATION
-            --   i == 1 → anchor   → fireAnchor (blocking wait)
-            --   i  > 1 → the rest → fireOnce (single attempt)
-            -- =====================================================
-            for i, u in ipairs(rotation) do
-                local m = uidToTower[u]
-                if not m or not medicUsable(m) then continue end
-                if i == 1 then
-                    fireAnchor(m)
-                else
-                    fireOnce(m)
-                end
+        -- fresh state for the swap itself
+        list, byUID = scanTowers()
+        ownAll = collectMedics(list)
+        local fired, ackAt, rtt, attempts, how = engage(nextM, nextRec, ownAll, byUID, list)
+        holder = nextM
+        holderUIDs = decodeSelected(nextM.Rep)
+
+        if fired then
+            local speed = getSpeed()
+            local key = speedKey(speed)
+            nextRec.fails = 0
+            nextRec.lastFiredAt = ackAt
+            nextRec.readyAt = ackAt + UBER_COOLDOWN / speed - rtt
+
+            local u = { m = nextM, ackAt = ackAt, rtt = rtt, speed = speed, key = key,
+                        nominal = UBER_DURATION[nextM.Upgrade] }
+            local L = learnedDuration[key]
+            if L then u.predictSendAt = ackAt + L - rtt + PREDICT_BIAS end
+            trackUber(u)
+            cur = u
+
+            local n = 0
+            for _ in pairs(holderUIDs) do n += 1 end
+            dbg(string.format("FIRED %s %s  towers=%d  rtt=%.3f  attempts=%d  nextReadyIn=%.1fs  predictive=%s",
+                string.sub(nextM.UID, 1, 6), how or "?", n, rtt, attempts,
+                nextRec.readyAt - os.clock(), tostring(u.predictSendAt ~= nil)))
+        else
+            nextRec.fails += 1
+            nextRec.readyAt = os.clock() + math.min(1 + nextRec.fails * 1.5, 10)
+            dbg(string.format("fire failed %s (%s) fails=%d retry in %.1fs",
+                string.sub(nextM.UID, 1, 6), tostring(how), nextRec.fails, nextRec.readyAt - os.clock()))
+        end
+    end
+end
+
+----------------------------------------------------------------
+-- Public API (same entry point the hub already uses)
+----------------------------------------------------------------
+local thread = nil
+
+local function releaseAll()
+    local list, byUID = scanTowers()
+    local ops = {}
+    for _, o in ipairs(list) do
+        if isMedic(o) and isMine(o) then
+            for uid in pairs(decodeSelected(o.Rep)) do
+                local t = byUID[uid]
+                if t then ops[#ops + 1] = function() return toggleTower(o, t) end end
+            end
+        end
+    end
+    if #ops > 0 then parallel(ops) end
+end
+
+local function cancelThread()
+    if thread then pcall(task.cancel, thread) thread = nil end
+end
+
+function AutoMedic.Chain(_targetPlayer, _towersToSelect, toggle, _mode)
+    cancelThread()
+    if toggle == false then
+        task.spawn(releaseAll)
+        return
+    end
+    thread = task.spawn(function()
+        while true do
+            local ok, err = pcall(coordinator)
+            if not ok then
+                warn("[AutoMedic] " .. tostring(err))
+                dbg("ERROR " .. tostring(err))
+                task.wait(1)
             end
         end
     end)
 end
+
+function AutoMedic.Stop() AutoMedic.Chain(nil, nil, false) end
+function AutoMedic.Debug() return records, learnedDuration end
+
+Globals.__AutoMedicStop = function() cancelThread() end
+
 return AutoMedic
