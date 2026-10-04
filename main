@@ -1905,6 +1905,42 @@ function StartAutoOpenCrates()
     end)
 end
 
+Globals.AlwaysGradeCratesRunning = Globals.AlwaysGradeCratesRunning or false
+
+function StartAlwaysGradeCrates()
+    if Globals.AlwaysGradeCratesRunning then return end
+    Globals.AlwaysGradeCratesRunning = true
+    task.spawn(function()
+        while true do
+            local assets = ReplicatedStorage:FindFirstChild("Assets")
+            local cratesFolder = assets and assets:FindFirstChild("Crates")
+            if cratesFolder then
+                for _, crate in ipairs(cratesFolder:GetChildren()) do
+                    if crate:IsA("Folder") then
+                        local lower = crate.Name:lower()
+                        if lower:find("low grade", 1, true)
+                        or lower:find("mid grade", 1, true)
+                        or lower:find("high grade", 1, true) then
+                            local success, res = pcall(function()
+                                return RemoteFunc:InvokeServer("Inventory", "Open", "Crate", crate.Name)
+                            end)
+                            if success and type(res) == "table" then
+                                task.wait(0.1)
+                            else
+                                task.wait(5)
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(1)
+        end
+        Globals.AlwaysGradeCratesRunning = false
+    end)
+end
+
+StartAlwaysGradeCrates()
+
 function RunVoteSkip()
     while true do
         local success = pcall(function()
