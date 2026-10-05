@@ -4738,22 +4738,6 @@ LoadSettings()
 Globals.TimeScaleValue = CoerceTimeScaleValue(Globals.TimeScaleValue, 2)
 Apply3dRendering()
 
-pcall(function()
-    local master = game:GetService("SoundService"):FindFirstChild("master")
-    local towers = master and master:FindFirstChild("Towers")
-    if towers and towers:IsA("SoundGroup") and Globals.ForceTowersVolume then
-        towers.Volume = 0.25
-    end
-end)
-
-pcall(function()
-    local master = game:GetService("SoundService"):FindFirstChild("master")
-    local music = master and master:FindFirstChild("Music")
-    if music and music:IsA("SoundGroup") and Globals.ForceMusicVolume then
-        music.Volume = 1
-    end
-end)
-
 if Globals.RandomDJ or Globals.MuteOtherDJs then
     if not Globals.AutoDJLib then
         Globals.AutoDJLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
@@ -6704,7 +6688,7 @@ Configuration:Toggle({
         pcall(function()
             local master = game:GetService("SoundService"):FindFirstChild("master")
             local towers = master and master:FindFirstChild("Towers")
-            if towers and towers:IsA("SoundGroup") then
+            if towers and (towers:IsA("SoundGroup") or towers:IsA("AudioFader")) then
                 towers.Volume = v and 0.25 or 1
             end
         end)
@@ -6721,7 +6705,7 @@ Configuration:Toggle({
         pcall(function()
             local master = game:GetService("SoundService"):FindFirstChild("master")
             local music = master and master:FindFirstChild("Music")
-            if music and music:IsA("SoundGroup") then
+            if music and (music:IsA("SoundGroup") or music:IsA("AudioFader")) then
                 music.Volume = v and 1 or 0
             end
         end)
@@ -7553,5 +7537,28 @@ end
 if Globals.EnemySpectate ~= false then
     task.spawn(StartEnemySpectate)
 end
+-- Enforce Volume Settings Continuously
+task.spawn(function()
+    while task.wait(0.5) do
+        if Globals.ForceTowersVolume then
+            pcall(function()
+                local master = game:GetService("SoundService"):FindFirstChild("master")
+                local towers = master and master:FindFirstChild("Towers")
+                if towers and (towers:IsA("SoundGroup") or towers:IsA("AudioFader")) and towers.Volume ~= 0.25 then
+                    towers.Volume = 0.25
+                end
+            end)
+        end
+        if Globals.ForceMusicVolume then
+            pcall(function()
+                local master = game:GetService("SoundService"):FindFirstChild("master")
+                local music = master and master:FindFirstChild("Music")
+                if music and (music:IsA("SoundGroup") or music:IsA("AudioFader")) and music.Volume ~= 1 then
+                    music.Volume = 1
+                end
+            end)
+        end
+    end
+end)
 getgenv().SmartTeleportToLobby = SmartTeleportToLobby
 return TDS
