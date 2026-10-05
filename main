@@ -862,6 +862,7 @@ local DefaultSettings = {
     AutoNecro = true,
     AutoRejoin = false,
     ForceTowersVolume = true,
+    ForceMusicVolume = true,
     ForceMusicEnabled = false,
     ForceMusicSong = "Winter 2021",
     AutoRestart = false,
@@ -4745,6 +4746,14 @@ pcall(function()
     end
 end)
 
+pcall(function()
+    local master = game:GetService("SoundService"):FindFirstChild("master")
+    local music = master and master:FindFirstChild("Music")
+    if music and music:IsA("SoundGroup") and Globals.ForceMusicVolume then
+        music.Volume = 1
+    end
+end)
+
 if Globals.RandomDJ or Globals.MuteOtherDJs then
     if not Globals.AutoDJLib then
         Globals.AutoDJLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
@@ -6697,6 +6706,23 @@ Configuration:Toggle({
             local towers = master and master:FindFirstChild("Towers")
             if towers and towers:IsA("SoundGroup") then
                 towers.Volume = v and 0.25 or 1
+            end
+        end)
+    end
+})
+
+Configuration:Toggle({
+    Title = "Force Music SoundGroup Volume",
+    Desc  = "Locks SoundService.master.Music.Volume at 1.",
+    Value = Globals.ForceMusicVolume,
+    Callback = function(v)
+        Globals.ForceMusicVolume = v
+        SetSetting("ForceMusicVolume", v)
+        pcall(function()
+            local master = game:GetService("SoundService"):FindFirstChild("master")
+            local music = master and master:FindFirstChild("Music")
+            if music and music:IsA("SoundGroup") then
+                music.Volume = v and 1 or 0
             end
         end)
     end
