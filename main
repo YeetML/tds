@@ -63,6 +63,34 @@ local AllModifiers = {
     "Broke", "SpeedyEnemies", "Quarantine", "JailedTowers", "Inflation"
 }
 
+local AllMusicTracks = {
+    "2020 Halloween Lobby", "2023 Christmas Lobby", "2024 Fall Lobby",
+    "2024 Halloween Event Area", "2024 Halloween Lobby", "45",
+    "Ancient_Dream", "Art Of War eminor", "Badlands", "Blizzard",
+    "Broken_Bastion", "Catharsis", "Classic Roblox",
+    "Classic Roblox Boss Fight", "Corrupted Night I 2024 Boss",
+    "Corrupted Night II 2024 Boss", "Crying_Obsidian",
+    "Desolate Dystopia", "Ducky Ambience", "Ducky Intense",
+    "Duckystep", "Egg Hunt 2024", "Equniox", "ExecutionersTheme",
+    "Eye of the storm", "Fallen King", "Fate_Sealed_Shut",
+    "Fill Them With Lead", "Gatekeeper", "Golden Boss", "Grave Buster",
+    "Halloween", "HalloweenLose", "HalloweenTriumph", "HandsBoss",
+    "Hardcore", "Hidden Wave", "Hidden Wave Intro", "Holiday Arcade",
+    "Intermission", "Into The Void", "JackOBot", "Krampus",
+    "Legacy Fallen King", "Legacy Molten Boss", "Legacy Nuclear Fallen",
+    "Lobby", "Lose", "Lost Souls", "Mauve_Genocide", "Melancholy Hill",
+    "Metaverse", "Molten Boss", "Mystery_Unveiled", "Neuro Raze",
+    "Night I 2024 Boss", "Night II 2024 Boss", "Night III 2024 Boss",
+    "Nuclear Ambience", "Nuclear Fallen", "Nuclear Intense",
+    "Party Time", "Patient Zero Ambience", "Patient Zero Boss",
+    "Pizza Party", "Pls Donate Boss", "Portal To Hell",
+    "Pumpkin Shredder", "Rain Dance", "Rebelution", "Saloon",
+    "Santabot", "Shellshock", "Skibidi", "Solar Lobby", "Spooky Hour",
+    "Swamp Thing", "The Horde", "Totality", "TrickOThreat", "Triumph",
+    "Tutorial", "Vocatis", "Voting", "Wave45", "Winter 2020",
+    "Winter 2021", "Winter Fall", "Winter Solitude"
+}
+
 local SAPScheduler = {}
 local statusLabelRef = nil
 
@@ -833,6 +861,9 @@ local DefaultSettings = {
     DJCustomSongID = "",
     AutoNecro = true,
     AutoRejoin = false,
+    ForceTowersVolume = true,
+    ForceMusicEnabled = false,
+    ForceMusicSong = "Winter 2021",
     AutoRestart = false,
     PrivateCode = "",
     TimeScaleEnabled = false,
@@ -4706,6 +4737,14 @@ LoadSettings()
 Globals.TimeScaleValue = CoerceTimeScaleValue(Globals.TimeScaleValue, 2)
 Apply3dRendering()
 
+pcall(function()
+    local master = game:GetService("SoundService"):FindFirstChild("master")
+    local towers = master and master:FindFirstChild("Towers")
+    if towers and towers:IsA("SoundGroup") and Globals.ForceTowersVolume then
+        towers.Volume = 0.25
+    end
+end)
+
 if Globals.RandomDJ or Globals.MuteOtherDJs then
     if not Globals.AutoDJLib then
         Globals.AutoDJLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
@@ -6643,6 +6682,63 @@ local Configuration = Globals.Window:Tab({Title = "Configuration", Icon = "slide
             if v then StartEnemySpectate() else StopEnemySpectate() end
         end
     })
+
+Configuration:Section({Title = "Audio"})
+
+Configuration:Toggle({
+    Title = "Force Towers SoundGroup Volume",
+    Desc  = "Locks SoundService.master.Towers.Volume at 0.25.",
+    Value = Globals.ForceTowersVolume,
+    Callback = function(v)
+        Globals.ForceTowersVolume = v
+        SetSetting("ForceTowersVolume", v)
+        pcall(function()
+            local master = game:GetService("SoundService"):FindFirstChild("master")
+            local towers = master and master:FindFirstChild("Towers")
+            if towers and towers:IsA("SoundGroup") then
+                towers.Volume = v and 0.25 or 1
+            end
+        end)
+    end
+})
+
+Configuration:Toggle({
+    Title = "Force Music Track",
+    Desc  = "Locks workspace.Music to the selected track, ignoring game overrides.",
+    Value = Globals.ForceMusicEnabled,
+    Callback = function(v)
+        Globals.ForceMusicEnabled = v
+        SetSetting("ForceMusicEnabled", v)
+        if v then
+            pcall(function()
+                local music = workspace:FindFirstChild("Music")
+                if music and music:IsA("StringValue") then
+                    music.Value = Globals.ForceMusicSong or "Winter 2021"
+                end
+            end)
+        end
+    end
+})
+
+Configuration:Dropdown({
+    Title = "Music Track",
+    Desc  = "Track to force-play on repeat.",
+    List = AllMusicTracks,
+    Value = Globals.ForceMusicSong or "Winter 2021",
+    Callback = function(choice)
+        local selected = type(choice) == "table" and choice[1] or choice
+        Globals.ForceMusicSong = selected or "Winter 2021"
+        SetSetting("ForceMusicSong", Globals.ForceMusicSong)
+        if Globals.ForceMusicEnabled then
+            pcall(function()
+                local music = workspace:FindFirstChild("Music")
+                if music and music:IsA("StringValue") then
+                    music.Value = Globals.ForceMusicSong
+                end
+            end)
+        end
+    end
+})
     Configuration:Section({Title = "Privacy & Identity"})
 
     Configuration:Toggle({
@@ -7410,6 +7506,21 @@ if Globals.ClaimRewards and not Globals.AutoClaimRewards then
 end
 
 MissionsUIFix()
+
+task.spawn(function()
+    while true do
+        if Globals.ForceMusicEnabled then
+            local song = Globals.ForceMusicSong or "Winter 2021"
+            pcall(function()
+                local music = workspace:FindFirstChild("Music")
+                if music and music:IsA("StringValue") and music.Value ~= song then
+                    music.Value = song
+                end
+            end)
+        end
+        task.wait(0.05)
+    end
+end)
 if Globals.TowerSpectate ~= false and not ExecutorIsWeak then
     task.spawn(StartTowerSpectate)
 end
