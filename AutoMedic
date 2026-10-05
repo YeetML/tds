@@ -5,7 +5,11 @@
       * ToggleSelectedTower is a TOGGLE and replies true (flipped) / false (refused, e.g. tower is
         claimed by another medic). It applies server-side before the reply arrives.
       * Activate "Ubercharge" replies true when it fires and false while on cooldown.
-        Cooldown (Debounce) = 60s, duration = 10s (L4/L5) / 7.5s (L3).
+        Base debounce = 60s, duration = 10s (L4/L5) / 7.5s (L3).
+      * The Accelerator skill (node 13, 0.5% per level, cap 25 -> 12.5%) shortens that debounce:
+        level 25 = 52.5s. Measured on the server: 52.51-52.53s. The level is read from
+        GameStateReplicator.Skills, honoring GameRules SkillsEnabled; after the first lap the real
+        cooldown is also learned from the server's own false->true flip, so it self-corrects.
       * Releasing a target mid-uber removes its buff instantly -> selection must be held for the
         whole window, and must be released for the next medic to be able to claim the same towers.
       * The medic's own StatusEffects.FreezeImmune runs for the full duration no matter what we do
@@ -16,8 +20,9 @@
       * ONE coordinator thread = at most one of your medics holds a selection, always.
       * Selection changes are state-checked (never blind-toggled twice) and sent as one pipelined
         batch: release old medic -> select on new medic -> Activate, all in the same frame.
-      * The hand-off is sent so it lands exactly when the previous uber ends (duration is learned
-        from FreezeImmune), so there is ~0 buff gap whenever the next medic is off cooldown.
+      * The hand-off is sent so it lands when the previous uber ends (duration learned from the
+        FreezeImmune ON->OFF window), so the gap is ~0.04-0.09s (network floor) whenever the next
+        medic is off cooldown. Measured: 4 medics, 4 consecutive 10.0s ubers, then one cooldown gap.
       * Next medic = the one that becomes ready first; unavoidable gaps are only cooldown gaps.
 ]]
 
@@ -69,6 +74,7 @@ local function dbg(msg)
     if type(log) ~= "table" then log = {}; Globals.AutoMedicLog = log end
     log[#log + 1] = string.format("%9.3f  %s", os.clock(), msg)
     if #log > 600 then table.remove(log, 1) end
+    shared.AutoMedicLog = log
 end
 
 ----------------------------------------------------------------
@@ -269,8 +275,11 @@ local function pickTargets(m, list, rec)
     local capacity = m.TowersCanSelect or CAPACITY_BY_LEVEL[m.Upgrade] or 1
     local mpos = m.Rep:GetAttribute("Position")
     if typeof(mpos) ~= "Vector3" or capacity <= 0 then return {} end
-    local reach = (tonumber(m.Rep:GetAttribute("Range")) or 0)
-        * (1 + (tonumber(m.Rep:GetAttribute("RangeBuff")) or 0) / 100) + REACH_SLACK
+    -- strictReach: anything inside it is guaranteed to be accepted (measured: the server also accepted
+    -- a tower at 23.4 studs with Range=20/RangeBuff=12.5, i.e. beyond this). reach adds slack for those.
+    local strictReach = (tonumber(m.Rep:GetAttribute("Range")) or 0)
+        * (1 + (tonumber(m.Rep:GetAttribute("RangeBuff")) or 0) / 100)
+    local reach = strictReach + REACH_SLACK
 
     -- towers claimed by OTHER players' medics are unavailable (server refuses them).
     -- our own medics' claims are ignored: they get released as part of the swap.
@@ -294,6 +303,7 @@ local function pickTargets(m, list, rec)
                     local dx, dz = p.X - mpos.X, p.Z - mpos.Z
                     local dist = math.sqrt(dx * dx + dz * dz)
                     if dist <= reach then
+                        d.Confident = dist <= strictReach
                         pool[#pool + 1] = { d = d, dist = dist, mine = isMine(d), name = n }
                     end
                 end
@@ -368,7 +378,7 @@ local function planSelection(m, rec, desired, byUID, ownAll)
     for _, t in ipairs(desired) do
         if not sel[t.UID] then
             add(m, t, "select")
-            if not rec.accepted[t.UID] then confirmed = false end
+            if not rec.accepted[t.UID] and not t.Confident then confirmed = false end
         end
     end
     return ops, meta, confirmed
