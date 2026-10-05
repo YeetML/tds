@@ -15,6 +15,10 @@
       * The medic's own StatusEffects.FreezeImmune runs for the full duration no matter what we do
         with the selection, so it is a clean "uber ended" clock.
       * Game speed is GameStateReplicator.TimeScale.
+      * Medic range = the game's own GetRange: base*(1 + (RangeBuff-Scared)/100 + EnhancedOptics%/100)
+        (Enhanced Optics is 0.5%/level, cap 20 = 10%, and is NOT in the RangeBuff attribute).
+        Measured: Range=20, RangeBuff=0, Optics 10% -> accepted 21.18/21.59/21.72, refused 22.17+
+        with the server message "Tower is out of range" (limit 22.0).
 
     Design:
       * ONE coordinator thread = at most one of your medics holds a selection, always.
@@ -52,10 +56,12 @@ local UBER_COOLDOWN    = 60   -- base debounce, BEFORE the Accelerator skill
 local INITIAL_COOLDOWN = 30
 local ACCEL_PER_LEVEL  = 0.5  -- SkillAccelerator: % cooldown reduction per level (game's valuePerLevel)
 local ACCEL_LEVEL_CAP  = 25
+local OPTICS_PER_LEVEL = 0.5  -- SkillEnhancedOptics: % tower range per level
+local OPTICS_LEVEL_CAP = 20
 local CAPACITY_BY_LEVEL = { [0] = 1, [1] = 2, [2] = 3, [3] = 3, [4] = 4, [5] = 5 }
 local EXCLUDED_TOWERS  = { ["farm"] = true, ["dj booth"] = true, ["djbooth"] = true }
 
-local REACH_SLACK       = 3     -- studs added to the estimated medic reach (server is the real judge)
+local REACH_SLACK       = 0.1   -- float tolerance only: range comes from the game's own GetRange formula
 local PRE_LEAD          = 0.12  -- start the swap this long before the next medic is ready
 local ACTIVATE_STAGGER  = 0.03  -- spacing between overlapping Activate attempts
 local ACTIVATE_GRACE    = 1.5   -- keep trying this long after the expected ready time
@@ -151,10 +157,11 @@ end
 -- Parallel remote batches (calls are dispatched in order, in one frame)
 ----------------------------------------------------------------
 local function dispatch(fns)
-    local h = { pending = #fns, results = {} }
+    local h = { pending = #fns, results = {}, msgs = {} }
     for i, f in ipairs(fns) do
         task.spawn(function()
-            h.results[i] = f()
+            local a, b = f()
+            h.results[i], h.msgs[i] = a, b
             h.pending -= 1
             if h.pending == 0 and h.waiter then
                 local w = h.waiter
@@ -171,7 +178,7 @@ local function join(h)
         h.waiter = coroutine.running()
         coroutine.yield()
     end
-    return h.results
+    return h.results, h.msgs
 end
 
 local function parallel(fns) return join(dispatch(fns)) end
@@ -192,18 +199,18 @@ end
 -- true = flipped, false/nil = refused or error
 local function toggleTower(medic, tower)
     local s = os.clock()
-    local ok, res = pcall(function()
+    local ok, res, msg = pcall(function()
         return RemoteFunction:InvokeServer("Troops", "TowerServerEvent", "ToggleSelectedTower", medic.Tower, tower.Tower)
     end)
     if not ok then return nil end
     recordRtt(os.clock() - s)
-    return res == true
+    return res == true, msg -- msg: "Tower selected successfully" / "Tower is out of range" / "... already selected by another medic"
 end
 
--- Ubercharge cooldown reduction (%) from the Accelerator skill tree node, read straight from the
--- replicated skill levels (no require() of game modules: weak executors choke on that).
--- Honors the game's own switches: GameRules SkillsEnabled and the per-skill enabled flag.
-local function getSkillCooldownPct()
+-- Skill value (%) for the local player, read straight from the replicated skill levels (no
+-- require() of game modules: weak executors choke on that). Honors the game's own switches:
+-- GameRules SkillsEnabled and the per-skill enabled flag. Value = level * perLevel (game data).
+local function getSkillPct(skillName, perLevel, levelCap)
     local pct = 0
     pcall(function()
         local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
@@ -213,8 +220,8 @@ local function getSkillCooldownPct()
         raw = raw:gsub("^[%c%s]+", "")
         local all = HttpService:JSONDecode(raw)
         local mine = all[tostring(PlayerUserId)]
-        local lvl = mine and tonumber(mine.SkillAccelerator) or 0
-        pct = math.min(math.max(lvl, 0), ACCEL_LEVEL_CAP) * ACCEL_PER_LEVEL
+        local lvl = mine and tonumber(mine[skillName]) or 0
+        pct = math.min(math.max(lvl, 0), levelCap) * perLevel
 
         local rules = sr:FindFirstChild("GameRulesReplicator")
         if rules then
@@ -223,12 +230,49 @@ local function getSkillCooldownPct()
             if type(flagsRaw) == "string" then
                 flagsRaw = flagsRaw:gsub("^[%c%s]+", "")
                 local flags = HttpService:JSONDecode(flagsRaw)
-                if flags and flags.SkillAccelerator == false then pct = 0 end
+                if flags and flags[skillName] == false then pct = 0 end
             end
         end
     end)
     return pct
 end
+
+local function getSkillCooldownPct() return getSkillPct("SkillAccelerator", ACCEL_PER_LEVEL, ACCEL_LEVEL_CAP) end
+local function getSkillRangePct()    return getSkillPct("EnhancedOptics", OPTICS_PER_LEVEL, OPTICS_LEVEL_CAP) end
+
+local function fogActive()
+    local g = getGameState()
+    local raw = g and g:GetAttribute("GlobalModifiersEnabled")
+    if type(raw) ~= "string" then return false end
+    local ok, t = pcall(function()
+        raw = raw:gsub("^[%c%s]+", "")
+        return HttpService:JSONDecode(raw)
+    end)
+    if not ok or type(t) ~= "table" then return false end
+    if t.Fog == true then return true end
+    for _, v in ipairs(t) do if v == "Fog" then return true end end
+    return false
+end
+
+-- The game's own TowerReplicator.GetRange (read from its client code):
+--   range = base + base*((RangeBuff - ScaredBuff)/100) + base*EnhancedOptics%/100
+--   then *0.65 (rounded) under the Fog modifier, then *TowerRangeMultiplier (rounded).
+-- Enhanced Optics is NOT included in the RangeBuff attribute, which is why reading that alone
+-- under-estimates the real range (verified: server accepted 21.7 on Range=20/RangeBuff=0, refused 22.17).
+local function getMedicRange(m)
+    local rep = m.Rep
+    local base = tonumber(rep:GetAttribute("Range")) or 0
+    local buff = tonumber(rep:GetAttribute("RangeBuff")) or 0
+    local scared = tonumber(rep:GetAttribute("ScaredBuff")) or 0
+    local range = base + base * (buff - scared) / 100 + base * getSkillRangePct() / 100
+    if fogActive() then range = math.round(range * 0.65) end
+    local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
+    local rules = sr and sr:FindFirstChild("GameRulesReplicator")
+    local mult = rules and tonumber(rules:GetAttribute("TowerRangeMultiplier")) or 1
+    if mult ~= 1 then range = math.round(range * mult) end
+    return range
+end
+AutoMedic.GetMedicRange = function(m) return getMedicRange(m) end
 
 ----------------------------------------------------------------
 -- Per-medic bookkeeping
@@ -275,10 +319,9 @@ local function pickTargets(m, list, rec)
     local capacity = m.TowersCanSelect or CAPACITY_BY_LEVEL[m.Upgrade] or 1
     local mpos = m.Rep:GetAttribute("Position")
     if typeof(mpos) ~= "Vector3" or capacity <= 0 then return {} end
-    -- strictReach: anything inside it is guaranteed to be accepted (measured: the server also accepted
-    -- a tower at 23.4 studs with Range=20/RangeBuff=12.5, i.e. beyond this). reach adds slack for those.
-    local strictReach = (tonumber(m.Rep:GetAttribute("Range")) or 0)
-        * (1 + (tonumber(m.Rep:GetAttribute("RangeBuff")) or 0) / 100)
+    -- exact range from the game's own formula (includes Enhanced Optics). Anything inside it is
+    -- accepted by the server, so those selects can be pipelined without pre-verification.
+    local strictReach = getMedicRange(m)
     local reach = strictReach + REACH_SLACK
 
     -- towers claimed by OTHER players' medics are unavailable (server refuses them).
@@ -384,7 +427,7 @@ local function planSelection(m, rec, desired, byUID, ownAll)
     return ops, meta, confirmed
 end
 
-local function applyResults(meta, results, rec, blockOnRefuse)
+local function applyResults(meta, results, rec, msgs)
     local now = os.clock()
     for i, md in ipairs(meta) do
         if md.kind == "select" then
@@ -394,9 +437,12 @@ local function applyResults(meta, results, rec, blockOnRefuse)
                 rec.blocked[uid] = nil
             else
                 rec.accepted[uid] = nil
-                if blockOnRefuse then rec.blocked[uid] = now + REFUSE_BLOCK_SECS end
+                local msg = msgs and msgs[i]
+                -- the server says why: "out of range" is long-lived, a claim by another medic is transient
+                local outOfRange = type(msg) == "string" and string.find(string.lower(msg), "range", 1, true) ~= nil
+                rec.blocked[uid] = now + (outOfRange and REFUSE_BLOCK_SECS or 3)
                 dbg("select refused " .. tostring(md.tower.Name) .. " " .. string.sub(uid, 1, 6)
-                    .. (blockOnRefuse and " (blocked)" or " (will retry)"))
+                    .. " (" .. tostring(msg) .. ")")
             end
         end
     end
@@ -410,7 +456,8 @@ local function syncSelection(m, rec)
     local desired = pickTargets(m, list, rec)
     local ops, meta = planSelection(m, rec, desired, byUID, ownAll)
     if #ops == 0 then return true end
-    applyResults(meta, parallel(ops), rec, true)
+    local results, msgs = parallel(ops)
+    applyResults(meta, results, rec, msgs)
     return false
 end
 
@@ -458,12 +505,14 @@ local function engage(m, rec, ownAll, byUID, list)
     if confirmed then
         -- every select was accepted before: fire in the same frame as the swap
         local res = fireUber(m, rec)
-        applyResults(meta, join(handle), rec, false)
+        local results, msgs = join(handle)
+        applyResults(meta, results, rec, msgs)
         res.how = "pipelined"
         return res
     end
 
-    applyResults(meta, join(handle), rec, false)
+    local results, msgs = join(handle)
+    applyResults(meta, results, rec, msgs)
     for _ = 1, 3 do
         if syncSelection(m, rec) then break end
     end
