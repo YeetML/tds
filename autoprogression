@@ -2453,6 +2453,109 @@ local function APR_NeedsHardcore1()
 end
 getgenv().APR_NeedsHardcore1 = APR_NeedsHardcore1
 
+-- ═══════════════════════════════════════════════════════════════
+-- Hardcore2 gate — level 300+ AND owns all 4 evolved towers
+-- ═══════════════════════════════════════════════════════════════
+local HC2_LEVEL_REQ       = 300
+local HC2_REQUIRED_TOWERS = {"EvolvedOperator", "EvolvedKingpin", "EvolvedJuggernaut", "EvolvedEnforcer"}
+
+local function APR_HasAllEvolvedTowers()
+    for _, name in ipairs(HC2_REQUIRED_TOWERS) do
+        if not OwnsTower(name) then
+            print("[AutoProgression] Hardcore2 not available – missing " .. name)
+            return false
+        end
+    end
+    return true
+end
+getgenv().APR_HasAllEvolvedTowers = APR_HasAllEvolvedTowers
+getgenv().APR_HC2_LEVEL_REQ       = HC2_LEVEL_REQ
+
+-- ═══════════════════════════════════════════════════════════════
+-- RUN HARDCORE2 — endgame path (level 300+ with all evolved towers)
+-- ═══════════════════════════════════════════════════════════════
+local Hardcore2Strategy = {
+    name        = "hardcore2",
+    url         = "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/hardcore2",
+    autoPremium = false,
+    autoSkip    = false,
+    autoRejoin  = false,
+    autoReady   = true,
+}
+
+local runningHardcore2 = false
+function RunHardcore2()
+    if runningHardcore2 then return end
+    runningHardcore2 = true
+    getgenv().TimeScaleEnabled = false
+    SetStatus("Starting Hardcore2 strategy...")
+
+    local function getDifficultyDisplay()
+        local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
+        local rep = sr and sr:FindFirstChild("GameStateReplicator")
+        return rep and rep:GetAttribute("DifficultyDisplayName") or nil
+    end
+
+    local function isHardcoreDisplay(display)
+        return display and display ~= ""
+            and tostring(display):lower():find("hardcore", 1, true) ~= nil
+    end
+
+    local function loadHardcore2()
+        ApplyStrategySettings(Hardcore2Strategy)
+        APR_SetCurrentStrategy("Hardcore2", Hardcore2Strategy.name, "Hardcore")
+        task.wait(0.3)
+        print("[AutoProgression] Loading Hardcore2 strategy...")
+        SetStatus("Loading Hardcore2 strategy...")
+        loadstring(game:HttpGet(Hardcore2Strategy.url))()
+    end
+
+    if not IsInLobby() then
+        if APR_IsPizzaPartyMatch() then
+            SetStatus("Already in Pizza Party")
+            runningHardcore2 = false
+            return
+        end
+
+        local display = getDifficultyDisplay()
+        local deadline = os.clock() + 5
+        while not display and os.clock() < deadline do
+            task.wait(0.1)
+            display = getDifficultyDisplay()
+        end
+
+        if not isHardcoreDisplay(display) then
+            SetStatus("Hardcore2: wrong mode – going to lobby")
+            runningHardcore2 = false
+            getgenv().SmartTeleportToLobby()
+            return
+        end
+
+        local buyResult = AutoBuyTowers(HC2_REQUIRED_TOWERS)
+        if buyResult ~= "OK" then
+            SetStatus("Hardcore2: cannot afford towers – Pizza fallback")
+            runningHardcore2 = false
+            RunPizzaParty()
+            return
+        end
+
+        loadHardcore2()
+        runningHardcore2 = false
+    else
+        local buyResult = AutoBuyTowers(HC2_REQUIRED_TOWERS)
+        if buyResult == "Coins" or buyResult == "Gems" then
+            SetStatus("Hardcore2: no resources – farming Pizza")
+            runningHardcore2 = false
+            RunPizzaParty()
+            return
+        end
+
+        loadHardcore2()
+        runningHardcore2 = false
+    end
+end
+getgenv().RunHardcore2 = RunHardcore2
+
 local runningHardcore = false
 function RunHardcore()
     if runningHardcore then return end
@@ -2987,7 +3090,11 @@ local function RunAutoProgressionInner()
 
     local level = GetStat("Level")
 
-    if level >= 176 then
+    if level >= HC2_LEVEL_REQ and APR_HasAllEvolvedTowers() then
+        SetStatus("Level " .. level .. " + all evolved → Hardcore2")
+        print("[AutoProgression] Routing to Hardcore2 – level " .. level .. " with all evolved towers")
+        RunHardcore2()
+    elseif level >= 176 then
         if APR_NeedsHardcore1() then
             SetStatus("Level " .. level .. " → Hardcore1 (Scout/Crook Boss not maxed)")
             print("[AutoProgression] Routing to Hardcore1 – Scout or Crook Boss not yet level 20")
