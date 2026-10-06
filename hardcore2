@@ -1,250 +1,157 @@
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService   = game:GetService("TeleportService")
+local UserInputService  = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+
+local activeStratThread = nil
+local LOSS_THRESHOLD    = 20
+local lossCount         = 0
+local LOBBY_ID          = 3260590327
+
 local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
 
-TDS:Loadout("Hacker", "EvolvedOperator", "EvolvedJuggernaut", "EvolvedKingpin", "EvolvedEnforcer")
+-- ═══════════════════════════════════════════════════════════════
+-- HARDCORE2 LOADOUT — evolved towers
+-- ═══════════════════════════════════════════════════════════════
+TDS:Loadout("EvolvedOperator", "EvolvedJuggernaut", "EvolvedKingpin", "EvolvedEnforcer", "Farm")
 TDS:Mode("Hardcore")
 TDS:GameInfo("Wretched Front", {})
-TDS:VoteSkip(1,44)
 
-TDS:Place("Hacker", -8.089750289916992, -0.3441953957080841, -0.5644240379333496)
-TDS:Place("EvolvedOperator", -3.9984569549560547, 1.0008665323257446, -35.068443298339844)
-TDS:Loadout("Farm", "Gatling Gun", "EvolvedJuggernaut", "EvolvedKingpin", "EvolvedEnforcer")
-TDS:Ready()
-TDS:Place("Farm", -11.884161949157715, 1.5563457012176514, 24.886795043945312)
-TDS:Place("Farm", -11.463854789733887, 1.5104738473892212, 28.83580207824707)
+local function SmartTeleportToLobby()
+    local isMobile = (UserInputService:GetPlatform() == Enum.Platform.IOS or
+                      UserInputService:GetPlatform() == Enum.Platform.Android)
+    pcall(function()
+        if not isMobile and getgenv().PrivateCode and getgenv().PrivateCode ~= "" then
+            game:GetService("ExperienceService"):LaunchExperience({
+                placeId  = LOBBY_ID,
+                linkCode = getgenv().PrivateCode
+            })
+        else
+            TeleportService:Teleport(LOBBY_ID)
+        end
+    end)
+end
 
--- [ Wave 1 ] --
-TDS:Place("Farm", -11.411844253540039, 1.4445370435714722, 32.707916259765625)
-TDS:Place("Farm", -16.304275512695312, 1.5215656757354736, 24.394411087036133)
+-- ═══════════════════════════════════════════════════════════════
+-- STRATEGY BODY
+--   ▸ This is the part that gets re-run on every loss.
+--   ▸ Replace the Place/Upgrade/Ability calls with your hardcore2
+--     placements (evolved-tower spots, farm positions, etc).
+--   ▸ Keep the ordering identical to how you want it to execute.
+-- ═══════════════════════════════════════════════════════════════
+local function StartStrategy()
+    wait(0.1)
+    TDS:RemoveIndex()
 
--- [ Wave 2 ] --
-TDS:Place("Farm", -15.212967872619629, 1.5546928644180298, 29.489219665527344)
-TDS:Upgrade(5)
-TDS:Place("Farm", -15.980292320251465, 1.5253150463104248, 33.47530746459961)
-TDS:Upgrade(2)
-TDS:Upgrade(2)
+    TDS:VoteSkip(1, 30)
 
--- [ Wave 3 ] --
-TDS:Place("Farm", -19.92932891845703, 1.8434827327728271, 24.85021209716797)
-TDS:Place("Farm", -20.920391082763672, 1.3662604093551636, 30.166118621826172)
-TDS:Place("Farm", -20.91761589050293, 1.3970996141433716, 34.86697006225586)
+    -- Loadout + ready
+    TDS:Ready()
 
--- [ Wave 4 ] --
-TDS:Place("Farm", -11.069473266601562, 1.3488942384719849, 36.79090118408203)
+    -- ── Placement example (edit for hardcore2) ──
+    TDS:Place("EvolvedOperator",   -8.089750289916992, -0.3441953957080841, -0.5644240379333496)
+    TDS:Place("EvolvedOperator",   -3.9984569549560547, 1.0008665323257446, -35.068443298339844)
+    TDS:Place("EvolvedEnforcer",   -2.3716368675231934, 0.9894459247589111, -32.71417999267578)
+    TDS:Place("EvolvedEnforcer",   -5.045091152191162, 0.9708711504936218, -32.78083038330078)
+    TDS:Place("EvolvedKingpin",    -6.503336429595947, -0.0841565728187561, -12.172981262207031)
+    TDS:Place("EvolvedJuggernaut", -4.533173084259033, -0.09204566478729248, -8.262308120727539)
 
--- [ Wave 5 ] --
-TDS:Upgrade(3)
-TDS:Upgrade(4)
+    -- Farm placements
+    TDS:Place("Farm", -11.884161949157715, 1.5563457012176514, 24.886795043945312)
+    TDS:Place("Farm", -11.463854789733887, 1.5104738473892212, 28.83580207824707)
+    TDS:Place("Farm", -11.411844253540039, 1.4445370435714722, 32.707916259765625)
 
--- [ Wave 6 ] --
-TDS:Upgrade(3)
-TDS:Upgrade(6)
-TDS:Upgrade(4)
-TDS:Upgrade(7)
+    -- ── Upgrades (examples) ──
+    -- TDS:Upgrade(1) ... etc
+end
 
--- [ Wave 7 ] --
-TDS:Upgrade(8)
-TDS:Upgrade(9)
-TDS:Upgrade(10)
-TDS:Upgrade(11)
-TDS:Upgrade(12)
+-- ═══════════════════════════════════════════════════════════════
+-- MATCH-STATE / SELF-RESET WRAPPER (identical pattern to hardcore1)
+-- ═══════════════════════════════════════════════════════════════
+local function GetMatchStatus()
+    local success, status = pcall(function()
+        local uiRoot = PlayerGui:FindFirstChild("ReactGameNewRewards")
+        if not uiRoot then return nil end
+        local mainFrame = uiRoot:FindFirstChild("Frame")
+        if not mainFrame or not mainFrame.Visible then return nil end
+        local gameOver = mainFrame:FindFirstChild("gameOver")
+        if not gameOver or not gameOver.Visible then return nil end
+        local rewardsScreen = gameOver:FindFirstChild("RewardsScreen")
+        if not rewardsScreen or not rewardsScreen.Visible then return nil end
+        local topBanner = rewardsScreen:FindFirstChild("RewardBanner")
+        if not topBanner then return nil end
+        local label = topBanner:FindFirstChild("textLabel")
+                   or topBanner:FindFirstChildOfClass("TextLabel")
+        if not label then return nil end
+        local txt = label.Text:upper()
+        if txt == "" then return nil end
+        if txt:find("TRIUMPH") or txt:find("VICTORY") or txt:find("WIN") then
+            return "WIN"
+        elseif txt:find("LOST") or txt:find("DEFEAT") or txt:find("FAIL") then
+            return "LOSS"
+        end
+        return nil
+    end)
+    if success then return status end
+    return nil
+end
 
--- [ Wave 8 ] --
+local function fireSkipVote()
+    local Event = ReplicatedStorage:WaitForChild("RemoteFunction")
+    while true do
+        local success, result = pcall(function()
+            return Event:InvokeServer("Voting", "Skip")
+        end)
+        if success and result == true then
+            print("[Hardcore2] Skip vote accepted – match restarting.")
+            break
+        else
+            print("[Hardcore2] Skip vote failed or rejected. Retrying...")
+            task.wait(0.1)
+        end
+    end
+end
 
--- [ Wave 9 ] --
+task.spawn(function()
+    activeStratThread = task.spawn(StartStrategy)
 
-TDS:Place("Gatling Gun", -8.93485164642334, 2.338197946548462, -6.012772083282471)
+    while true do
+        task.wait(0.1)
+        local currentStatus = GetMatchStatus()
 
--- [ Wave 10 ] --
-TDS:Upgrade(7)
-TDS:Upgrade(8)
-TDS:Upgrade(9)
-TDS:Upgrade(3)
+        if currentStatus == "LOSS" then
+            lossCount = lossCount + 1
+            print(string.format("[Hardcore2] Loss #%d / %d detected.", lossCount, LOSS_THRESHOLD))
 
--- [ Wave 11 ] --
-TDS:Upgrade(5)
-TDS:Upgrade(6)
-TDS:Upgrade(10)
-TDS:Upgrade(4)
+            if lossCount >= LOSS_THRESHOLD then
+                print("[Hardcore2] Reached loss threshold – returning to lobby.")
+                SmartTeleportToLobby()
+                break
+            end
 
--- [ Wave 12 ] --
-TDS:Upgrade(3)
-TDS:Upgrade(5)
+            if activeStratThread and coroutine.status(activeStratThread) ~= "dead" then
+                task.cancel(activeStratThread)
+                activeStratThread = nil
+            end
 
--- [ Wave 13 ] --
-TDS:Upgrade(4)
-TDS:Upgrade(11)
-TDS:Upgrade(12)
-TDS:Upgrade(8)
+            print("[Hardcore2] Firing restart remote...")
+            fireSkipVote()
 
--- [ Wave 14 ] --
-TDS:Place("EvolvedEnforcer", -2.3716368675231934, 0.9894459247589111, -32.71417999267578)
-TDS:Upgrade(14)
+            print("[Hardcore2] Waiting for match screen to clear...")
+            repeat task.wait(0.1) until GetMatchStatus() == nil
+            task.wait(0.1)
 
--- [ Wave 15 ] --
-TDS:Place("EvolvedEnforcer", -5.045091152191162, 0.9708711504936218, -32.78083038330078)
-TDS:Upgrade(15)
+            print("[Hardcore2] Starting new match...")
+            activeStratThread = task.spawn(StartStrategy)
 
-TDS:Upgrade(13)
-
--- [ Wave 16 ] --
-TDS:Upgrade(3)
-
-TDS:Upgrade(6)
-
--- [ Wave 17 ] --
-TDS:Upgrade(4)
-TDS:Upgrade(7)
-TDS:Upgrade(9)
-
--- [ Wave 18 ] --
-TDS:Upgrade(5)
-TDS:Upgrade(6)
-TDS:Upgrade(10)
-TDS:Upgrade(12)
-TDS:Upgrade(11)
-
--- [ Wave 19 ] --
-TDS:Upgrade(5)
-TDS:Upgrade(7)
-
-
--- [ Wave 20 ] --
-TDS:Upgrade(13)
-TDS:Upgrade(14)
-TDS:Upgrade(15)
-TDS:Upgrade(9)
-
--- [ Wave 21 ] --
-TDS:Upgrade(6)
-TDS:Upgrade(7)
-TDS:Upgrade(8)
-
-TDS:Upgrade(10)
-
--- [ Wave 22 ] --
-TDS:Upgrade(8)
-TDS:Upgrade(9)
-TDS:Upgrade(11)
-TDS:Upgrade(12)
-
--- [ Wave 23 ] --
-TDS:Upgrade(10)
-TDS:Upgrade(11)
-TDS:Upgrade(12)
-
-
--- [ Wave 24 ] --
-TDS:Upgrade(13)
-TDS:Place("EvolvedKingpin", -6.503336429595947, -0.0841565728187561, -12.172981262207031)
-
--- [ Wave 25 ] --
-TDS:Place("EvolvedJuggernaut", -4.533173084259033, -0.09204566478729248, -8.262308120727539)
-TDS:Upgrade(14)
-TDS:Upgrade(14)
-TDS:Upgrade(15)
-
-TDS:Upgrade(15)
-
--- [ Wave 26 ] --
-
-
--- [ Wave 27 ] --
-TDS:Upgrade(13)
-
--- [ Wave 28 ] --
-TDS:Place("EvolvedEnforcer", -4.982530117034912, 1.0801825523376465, -41.203948974609375)
-TDS:Upgrade(18)
-TDS:Upgrade(18)
-TDS:Upgrade(18)
-TDS:Upgrade(18)
-
--- [ Wave 29 ] --
-TDS:Place("EvolvedEnforcer", 10.671052932739258, 0.9898526668548584, 20.224828720092773)
-TDS:Upgrade(19)
-TDS:Upgrade(19)
-TDS:Upgrade(19)
-
--- [ Wave 30 ] --
-TDS:Upgrade(19)
-TDS:Upgrade(13)
-TDS:Upgrade(19, 2)
-TDS:Upgrade(14, 2)
-
-
--- [ Wave 32 ] --
-TDS:Place("EvolvedEnforcer", 10.593876838684082, 1.2493293285369873, 22.304519653320312)
-TDS:Upgrade(20)
-TDS:Upgrade(20)
-TDS:Upgrade(20)
-TDS:Upgrade(20)
-
--- [ Wave 33 ] --
-TDS:Upgrade(20, 2)
-TDS:Upgrade(13)
-TDS:Upgrade(17)
-TDS:Upgrade(17)
-TDS:Upgrade(17)
-
--- [ Wave 34 ] --
-TDS:Upgrade(17, 2)
-TDS:Upgrade(15, 2)
-TDS:Upgrade(18, 2)
-
--- [ Wave 35 ] --
-TDS:Upgrade(16)
-TDS:Upgrade(16)
-TDS:Upgrade(16)
-TDS:Upgrade(16, 2)
-TDS:SetOption(16, "Unit 1", "Bouncer")
-TDS:SetOption(16, "Unit 2", "Bouncer")
-TDS:SetOption(16, "Unit 3", "Bouncer")
-
--- [ Wave 36 ] --
-TDS:Upgrade(2)
-TDS:Upgrade(2)
-TDS:Upgrade(1)
-TDS:Upgrade(1)
-TDS:Place("EvolvedKingpin", -0.2266709804534912, 0.1433313488960266, -8.851285934448242)
-TDS:Place("EvolvedKingpin", -1.3328351974487305, 0.29920321702957153, -15.944036483764648)
-TDS:Place("EvolvedKingpin", -4.240942001342773, 0.22297722101211548, -17.22049331665039)
-TDS:Upgrade(21)
-TDS:Upgrade(21)
-TDS:Upgrade(21)
-TDS:Upgrade(21, 2)
-TDS:SetOption(21, "Unit 1", "Bouncer")
-TDS:SetOption(21, "Unit 2", "Bouncer")
-TDS:SetOption(21, "Unit 3", "Bouncer")
-TDS:Upgrade(23)
-TDS:Upgrade(23)
-TDS:Upgrade(23)
-TDS:Upgrade(23, 2)
-TDS:SetOption(23, "Unit 1", "Bouncer")
-TDS:SetOption(23, "Unit 2", "Bouncer")
-TDS:SetOption(23, "Unit 3", "Bouncer")
-TDS:Upgrade(22)
-TDS:Upgrade(22)
-TDS:Upgrade(22)
-TDS:Upgrade(22, 2)
-TDS:SetOption(22, "Unit 1", "Bouncer")
-TDS:SetOption(22, "Unit 2", "Bouncer")
-TDS:SetOption(22, "Unit 3", "Bouncer")
-TDS:Upgrade(1)
-TDS:Upgrade(1)
-TDS:Upgrade(1,2)
-TDS:Ability(1, "Hologram Tower", {
-    towerPosition = Vector3.new(-10.300887107849121, 4.2560272216796875, 11.889106750488281),
-    towerToClone = 13
-}, true)
-TDS:WaitForWave(45)
-TDS:SetOption(21, "Unit 1", "Lackey")
-TDS:SetOption(21, "Unit 2", "Lackey")
-TDS:SetOption(21, "Unit 3", "Lackey")
-TDS:SetOption(23, "Unit 1", "Lackey")
-TDS:SetOption(23, "Unit 2", "Lackey")
-TDS:SetOption(23, "Unit 3", "Lackey")
-TDS:SetOption(22, "Unit 1", "Lackey")
-TDS:SetOption(22, "Unit 2", "Lackey")
-TDS:SetOption(22, "Unit 3", "Lackey")
-
-
-
+        elseif currentStatus == "WIN" then
+            if lossCount > 0 then
+                print("[Hardcore2] Win detected! Resetting loss counter.")
+                lossCount = 0
+            end
+        end
+    end
+end)
