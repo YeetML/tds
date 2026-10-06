@@ -855,6 +855,7 @@ local DefaultSettings = {
     AutoChain = true,
     AutoGatling = true,
     Gatlify = false,
+    AutoSWATVan = true, 
     AutoPremium = false,
     SupportCaravan = true,
     AutoDJ = true,
@@ -954,6 +955,7 @@ Globals.BackToLobbyRunning = Globals.BackToLobbyRunning or false
 Globals.AutoPickupsRunning = Globals.AutoPickupsRunning or false
 Globals.AutoSkipRunning = Globals.AutoSkipRunning or false
 Globals.AutoClaimRewards = Globals.AutoClaimRewards or false
+Globals.AutoSWATVanRunning = Globals.AutoSWATVanRunning or false
 Globals.AntiLagRunning = Globals.AntiLagRunning or false
 Globals.AutoChainRunning = Globals.AutoChainRunning or false
 Globals.AutoDjRunning = Globals.AutoDjRunning or false
@@ -3065,6 +3067,37 @@ function StartAutoPulseTrooper()
             task.wait(0.5)
         end
         Globals.AutoPulseTrooperRunning = false
+    end)
+end
+
+function StartAutoSWATVan()
+    if Globals.AutoSWATVanRunning or not Globals.AutoSWATVan then return end
+    Globals.AutoSWATVanRunning = true
+    task.spawn(function()
+        local ownerId = LocalPlayer.UserId
+        while Globals.AutoSWATVan do
+            local towersFolder = workspace:FindFirstChild("Towers")
+            if towersFolder then
+                for _, tower in ipairs(towersFolder:GetChildren()) do
+                    local rep = tower:FindFirstChild("TowerReplicator")
+                    if rep
+                        and rep:GetAttribute("Name") == "EvolvedEnforcer"
+                        and rep:GetAttribute("OwnerId") == ownerId
+                        and (rep:GetAttribute("Upgrade") or 0) >= 5
+                        and rep:GetAttribute("Path") == 2 then
+                        pcall(function()
+                            RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
+                                Troop = tower,
+                                Name  = "SWAT Van",
+                                Data  = {}
+                            })
+                        end)
+                    end
+                end
+            end
+            task.wait(0.5)
+        end
+        Globals.AutoSWATVanRunning = false
     end)
 end
 
@@ -6000,6 +6033,13 @@ local Automation = Globals.Window:Tab({Title = "Automation", Icon = "bot"}) do
         Callback = function(v) SetSetting("AutoSaboteur", v) end
     })
 
+    Automation:Toggle({
+    Title = "Auto SWAT Van",
+    Desc  = "Spams SWAT Van ability on every EvolvedEnforcer",
+    Value = Globals.AutoSWATVan,
+    Callback = function(v) SetSetting("AutoSWATVan", v) end
+})
+
     Automation:Textbox({
         Title = "DJ Custom Music",
         Desc = "Custom audio ID for your owned tower (Default, Neon Rave, Neko, etc.)",
@@ -7503,6 +7543,7 @@ end
         if Globals.TowerSpectate ~= false and not SP.running and not ExecutorIsWeak then
             StartTowerSpectate()
         end
+        if Globals.AutoSWATVan and not Globals.AutoSWATVanRunning then StartAutoSWATVan() end
         if Globals.EnemySpectate ~= false and not EP.running then StartEnemySpectate() end
         if Globals.AutoRedeemCodes and not Globals.CodesRedeemed and not Globals.AutoRedeemRunning then
             redeemCodesFromBeebom()
