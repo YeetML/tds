@@ -2506,7 +2506,7 @@ local Hardcore2Strategy = {
     autoPremium = false,
     autoSkip    = false,
     autoRejoin  = false,
-    autoReady   = true,
+    autoReady   = false,
 }
 
 local runningHardcore2 = false
