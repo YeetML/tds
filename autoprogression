@@ -2468,8 +2468,34 @@ local function APR_HasAllEvolvedTowers()
     end
     return true
 end
-getgenv().APR_HasAllEvolvedTowers = APR_HasAllEvolvedTowers
-getgenv().APR_HC2_LEVEL_REQ       = HC2_LEVEL_REQ
+
+-- Returns the list of evolved towers still under Lv.20
+local function APR_GetUnmaxedEvolvedTowers()
+    local pending = {}
+    for _, name in ipairs(HC2_REQUIRED_TOWERS) do
+        if OwnsTower(name) and not IsTowerMaxLevel(name) then
+            local lvl = GetTowerLevel(name) or 0
+            table.insert(pending, string.format("%s (Lv.%d)", name, lvl))
+        end
+    end
+    return pending
+end
+
+-- True only when all 4 evolved towers are owned AND level 20
+local function APR_AreAllEvolvedMaxed()
+    if not APR_HasAllEvolvedTowers() then return false end
+    for _, name in ipairs(HC2_REQUIRED_TOWERS) do
+        if not IsTowerMaxLevel(name) then
+            return false
+        end
+    end
+    return true
+end
+
+getgenv().APR_HasAllEvolvedTowers       = APR_HasAllEvolvedTowers
+getgenv().APR_AreAllEvolvedMaxed        = APR_AreAllEvolvedMaxed
+getgenv().APR_GetUnmaxedEvolvedTowers   = APR_GetUnmaxedEvolvedTowers
+getgenv().APR_HC2_LEVEL_REQ             = HC2_LEVEL_REQ
 
 -- ═══════════════════════════════════════════════════════════════
 -- RUN HARDCORE2 — endgame path (level 300+ with all evolved towers)
@@ -3091,9 +3117,21 @@ local function RunAutoProgressionInner()
     local level = GetStat("Level")
 
     if level >= HC2_LEVEL_REQ and APR_HasAllEvolvedTowers() then
-        SetStatus("Level " .. level .. " + all evolved → Hardcore2")
-        print("[AutoProgression] Routing to Hardcore2 – level " .. level .. " with all evolved towers")
-        RunHardcore2()
+        if APR_AreAllEvolvedMaxed() then
+            -- All 4 evolved towers are Lv.20 → hand off to Fallen
+            SetStatus("Level " .. level .. " + all evolved maxed → Fallen")
+            print("[AutoProgression] All evolved towers are Lv.20 – routing to Fallen")
+            RunFallenStrategy()
+        else
+            -- Still farming evolved → Hardcore2
+            local pending = APR_GetUnmaxedEvolvedTowers()
+            SetStatus("Level " .. level .. " → Hardcore2 (farming evolved)")
+            print("[AutoProgression] Routing to Hardcore2 – evolved still pending:")
+            for _, entry in ipairs(pending) do
+                print("   → " .. entry)
+            end
+            RunHardcore2()
+        end
     elseif level >= 176 then
         if APR_NeedsHardcore1() then
             SetStatus("Level " .. level .. " → Hardcore1 (Scout/Crook Boss not maxed)")
