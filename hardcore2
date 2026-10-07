@@ -1,9 +1,3 @@
--- ═══════════════════════════════════════════════════════════════
--- HARDCORE2 — self-resetting endgame strategy
--- Loadout: Hacker + 4 evolved → swaps to Farm + Gatling + evolved
--- Map: Wretched Front
--- ═══════════════════════════════════════════════════════════════
-
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TeleportService   = game:GetService("TeleportService")
@@ -289,6 +283,9 @@ local function StartStrategy()
 
     TDS:WaitForWave(45)
 
+    TDS:SetOption(16, "Unit 1", "Lackey")
+    TDS:SetOption(16, "Unit 2", "Lackey")
+    TDS:SetOption(16, "Unit 3", "Lackey")
     TDS:SetOption(21, "Unit 1", "Lackey")
     TDS:SetOption(21, "Unit 2", "Lackey")
     TDS:SetOption(21, "Unit 3", "Lackey")
