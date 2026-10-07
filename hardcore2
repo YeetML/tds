@@ -282,19 +282,8 @@ local function StartStrategy()
     }, true)
 
     TDS:WaitForWave(45)
-
-    TDS:SetOption(16, "Unit 1", "Lackey")
-    TDS:SetOption(16, "Unit 2", "Lackey")
-    TDS:SetOption(16, "Unit 3", "Lackey")
-    TDS:SetOption(21, "Unit 1", "Lackey")
-    TDS:SetOption(21, "Unit 2", "Lackey")
-    TDS:SetOption(21, "Unit 3", "Lackey")
-    TDS:SetOption(23, "Unit 1", "Lackey")
-    TDS:SetOption(23, "Unit 2", "Lackey")
-    TDS:SetOption(23, "Unit 3", "Lackey")
-    TDS:SetOption(22, "Unit 1", "Lackey")
-    TDS:SetOption(22, "Unit 2", "Lackey")
-    TDS:SetOption(22, "Unit 3", "Lackey")
+    TDS:Sell(13)
+    TDS:Sell(1)
 end
 
 -- ═══════════════════════════════════════════════════════════════
