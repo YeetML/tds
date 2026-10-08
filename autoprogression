@@ -279,8 +279,18 @@ local function APR_ForceDisableAutoReady()
     getgenv().AutoReady        = false
     getgenv().AutoReadyRunning = false
 
+        -- ★ Actually cancel the running AutoReady coroutine in the main script
+    local stopFn = getgenv().StopAutoReady or _G.StopAutoReady
+    if type(stopFn) == "function" then
+        pcall(stopFn)
+    end
+    local mainG = getgenv().Globals or _G.Globals
+    if type(mainG) == "table" and type(mainG.StopAutoReady) == "function" then
+        pcall(mainG.StopAutoReady)
+    end
+
     -- wait past the main script's 1-second lock-watcher tick
-    task.wait(1.2)
+    task.wait(0.05)
 end
 
 
@@ -3001,9 +3011,7 @@ local function RunAutoTrial(passedTrialName)
         autoReady   = false,
     })
 
-    APR_ForceDisableAutoReady()
-
-    task.wait(0.4)
+    task.wait(0.15)
 
     if not IsInLobby() then
         APR_SetCurrentStrategy("Trial", normalized, normalized)
