@@ -1985,17 +1985,80 @@ function RunVoteSkip()
     end
 end
 
+-- ── Trial detector (used to keep AutoReady OUT of trials) ─────
+local function MainIsTrialActive()
+    local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
+    if not sr then return false end
+    local gsr = sr:FindFirstChild("GameStateReplicator")
+    local tsr = sr:FindFirstChild("TrialsStateReplicator")
+    local a = gsr and gsr:GetAttribute("GlobalTrial")
+    local b = tsr and tsr:GetAttribute("GlobalTrial")
+    return (a and a ~= "") or (b and b ~= "") or false
+end
+
+Globals.AutoReadyToken = Globals.AutoReadyToken or 0
+
+-- Incrementing the token kills any in-flight AutoReady coroutine.
+function StopAutoReady()
+    Globals.AutoReadyToken = (Globals.AutoReadyToken or 0) + 1
+    Globals.AutoReadyRunning = false
+    if Globals.Logger then
+        pcall(function() Globals.Logger:Log("[AutoReady] Force-stopped") end)
+    end
+end
+
 function StartAutoReady()
     if Globals.AutoReadyRunning or not Globals.AutoReady or Globals.GameState ~= "GAME" then return end
+
+    -- Never auto-ready during trials — the trial strategy readies itself
+    if MainIsTrialActive() then
+        if Globals.Logger then
+            pcall(function() Globals.Logger:Log("[AutoReady] Trial active — skipping") end)
+        end
+        return
+    end
+
     Globals.AutoReadyRunning = true
+    local myToken = Globals.AutoReadyToken
+
     task.spawn(function()
         local voteReplicator = ReplicatedStorage:WaitForChild("StateReplicators"):WaitForChild("VoteReplicator")
-        repeat task.wait(0.1) until voteReplicator:GetAttribute("Enabled") == true and voteReplicator:GetAttribute("Title") == "Ready?"
+
+        -- Wait for the vote, but bail if we get cancelled or a trial appears
+        repeat
+            task.wait(0.1)
+            if Globals.AutoReadyToken ~= myToken then
+                Globals.AutoReadyRunning = false
+                return
+            end
+            if MainIsTrialActive() then
+                Globals.AutoReadyRunning = false
+                return
+            end
+        until voteReplicator:GetAttribute("Enabled") == true
+          and voteReplicator:GetAttribute("Title") == "Ready?"
+
+        if Globals.AutoReadyToken ~= myToken then
+            Globals.AutoReadyRunning = false
+            return
+        end
+
         RunVoteSkip()
-        repeat task.wait(0.1) until voteReplicator:GetAttribute("Enabled") == false
+
+        repeat
+            task.wait(0.1)
+            if Globals.AutoReadyToken ~= myToken then break end
+        until voteReplicator:GetAttribute("Enabled") == false
+
         Globals.AutoReadyRunning = false
     end)
 end
+
+-- Expose the cancel function so AutoProgression can reach it
+getgenv().StartAutoReady  = StartAutoReady
+getgenv().StopAutoReady   = StopAutoReady
+Globals.StartAutoReady    = StartAutoReady
+Globals.StopAutoReady     = StopAutoReady
 
 function StartEasyMode()
     if Globals.EasyModeRunning or not Globals.Easy then return end
