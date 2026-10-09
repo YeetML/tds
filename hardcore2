@@ -7,15 +7,85 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 
 local activeStratThread = nil
-local LOSS_THRESHOLD    = 20
-local lossCount         = 0
 local LOBBY_ID          = 3260590327
+local MAX_TOWER_LEVEL   = 20
 
 local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
 
 -- ── Enter Hardcore match on the correct map ───────────────────
 TDS:Mode("Hardcore")
 TDS:GameInfo("Wretched Front", {})
+
+-- ═══════════════════════════════════════════════════════════════
+-- Evolved-tower level checker
+-- ═══════════════════════════════════════════════════════════════
+local EVOLVED_TOWERS = {
+    "EvolvedOperator",
+    "EvolvedJuggernaut",
+    "EvolvedKingpin",
+    "EvolvedEnforcer",
+}
+
+local Cache, TowerExpUtil
+do
+    local ok1, c = pcall(function()
+        return require(ReplicatedStorage.Client.Modules.Cache)
+    end)
+    local ok2, t = pcall(function()
+        return require(ReplicatedStorage.Shared.Modules.TowerExpUtil)
+    end)
+    if ok1 then Cache = c end
+    if ok2 then TowerExpUtil = t end
+    if not Cache or not TowerExpUtil then
+        warn("[Hardcore2] ⚠ Could not require Cache/TowerExpUtil — level check disabled")
+    end
+end
+
+local function GetEvolvedLevels()
+    if not Cache or not TowerExpUtil then return nil end
+
+    local cache = Cache("TowerExp")
+    local expTable = cache:GetValue()
+    if not expTable then
+        cache:Download()
+        local start = os.clock()
+        while not cache:GetValue() and os.clock() - start < 4 do
+            task.wait(0.1)
+        end
+        expTable = cache:GetValue()
+    end
+    if not expTable then return nil end
+
+    local levels = {}
+    for _, name in ipairs(EVOLVED_TOWERS) do
+        local lvl = 0
+        pcall(function()
+            lvl = TowerExpUtil.getLevel({ TowerExp = expTable }, name) or 0
+        end)
+        levels[name] = lvl
+    end
+    return levels
+end
+
+local function AllEvolvedMaxed()
+    local levels = GetEvolvedLevels()
+    if not levels then return false, nil end
+    for _, name in ipairs(EVOLVED_TOWERS) do
+        if levels[name] < MAX_TOWER_LEVEL then
+            return false, levels
+        end
+    end
+    return true, levels
+end
+
+local function FormatEvolvedLevels(levels)
+    if not levels then return "(unavailable)" end
+    local parts = {}
+    for _, name in ipairs(EVOLVED_TOWERS) do
+        parts[#parts + 1] = string.format("%s=Lv%d", name, levels[name] or 0)
+    end
+    return table.concat(parts, ", ")
+end
 
 -- ── Lobby teleport helper (honours PrivateCode if set) ────────
 local function SmartTeleportToLobby()
@@ -40,7 +110,6 @@ local function StartStrategy()
     wait(0.1)
     TDS:RemoveIndex()
 
-    -- Wait for the game state to actually be GAME before doing anything
     if getgenv().Globals and getgenv().Globals.GameState then
         local deadline = os.clock() + 60
         while getgenv().Globals.GameState ~= "GAME" and os.clock() < deadline do
@@ -341,15 +410,17 @@ task.spawn(function()
         local currentStatus = GetMatchStatus()
 
         if currentStatus == "LOSS" then
-            lossCount = lossCount + 1
-            print(string.format("[Hardcore2] Loss #%d / %d detected.", lossCount, LOSS_THRESHOLD))
+            -- ★ ONLY exit check: are all evolved towers Lv.20?
+            local allMaxed, levels = AllEvolvedMaxed()
+            print("[Hardcore2] Loss detected. Evolved levels: " .. FormatEvolvedLevels(levels))
 
-            if lossCount >= LOSS_THRESHOLD then
-                print("[Hardcore2] Reached loss threshold – returning to lobby.")
+            if allMaxed then
+                print("[Hardcore2] ✅ All evolved towers reached Lv.20 — returning to lobby.")
                 SmartTeleportToLobby()
                 break
             end
 
+            -- Not maxed → restart and keep farming
             if activeStratThread and coroutine.status(activeStratThread) ~= "dead" then
                 task.cancel(activeStratThread)
                 activeStratThread = nil
@@ -366,10 +437,7 @@ task.spawn(function()
             activeStratThread = task.spawn(StartStrategy)
 
         elseif currentStatus == "WIN" then
-            if lossCount > 0 then
-                print("[Hardcore2] Win detected! Resetting loss counter.")
-                lossCount = 0
-            end
+            print("[Hardcore2] Win detected — continuing.")
         end
     end
 end)
