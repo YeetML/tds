@@ -1,0 +1,241 @@
+-- ═══════════════════════════════════════════════════════════════
+-- HC2 WATCHDOG — PRODUCTION (real teleport enabled)
+-- Only fires on Hardcore losses. Checks all 4 evolved towers.
+-- Teleports to lobby when all are Lv.20.
+-- ═══════════════════════════════════════════════════════════════
+
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService   = game:GetService("TeleportService")
+local UserInputService  = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+
+local LOBBY_ID  = 3260590327
+local MAX_LEVEL = 20
+
+-- ═══ PRODUCTION MODE — real teleport ENABLED ═══
+local DRY_RUN = false
+
+local EVOLVED_TOWERS = {
+    "EvolvedOperator",
+    "EvolvedJuggernaut",
+    "EvolvedKingpin",
+    "EvolvedEnforcer",
+}
+
+-- ── Output buffer + clipboard ─────────────────────────────────
+local OUT = {}
+local CLIPBOARD_INTERVAL = 15
+local lastClipboardFlush = 0
+
+local function CopyToClipboard(text)
+    local ok = pcall(function() setclipboard(text) end)
+    if ok then return true end
+    ok = pcall(function() toclipboard(text) end)
+    if ok then return true end
+    ok = pcall(function() writeclipboard(text) end)
+    if ok then return true end
+    return false
+end
+
+local function FlushClipboard()
+    lastClipboardFlush = os.clock()
+    local header = string.format(
+        "── HCWatchdog output ── %s ── %d line(s) ──\n",
+        os.date("%H:%M:%S"), #OUT
+    )
+    CopyToClipboard(header .. table.concat(OUT, "\n"))
+end
+
+local function log(msg)
+    local line = "[HCWatchdog] " .. tostring(msg)
+    print(line)
+    table.insert(OUT, line)
+end
+
+-- ── Require game modules ──────────────────────────────────────
+local ok1, Cache = pcall(function()
+    return require(ReplicatedStorage.Client.Modules.Cache)
+end)
+local ok2, TowerExpUtil = pcall(function()
+    return require(ReplicatedStorage.Shared.Modules.TowerExpUtil)
+end)
+
+if not ok1 or not ok2 then
+    log("❌ Cannot require game modules — aborting.")
+    log("   Cache ok? " .. tostring(ok1))
+    log("   TowerExpUtil ok? " .. tostring(ok2))
+    FlushClipboard()
+    return
+end
+log("Modules loaded. DRY_RUN = " .. tostring(DRY_RUN))
+log("Watching for HARDCORE losses only...")
+FlushClipboard()
+
+-- ── Helpers ───────────────────────────────────────────────────
+local function GetExpTable()
+    local c = Cache("TowerExp")
+    local v = c:GetValue()
+    if not v then
+        c:Download()
+        local start = os.clock()
+        while not c:GetValue() and os.clock() - start < 6 do
+            task.wait(0.1)
+        end
+        v = c:GetValue()
+    end
+    return v or {}
+end
+
+local function GetAllLevels()
+    local expTable = GetExpTable()
+    local out = {}
+    for _, name in ipairs(EVOLVED_TOWERS) do
+        local lvl = 0
+        pcall(function()
+            lvl = TowerExpUtil.getLevel({ TowerExp = expTable }, name) or 0
+        end)
+        out[name] = lvl
+    end
+    return out
+end
+
+local function AllMaxed()
+    local levels = GetAllLevels()
+    for _, name in ipairs(EVOLVED_TOWERS) do
+        if levels[name] < MAX_LEVEL then
+            return false, levels
+        end
+    end
+    return true, levels
+end
+
+local function FormatLevels(levels)
+    local parts = {}
+    for _, name in ipairs(EVOLVED_TOWERS) do
+        parts[#parts + 1] = string.format("%s=Lv%d", name, levels[name] or 0)
+    end
+    return table.concat(parts, ", ")
+end
+
+-- ── Mode detection ────────────────────────────────────────────
+local function GetGameStateReplicator()
+    local sr = ReplicatedStorage:FindFirstChild("StateReplicators")
+    return sr and sr:FindFirstChild("GameStateReplicator")
+end
+
+local function GetCurrentMode()
+    local rep = GetGameStateReplicator()
+    if not rep then return nil end
+    local display = rep:GetAttribute("DifficultyDisplayName")
+    if not display or display == "" then return nil end
+    return display
+end
+
+local function IsHardcoreMode()
+    local display = GetCurrentMode()
+    if not display then return false end
+    return tostring(display):lower():find("hardcore", 1, true) ~= nil
+end
+
+-- ── Loss / win detector ───────────────────────────────────────
+local function GetMatchStatus()
+    local ok, status = pcall(function()
+        local uiRoot = PlayerGui:FindFirstChild("ReactGameNewRewards")
+        if not uiRoot then return nil end
+        local frame = uiRoot:FindFirstChild("Frame")
+        if not frame or not frame.Visible then return nil end
+        local gameOver = frame:FindFirstChild("gameOver")
+        if not gameOver or not gameOver.Visible then return nil end
+        local rewards = gameOver:FindFirstChild("RewardsScreen")
+        if not rewards or not rewards.Visible then return nil end
+        local banner = rewards:FindFirstChild("RewardBanner")
+        if not banner then return nil end
+        local label = banner:FindFirstChild("textLabel")
+                   or banner:FindFirstChildOfClass("TextLabel")
+        if not label then return nil end
+        local txt = label.Text:upper()
+        if txt == "" then return nil end
+        if txt:find("TRIUMPH") or txt:find("VICTORY") then return "WIN" end
+        if txt:find("LOST") or txt:find("DEFEAT") then return "LOSS" end
+        return nil
+    end)
+    return ok and status or nil
+end
+
+local function SmartTeleportToLobby()
+    local isMobile = (UserInputService:GetPlatform() == Enum.Platform.IOS or
+                      UserInputService:GetPlatform() == Enum.Platform.Android)
+    pcall(function()
+        if not isMobile and getgenv().PrivateCode and getgenv().PrivateCode ~= "" then
+            game:GetService("ExperienceService"):LaunchExperience({
+                placeId  = LOBBY_ID,
+                linkCode = getgenv().PrivateCode
+            })
+        else
+            TeleportService:Teleport(LOBBY_ID)
+        end
+    end)
+end
+
+-- ── Manual flush key (F8) ─────────────────────────────────────
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.F8 then
+        FlushClipboard()
+        print("[HCWatchdog] 📋 Clipboard updated manually (F8)")
+    end
+end)
+
+-- ── Main loop ─────────────────────────────────────────────────
+local lastStatus    = nil
+local lastHeartbeat = 0
+
+while true do
+    task.wait(0.5)
+
+    if os.clock() - lastHeartbeat >= 20 then
+        lastHeartbeat = os.clock()
+        local mode = GetCurrentMode() or "(none)"
+        log(string.format("heartbeat — mode=%s, hardcore=%s, lastStatus=%s",
+            tostring(mode), tostring(IsHardcoreMode()), tostring(lastStatus)))
+    end
+
+    if os.clock() - lastClipboardFlush >= CLIPBOARD_INTERVAL then
+        FlushClipboard()
+    end
+
+    local status = GetMatchStatus()
+
+    if status ~= lastStatus then
+        if status == "LOSS" then
+            local mode = GetCurrentMode()
+            log("═══ LOSS SCREEN DETECTED ═══")
+            log("  Mode: " .. tostring(mode or "(unknown)"))
+            log("  Is Hardcore: " .. tostring(IsHardcoreMode()))
+
+            if not IsHardcoreMode() then
+                log("  → Skipping (not a Hardcore match).")
+            else
+                log("  → Checking evolved tower levels...")
+                local maxed, levels = AllMaxed()
+                log("  Levels: " .. FormatLevels(levels))
+
+                if maxed then
+                    log("  ✅ All evolved towers are Lv.20!")
+                    log("  🚀 Teleporting to lobby now...")
+                    SmartTeleportToLobby()
+                    FlushClipboard()
+                    break
+                else
+                    log("  ⏳ Not maxed yet — letting Hardcore2 continue its loop.")
+                end
+            end
+            log("═══════════════════════════")
+            FlushClipboard()
+        end
+        lastStatus = status
+    end
+end
