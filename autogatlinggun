@@ -1,18 +1,18 @@
 --[[
-    Gatling Gun — Gatlify Mode  (dead-target skip via StateReplicators)
-    - Infinite range / angle
-    - Multi-target, rotated across up to 5 targets
-    - Skips enemies whose NPCReplicator.Health <= 0 or whose link is gone
-    - Skips Lead enemies via StatusEffects.Lead only (Shield is NOT used,
-      because non-Lead enemies can also have Shield and are shootable)
-    - SpawnGrace delays targeting brand-new enemies by 150ms, covering the
-      ~25-56ms replication window before Lead arrives
-    - Works with elite enemies that have RootPart instead of HumanoidRootPart
-    - ESP + bullet lines only visible while actively firing
-    - Persistent FPS = true on the Gatling Gun (TowerReplicator.FPS)
-    - Auto-starts the moment a Gatling Gun is placed (Heartbeat watcher)
-    - Low-quality ESP / tracers to preserve FPS
-    - Idle reload when no targets remain and gun hasn't fired for 2 seconds
+    Auto Gatling Gun — external module
+    Loaded from the YeetML hub via loadstring(game:HttpGet(url))().
+
+    Features
+      - Infinite range / angle, multi-target rotation (up to 5)
+      - Skips dead + missing-replicator enemies
+      - Skips Lead enemies (StatusEffects.Lead), no Shield reliance
+      - 150 ms spawn grace covers Lead replication window
+      - Elites without HumanoidRootPart supported (RootPart fallback)
+      - Smart shot budget: uses Damage * (1 + DamageBuff/100)
+      - Persistent FPS = true on the Gatling Gun
+      - Auto-starts the moment a Gatling Gun is placed
+      - Low-quality ESP + tracers, idle reload after 2 s
+      - Exposes getgenv().AutoGatlingGun = { Start / Stop / IsRunning }
 ]]
 
 local Players           = game:GetService("Players")
@@ -53,13 +53,14 @@ local CFG = {
     ForceFPS        = true,
     FPSRecheck      = 0.2,
     IdleReloadDelay = 2.0,
-
-    -- New enemies aren't targeted until they've been on the client this
-    -- long. Covers the ~25-56 ms window where Lead hasn't replicated yet.
     SpawnGrace      = 0.15,
+
+    -- Shot budget safety: fire one extra shot per target so tiny HP
+    -- replication lag never leaves an enemy alive.
+    BudgetSafety    = 1,
 }
 
-local function log(...) if CFG.Debug then print("[Gatling]", ...) end end
+local function log(...) if CFG.Debug then print("[AutoGatlingGun]", ...) end end
 
 local S = {
     Running        = false,
@@ -70,10 +71,11 @@ local S = {
     LastActualShot = 0,
     Heartbeat      = nil,
     CurrentIndex   = 1,
+    _watchConn     = nil,
 }
 
 ------------------------------------------------------------
--- ALIVE CHECK
+-- ALIVE / LEAD
 ------------------------------------------------------------
 local function getReplicator(model)
     local rp = model:FindFirstChild("RootPointer")
@@ -94,10 +96,8 @@ local function isAlive(model)
     return true
 end
 
--- Lead is stored as a JSON string attribute on StatusEffects while the
--- enemy is shielded. When the shield breaks, the attribute is removed
--- entirely (goes nil). Only Lead matters — Shield can exist on non-Lead
--- enemies and those must still be shot.
+-- Only Lead is checked. Shield can exist on non-Lead enemies and those
+-- must still be shot.
 local function hasLead(model)
     local rep = getReplicator(model)
     if not rep then return false end
@@ -198,6 +198,18 @@ local function findAimPart(npc)
 end
 
 ------------------------------------------------------------
+-- DAMAGE — applies DamageBuff (percent)
+------------------------------------------------------------
+local function getEffectiveDamage(rep)
+    local base = rep:GetAttribute("Damage")
+    if type(base) ~= "number" or base < 1 then base = 1 end
+    local buff = rep:GetAttribute("DamageBuff")
+    if type(buff) ~= "number" then buff = 0 end
+    -- e.g. base=8, buff=20 → 8 * 1.2 = 9.6
+    return base * (1 + buff / 100)
+end
+
+------------------------------------------------------------
 -- TARGET SELECTION
 ------------------------------------------------------------
 local function pickTargets()
@@ -212,7 +224,6 @@ local function pickTargets()
             local aimPart = findAimPart(npc)
             if aimPart then
                 if not FirstSeen[npc] then FirstSeen[npc] = now end
-
                 local age = now - FirstSeen[npc]
                 if age >= CFG.SpawnGrace
                    and isAlive(npc)
@@ -236,10 +247,10 @@ end
 -- ESP
 ------------------------------------------------------------
 local lineFolder = Instance.new("Folder")
-lineFolder.Name = "GatlingLines"; lineFolder.Parent = workspace
+lineFolder.Name = "AutoGatlingLines"; lineFolder.Parent = workspace
 
 local espFolder = Instance.new("Folder")
-espFolder.Name = "GatlingESP"; espFolder.Parent = workspace
+espFolder.Name = "AutoGatlingESP"; espFolder.Parent = workspace
 
 local espMap = {}
 
@@ -266,8 +277,7 @@ local function makeBeam(fromAttach, toAttach, color)
     beam.LightInfluence = 0
     beam.FaceCamera     = true
     local w = CFG.LowQuality and 0.05 or 0.12
-    beam.Width0 = w
-    beam.Width1 = w
+    beam.Width0, beam.Width1 = w, w
     beam.Transparency = NumberSequence.new(CFG.LowQuality and 0.55 or 0.15)
     beam.Segments = 1
     beam.Parent = lineFolder
@@ -326,9 +336,7 @@ local function setESPTargets(list, currentModel)
             end
             local isCurrent = (t.Model == currentModel)
             local col = isCurrent and CFG.CurrentColor or CFG.TargetColor
-            if rec.highlight then
-                rec.highlight.FillColor = col
-            end
+            if rec.highlight then rec.highlight.FillColor = col end
             rec.beam.Color = ColorSequence.new(col)
             if CFG.LowQuality then
                 rec.beam.Width0 = isCurrent and 0.10 or 0.05
@@ -368,9 +376,7 @@ local function spawnTracer(from, to, color)
     if dist < 0.1 then return end
     local p = Instance.new("Part")
     p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch = true, false, false, false
-    if not CFG.LowQuality then
-        p.Material = Enum.Material.Neon
-    end
+    if not CFG.LowQuality then p.Material = Enum.Material.Neon end
     p.Color = color or Color3.fromRGB(255, 200, 80)
     local s = CFG.LowQuality and 0.05 or 0.09
     p.Size = Vector3.new(s, s, dist)
@@ -442,7 +448,6 @@ local function heartbeatTick(dt)
     local targets = pickTargets()
     if #targets == 0 then
         if CFG.ShowTargetESP then clearESP() end
-
         if CFG.AutoReload and not reloading
            and ammo < maxAmmo
            and (now - S.LastActualShot) >= CFG.IdleReloadDelay then
@@ -467,28 +472,46 @@ local function heartbeatTick(dt)
     end
 
     if CFG.AutoFire then
+        -- Effective damage includes DamageBuff (percentage)
+        local damage = getEffectiveDamage(rep)
+
+        -- Build per-target shot budgets: ceil(HP / damage) + safety
+        local budgets, totalRemaining = {}, 0
+        for i, t in ipairs(targets) do
+            local tRep = getReplicator(t.Model)
+            local hp = tRep and tRep:GetAttribute("Health") or 0
+            if type(hp) ~= "number" or hp < 0 then hp = 0 end
+            local need = math.max(1, math.ceil(hp / damage) + CFG.BudgetSafety)
+            budgets[i] = need
+            totalRemaining = totalRemaining + need
+        end
+
         local shotsThisTick = 0
         local idx = S.CurrentIndex
-        while shotsThisTick < CFG.BatchSize do
+        while shotsThisTick < CFG.BatchSize and totalRemaining > 0 do
             local t = targets[idx]
             if not t then break end
-            if isAlive(t.Model) and not hasLead(t.Model) and t.Model.Parent then
+            if budgets[idx] > 0
+               and isAlive(t.Model)
+               and not hasLead(t.Model)
+               and t.Model.Parent then
                 local stepTime = shotsThisTick * CFG.BatchStep
                 fireAt(t.Pos, stepTime)
                 if CFG.ShowBulletLines and towerPos then
                     spawnTracer(towerPos + Vector3.new(0, 3, 0), t.Pos, CFG.CurrentColor)
                 end
                 shotsThisTick += 1
+                budgets[idx] -= 1
+                totalRemaining -= 1
             end
             idx += 1
             if idx > #targets then idx = 1 end
-            if shotsThisTick > 200 then break end
         end
         S.CurrentIndex = idx
     end
 
     if CFG.ShowTargetESP then
-        setESPTargets(targets, current.Model)
+        setESPtargets and setESPTargets(targets, current.Model)
     end
 
     S.LastFireTime = now
@@ -502,27 +525,23 @@ local FPSLastFire = setmetatable({}, {__mode = "k"})
 local function enforceFPS(tower, rep)
     if not CFG.ForceFPS then return end
     if rep:GetAttribute("FPS") == true then return end
-
     local now = os.clock()
     if now - (FPSLastFire[tower] or 0) < CFG.FPSRecheck then return end
     FPSLastFire[tower] = now
-
     pcall(function()
         RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
-            Troop = tower,
-            Name  = "FPS",
-            Data  = { enabled = true },
+            Troop = tower, Name = "FPS", Data = { enabled = true },
         })
     end)
 end
 
 ------------------------------------------------------------
--- PUBLIC
+-- PUBLIC API
 ------------------------------------------------------------
-local Gatling = {}
-Gatling.CFG = CFG
+local AutoGatlingGun = {}
+AutoGatlingGun.CFG = CFG
 
-function Gatling.Start()
+function AutoGatlingGun.Start()
     if S.Running then return false end
     local tower, rep = findTower()
     if not tower then return false end
@@ -535,7 +554,7 @@ function Gatling.Start()
     return true
 end
 
-function Gatling.Stop()
+function AutoGatlingGun.Stop()
     if not S.Running then return false end
     S.Running = false
     if S.Heartbeat then S.Heartbeat:Disconnect() S.Heartbeat = nil end
@@ -547,38 +566,35 @@ function Gatling.Stop()
     return true
 end
 
-function Gatling.IsRunning() return S.Running end
-function Gatling.GetShots() return S.ShotCount end
+function AutoGatlingGun.IsRunning() return S.Running end
+function AutoGatlingGun.GetShots() return S.ShotCount end
 
-function Gatling.StopWatching()
+function AutoGatlingGun.StopWatching()
     if S._watchConn then S._watchConn:Disconnect() S._watchConn = nil end
 end
 
 ------------------------------------------------------------
--- WATCHER
+-- WATCHER (auto-start + FPS pin)
 ------------------------------------------------------------
 S._watchConn = RunService.Heartbeat:Connect(function()
     local tower, rep = findTower()
-
     if not tower then
-        if S.Running then Gatling.Stop() end
+        if S.Running then AutoGatlingGun.Stop() end
         return
     end
-
     enforceFPS(tower, rep)
-
     if not S.Running then
-        Gatling.Start()
+        AutoGatlingGun.Start()
     end
 end)
 
 ------------------------------------------------------------
 -- Bootstrap
 ------------------------------------------------------------
-if getgenv().Gatling and getgenv().Gatling.StopWatching then
-    pcall(getgenv().Gatling.StopWatching)
+if getgenv().AutoGatlingGun and getgenv().AutoGatlingGun.StopWatching then
+    pcall(getgenv().AutoGatlingGun.StopWatching)
 end
 
-getgenv().Gatling = Gatling
+getgenv().AutoGatlingGun = AutoGatlingGun
 
-print("[Gatling] Loaded. Lead-only check (no Shield), 150ms spawn grace, elites supported, FPS pinned, low-quality ESP, idle reload 2s.")
+print("[AutoGatlingGun] Loaded. DamageBuff-aware budgets, Lead-only check, 150ms grace, elites supported, FPS pinned, low-quality ESP, idle reload 2s.")
