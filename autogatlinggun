@@ -1,19 +1,12 @@
 --[[
-    Auto Gatling Gun — external module (ESP + tracers removed)
-    Loaded from the YeetML hub via loadstring(game:HttpGet(url))().
+    Auto Gatling Gun — external module (multi-tower)
+    Handles every owned Gatling Gun, including clones.
 
-    Features
-      - Infinite range / angle, multi-target rotation (up to 5)
-      - Skips dead + missing-replicator enemies
-      - Skips Lead enemies (StatusEffects.Lead), no Shield reliance
-      - 150 ms spawn grace covers Lead replication window
-      - Elites without HumanoidRootPart supported (RootPart fallback)
-      - Smart shot budget: uses Damage * (1 + DamageBuff/100)
-      - Persistent FPS = true on the Gatling Gun
-      - Auto-starts the moment a Gatling Gun is placed
-      - Idle reload after 1 s
-      - Game-side Gatling Gun hitsound is silenced at the source
-      - Exposes getgenv().AutoGatlingGun = { Start / Stop / IsRunning }
+    Same features as before, plus:
+      - Drives N towers simultaneously (one state table per tower)
+      - FPS enforcement applied to every owned Gatling Gun
+      - Auto-discovers clones the moment they appear
+      - Per-tower ammo/reload/fire-rate budget
 ]]
 
 local Players           = game:GetService("Players")
@@ -21,12 +14,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
 local SoundService      = game:GetService("SoundService")
 
-local LP         = Players.LocalPlayer
+local LP = Players.LocalPlayer
+
 ------------------------------------------------------------
--- SAFE NETWORK RESOLVE (no infinite-yield warning)
+-- SAFE NETWORK RESOLVE
 ------------------------------------------------------------
 local function waitForChildSafe(parent, name, timeout)
-    timeout = timeout or 1e9          -- effectively forever
+    timeout = timeout or 1e9
     local deadline = os.clock() + timeout
     local child = parent:FindFirstChild(name)
     while not child and os.clock() < deadline do
@@ -86,15 +80,10 @@ local CFG = {
 local function log(...) if CFG.Debug then print("[AutoGatlingGun]", ...) end end
 
 local S = {
-    Running        = false,
-    Tower          = nil,
-    Rep            = nil,
-    ShotCount      = 0,
-    LastFireTime   = 0,
-    LastActualShot = 0,
-    Heartbeat      = nil,
-    CurrentIndex   = 1,
-    _watchConn     = nil,
+    Running    = false,
+    Towers     = {},   -- [towerModel] = state table
+    Heartbeat  = nil,
+    _watchConn = nil,
 }
 
 ------------------------------------------------------------
@@ -185,20 +174,21 @@ local function projectOnPath(nodes, pos)
 end
 
 ------------------------------------------------------------
--- TOWER
+-- TOWER DISCOVERY (returns ALL owned Gatling Guns)
 ------------------------------------------------------------
-local function findTower()
+local function findTowers()
+    local out = {}
     local folder = workspace:FindFirstChild("Towers")
-    if not folder then return nil, nil end
+    if not folder then return out end
     for _, m in ipairs(folder:GetChildren()) do
         local rep = m:FindFirstChild("TowerReplicator")
         if rep
             and rep:GetAttribute("Name") == "Gatling Gun"
             and rep:GetAttribute("OwnerId") == LP.UserId then
-            return m, rep
+            table.insert(out, { Tower = m, Rep = rep })
         end
     end
-    return nil, nil
+    return out
 end
 
 ------------------------------------------------------------
@@ -257,7 +247,7 @@ local function pickTargets()
 end
 
 ------------------------------------------------------------
--- Module's own hitsound (still gated by CFG.HitsoundVolume)
+-- Module's own hitsound
 ------------------------------------------------------------
 RE_Hit.OnClientEvent:Connect(function()
     if not S.Running or CFG.HitsoundVolume <= 0 then return end
@@ -271,9 +261,9 @@ RE_Hit.OnClientEvent:Connect(function()
 end)
 
 ------------------------------------------------------------
--- FIRE
+-- FIRE (per-tower)
 ------------------------------------------------------------
-local function fireAt(pos, extraTime)
+local function fireAt(st, pos, extraTime)
     local sync = workspace:GetAttribute("Sync") or 0
     local now  = workspace:GetServerTimeNow()
     RE_Fire:FireServer(
@@ -281,21 +271,19 @@ local function fireAt(pos, extraTime)
         sync + CFG.SyncOffset,
         now + CFG.TimestampOffset + (extraTime or 0)
     )
-    S.ShotCount += 1
-    S.LastActualShot = os.clock()
+    st.ShotCount += 1
+    st.LastActualShot = os.clock()
 end
 
 ------------------------------------------------------------
--- MAIN LOOP
+-- PER-TOWER TICK
 ------------------------------------------------------------
 local FRAME_BUDGET = 1 / CFG.FireRate
 
-local function heartbeatTick(dt)
-    if not S.Running then return end
-    local tower, rep = S.Tower, S.Rep
+local function tickTower(st)
+    local tower, rep = st.Tower, st.Rep
     if not (tower and tower.Parent and rep and rep.Parent) then
-        S.Running = false
-        return
+        return false   -- tower gone, caller removes it
     end
 
     local ammo      = rep:GetAttribute("Ammo") or 0
@@ -304,32 +292,30 @@ local function heartbeatTick(dt)
 
     if CFG.AutoReload and ammo == 0 and not reloading then
         RE_Reload:FireServer()
-        return
+        return true
     end
-    if ammo <= 0 then
-        return
-    end
+    if ammo <= 0 then return true end
 
     local now = os.clock()
-    if now - S.LastFireTime < FRAME_BUDGET then return end
+    if now - st.LastFireTime < FRAME_BUDGET then return true end
 
     local targets = pickTargets()
     if #targets == 0 then
         if CFG.AutoReload and not reloading
            and ammo < maxAmmo
-           and (now - S.LastActualShot) >= CFG.IdleReloadDelay then
+           and (now - st.LastActualShot) >= CFG.IdleReloadDelay then
             RE_Reload:FireServer()
         end
-        return
+        return true
     end
 
-    if S.CurrentIndex > #targets then S.CurrentIndex = 1 end
-    local current = targets[S.CurrentIndex]
+    if st.CurrentIndex > #targets then st.CurrentIndex = 1 end
+    local current = targets[st.CurrentIndex]
 
     if not isAlive(current.Model) or not current.Model.Parent or hasLead(current.Model) then
-        S.CurrentIndex += 1
-        S.LastFireTime = now
-        return
+        st.CurrentIndex += 1
+        st.LastFireTime = now
+        return true
     end
 
     if CFG.AutoFire then
@@ -346,7 +332,7 @@ local function heartbeatTick(dt)
         end
 
         local shotsThisTick = 0
-        local idx = S.CurrentIndex
+        local idx = st.CurrentIndex
         while shotsThisTick < CFG.BatchSize and totalRemaining > 0 do
             local t = targets[idx]
             if not t then break end
@@ -355,7 +341,7 @@ local function heartbeatTick(dt)
                and not hasLead(t.Model)
                and t.Model.Parent then
                 local stepTime = shotsThisTick * CFG.BatchStep
-                fireAt(t.Pos, stepTime)
+                fireAt(st, t.Pos, stepTime)
                 shotsThisTick += 1
                 budgets[idx] -= 1
                 totalRemaining -= 1
@@ -363,14 +349,24 @@ local function heartbeatTick(dt)
             idx += 1
             if idx > #targets then idx = 1 end
         end
-        S.CurrentIndex = idx
+        st.CurrentIndex = idx
     end
 
-    S.LastFireTime = now
+    st.LastFireTime = now
+    return true
+end
+
+local function heartbeatTick()
+    if not S.Running then return end
+    for tower, st in pairs(S.Towers) do
+        if not tickTower(st) then
+            S.Towers[tower] = nil
+        end
+    end
 end
 
 ------------------------------------------------------------
--- FPS ENFORCEMENT
+-- FPS ENFORCEMENT (per-tower)
 ------------------------------------------------------------
 local FPSLastFire = setmetatable({}, {__mode = "k"})
 
@@ -388,11 +384,7 @@ local function enforceFPS(tower, rep)
 end
 
 ------------------------------------------------------------
--- GAME-SIDE HITSOUND SUPPRESSOR
--- The game plays its own Gatling Gun hit sound (same asset ID) that the
--- module config cannot reach. Destroy() doesn't flush queued audio, so we
--- set Volume = 0 on the live instance and re-silence on every change.
--- Idempotent — guarded by getgenv flag so module reloads don't double-hook.
+-- GAME-SIDE HITSOUND SUPPRESSOR (unchanged, idempotent)
 ------------------------------------------------------------
 do
     if not getgenv()._AGG_SoundMute then
@@ -444,7 +436,6 @@ do
             if c.Name == "PlayerGui" then hookRoot(c) end
         end)
 
-        -- Heartbeat sweep catches anything that slipped past the signals
         RunService.Heartbeat:Connect(function()
             for _, s in ipairs(SoundService:GetChildren()) do
                 if s:IsA("Sound") and matchSound(s) and s.Volume > 0 then
@@ -456,21 +447,53 @@ do
 end
 
 ------------------------------------------------------------
+-- STATE MANAGEMENT
+------------------------------------------------------------
+local function ensureState(tower, rep)
+    local st = S.Towers[tower]
+    if not st then
+        st = {
+            Tower          = tower,
+            Rep            = rep,
+            ShotCount      = 0,
+            LastFireTime   = 0,
+            LastActualShot = os.clock(),
+            CurrentIndex   = 1,
+        }
+        S.Towers[tower] = st
+    else
+        st.Rep = rep
+    end
+    return st
+end
+
+------------------------------------------------------------
 -- PUBLIC API
 ------------------------------------------------------------
 local AutoGatlingGun = {}
 AutoGatlingGun.CFG = CFG
 
 function AutoGatlingGun.Start()
-    if S.Running then return false end
-    local tower, rep = findTower()
-    if not tower then return false end
-    S.Tower, S.Rep = tower, rep
-    S.Running, S.ShotCount, S.LastFireTime, S.CurrentIndex = true, 0, 0, 1
-    S.LastActualShot = os.clock()
-    enforceFPS(tower, rep)
+    if S.Running then
+        -- pick up any newly-placed towers while running
+        for _, t in ipairs(findTowers()) do
+            ensureState(t.Tower, t.Rep)
+            enforceFPS(t.Tower, t.Rep)
+        end
+        return false
+    end
+
+    S.Towers = {}
+    for _, t in ipairs(findTowers()) do
+        ensureState(t.Tower, t.Rep)
+        enforceFPS(t.Tower, t.Rep)
+    end
+
+    if next(S.Towers) == nil then return false end
+
+    S.Running = true
     S.Heartbeat = RunService.Heartbeat:Connect(heartbeatTick)
-    log("started")
+    log("started", "towers=" .. tostring(#findTowers()))
     return true
 end
 
@@ -485,23 +508,27 @@ function AutoGatlingGun.Stop()
 end
 
 function AutoGatlingGun.IsRunning() return S.Running end
-function AutoGatlingGun.GetShots() return S.ShotCount end
+function AutoGatlingGun.GetShots()
+    local total = 0
+    for _, st in pairs(S.Towers) do total += st.ShotCount end
+    return total
+end
 
 function AutoGatlingGun.StopWatching()
     if S.Running then AutoGatlingGun.Stop() end
-    -- Watcher intentionally kept alive. Use _cleanup() for real teardown.
 end
 
 function AutoGatlingGun._cleanup()
     if S._watchConn then S._watchConn:Disconnect() S._watchConn = nil end
     if S.Heartbeat then S.Heartbeat:Disconnect() S.Heartbeat = nil end
     S.Running = false
+    S.Towers = {}
     for _, conn in pairs(HealthHooks) do conn:Disconnect() end
     HealthHooks = {}
 end
 
 ------------------------------------------------------------
--- WATCHER
+-- WATCHER — always keeps all owned Gatling Guns tracked
 ------------------------------------------------------------
 S._watchConn = RunService.Heartbeat:Connect(function()
     local userWants = true
@@ -515,19 +542,31 @@ S._watchConn = RunService.Heartbeat:Connect(function()
         return
     end
 
-    local tower, rep = findTower()
-    if not tower then
+    local live = findTowers()
+    if #live == 0 then
         if S.Running then AutoGatlingGun.Stop() end
         return
     end
-    enforceFPS(tower, rep)
+
+    -- register every owned Gatling Gun and keep FPS forced on each
+    for _, t in ipairs(live) do
+        local st = ensureState(t.Tower, t.Rep)
+        enforceFPS(t.Tower, t.Rep)
+        if st.LastFireTime == 0 then st.LastActualShot = os.clock() end
+    end
+
+    -- drop state for towers that got sold/destroyed
+    for tower in pairs(S.Towers) do
+        if not tower.Parent then S.Towers[tower] = nil end
+    end
+
     if not S.Running then
         AutoGatlingGun.Start()
     end
 end)
 
 ------------------------------------------------------------
--- Bootstrap
+-- BOOTSTRAP
 ------------------------------------------------------------
 do
     local old = getgenv().AutoGatlingGun
@@ -540,4 +579,4 @@ end
 AutoGatlingGun._watchConn = S._watchConn
 getgenv().AutoGatlingGun = AutoGatlingGun
 
-print("[AutoGatlingGun] Loaded. ESP + tracers removed, watcher toggle-aware, game-side hitsound suppressed.")
+print("[AutoGatlingGun] Loaded. Multi-tower, watcher toggle-aware, game-side hitsound suppressed.")
