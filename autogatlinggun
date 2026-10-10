@@ -3,7 +3,10 @@
     - Infinite range / angle
     - Multi-target, rotated across up to 5 targets
     - Skips enemies whose NPCReplicator.Health <= 0 or whose link is gone
-    - Skips Lead-immune enemies (StatusEffects.Lead present = shielded)
+    - Skips Lead enemies via StatusEffects.Lead only (Shield is NOT used,
+      because non-Lead enemies can also have Shield and are shootable)
+    - SpawnGrace delays targeting brand-new enemies by 150ms, covering the
+      ~25-56ms replication window before Lead arrives
     - Works with elite enemies that have RootPart instead of HumanoidRootPart
     - ESP + bullet lines only visible while actively firing
     - Persistent FPS = true on the Gatling Gun (TowerReplicator.FPS)
@@ -46,15 +49,14 @@ local CFG = {
     BatchSize       = 26,
     BatchStep       = 0,
 
-    -- Low-quality ESP / tracer mode (biggest FPS win when true)
     LowQuality      = true,
-
-    -- Pin TowerReplicator.FPS to true on the Gatling Gun
     ForceFPS        = true,
-    FPSRecheck      = 0.2,   -- min seconds between FPS re-fires
-
-    -- Idle reload: seconds of no shooting + no targets required to trigger
+    FPSRecheck      = 0.2,
     IdleReloadDelay = 2.0,
+
+    -- New enemies aren't targeted until they've been on the client this
+    -- long. Covers the ~25-56 ms window where Lead hasn't replicated yet.
+    SpawnGrace      = 0.15,
 }
 
 local function log(...) if CFG.Debug then print("[Gatling]", ...) end end
@@ -71,7 +73,7 @@ local S = {
 }
 
 ------------------------------------------------------------
--- ALIVE CHECK  (via StateReplicators.NPCReplicator.Health)
+-- ALIVE CHECK
 ------------------------------------------------------------
 local function getReplicator(model)
     local rp = model:FindFirstChild("RootPointer")
@@ -79,7 +81,8 @@ local function getReplicator(model)
     return nil
 end
 
-local DeadSet = setmetatable({}, {__mode = "k"})
+local DeadSet   = setmetatable({}, {__mode = "k"})
+local FirstSeen = setmetatable({}, {__mode = "k"})
 local HealthHooks = {}
 
 local function isAlive(model)
@@ -91,11 +94,10 @@ local function isAlive(model)
     return true
 end
 
--- Lead enemies are bullet-immune while shielded. StatusEffects stores one
--- attribute per active effect, keyed by effect name. `Lead` present
--- (value is a JSON string while shielded) = skip. When the shield breaks,
--- the attribute is removed entirely (goes nil), so `~= nil` correctly
--- toggles off and the enemy becomes shootable again on the next frame.
+-- Lead is stored as a JSON string attribute on StatusEffects while the
+-- enemy is shielded. When the shield breaks, the attribute is removed
+-- entirely (goes nil). Only Lead matters — Shield can exist on non-Lead
+-- enemies and those must still be shot.
 local function hasLead(model)
     local rep = getReplicator(model)
     if not rep then return false end
@@ -187,8 +189,6 @@ end
 
 ------------------------------------------------------------
 -- AIM PART RESOLVER
--- Normal enemies: HumanoidRootPart exists.
--- Elites (Lead, etc.): no HumanoidRootPart — expose RootPart as PrimaryPart.
 ------------------------------------------------------------
 local function findAimPart(npc)
     local hrp = npc:FindFirstChild("HumanoidRootPart")
@@ -205,16 +205,25 @@ local function pickTargets()
     if not npcs then return {} end
     local nodes = getPath()
     local list  = {}
+    local now = os.clock()
+
     for _, npc in ipairs(npcs:GetChildren()) do
         if npc:IsA("Model") then
             local aimPart = findAimPart(npc)
-            if aimPart and isAlive(npc) and not hasLead(npc) then
-                attachDeathHook(npc, espMap)
-                table.insert(list, {
-                    Model = npc,
-                    Pos   = aimPart.Position,
-                    Proj  = nodes and projectOnPath(nodes, aimPart.Position) or 0,
-                })
+            if aimPart then
+                if not FirstSeen[npc] then FirstSeen[npc] = now end
+
+                local age = now - FirstSeen[npc]
+                if age >= CFG.SpawnGrace
+                   and isAlive(npc)
+                   and not hasLead(npc) then
+                    attachDeathHook(npc, espMap)
+                    table.insert(list, {
+                        Model = npc,
+                        Pos   = aimPart.Position,
+                        Proj  = nodes and projectOnPath(nodes, aimPart.Position) or 0,
+                    })
+                end
             end
         end
     end
@@ -300,7 +309,6 @@ local function setESPTargets(list, currentModel)
         seen[t.Model] = true
         local rec = ensureAttachments(t.Model)
         if rec and rec.attachTo then
-            -- Highlight creation is skipped in low-quality mode.
             if not CFG.LowQuality then
                 if not rec.highlight or not rec.highlight.Parent then
                     local hl = Instance.new("Highlight")
@@ -435,9 +443,6 @@ local function heartbeatTick(dt)
     if #targets == 0 then
         if CFG.ShowTargetESP then clearESP() end
 
-        -- Idle reload: no shootable enemies on the field (none exist, or
-        -- all are dead / lead-immune), the magazine isn't full, and we
-        -- haven't actually fired a shot for IdleReloadDelay seconds.
         if CFG.AutoReload and not reloading
            and ammo < maxAmmo
            and (now - S.LastActualShot) >= CFG.IdleReloadDelay then
@@ -449,8 +454,6 @@ local function heartbeatTick(dt)
     if S.CurrentIndex > #targets then S.CurrentIndex = 1 end
     local current = targets[S.CurrentIndex]
 
-    -- CHANGED: also bail if the current target picked up Lead between
-    -- pickTargets() and the batch start.
     if not isAlive(current.Model) or not current.Model.Parent or hasLead(current.Model) then
         S.CurrentIndex += 1
         S.LastFireTime = now
@@ -469,8 +472,6 @@ local function heartbeatTick(dt)
         while shotsThisTick < CFG.BatchSize do
             local t = targets[idx]
             if not t then break end
-            -- CHANGED: re-verify Lead on every shot. If the target picked
-            -- up Lead between pickTargets() and now, skip the shot.
             if isAlive(t.Model) and not hasLead(t.Model) and t.Model.Parent then
                 local stepTime = shotsThisTick * CFG.BatchStep
                 fireAt(t.Pos, stepTime)
@@ -494,7 +495,7 @@ local function heartbeatTick(dt)
 end
 
 ------------------------------------------------------------
--- FPS ENFORCEMENT  (keeps TowerReplicator.FPS == true)
+-- FPS ENFORCEMENT
 ------------------------------------------------------------
 local FPSLastFire = setmetatable({}, {__mode = "k"})
 
@@ -554,7 +555,7 @@ function Gatling.StopWatching()
 end
 
 ------------------------------------------------------------
--- WATCHER  (auto-start + FPS pin, same-frame detection)
+-- WATCHER
 ------------------------------------------------------------
 S._watchConn = RunService.Heartbeat:Connect(function()
     local tower, rep = findTower()
@@ -580,4 +581,4 @@ end
 
 getgenv().Gatling = Gatling
 
-print("[Gatling] Loaded. Lead re-checked per shot, elites supported, FPS pinned, low-quality ESP, idle reload = 2s.")
+print("[Gatling] Loaded. Lead-only check (no Shield), 150ms spawn grace, elites supported, FPS pinned, low-quality ESP, idle reload 2s.")
