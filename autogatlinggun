@@ -1,6 +1,17 @@
 --[[
-    Auto Gatling Gun — external module
+    Auto Gatling Gun — external module (fixed)
     Loaded from the YeetML hub via loadstring(game:HttpGet(url))().
+
+    Fixes in this build:
+      1) ESP typo: `setESPtargets and setESPTargets(...)` → `setESPTargets(...)`
+         (previous build never drew any beam/highlight)
+      2) `espMap` was referenced by `pickTargets`/`attachDeathHook` before its
+         `local` declaration → global lookup returned nil, death cleanup was
+         a no-op. `espMap` is now declared before those functions.
+      3) Toggle off → on used to permanently disable the module because the
+         hub calls StopWatching() on toggle-off and never re-executes the
+         module on toggle-on. The watcher is now toggle-aware and reads
+         _G.AutoProgSettings.AutoGatlingGun so re-enabling resumes firing.
 
     Features
       - Infinite range / angle, multi-target rotation (up to 5)
@@ -72,7 +83,22 @@ local S = {
     Heartbeat      = nil,
     CurrentIndex   = 1,
     _watchConn     = nil,
+    _beamAnchor    = nil,
+    _beamFrom      = nil,
 }
+
+------------------------------------------------------------
+-- ESP state — declared BEFORE pickTargets / attachDeathHook so that
+-- those functions close over the real local variable (upvalue), not a
+-- nil global. `clearESP` reassigns espMap, and every closure sees it.
+------------------------------------------------------------
+local lineFolder = Instance.new("Folder")
+lineFolder.Name = "AutoGatlingLines"; lineFolder.Parent = workspace
+
+local espFolder = Instance.new("Folder")
+espFolder.Name = "AutoGatlingESP"; espFolder.Parent = workspace
+
+local espMap = {}
 
 ------------------------------------------------------------
 -- ALIVE / LEAD
@@ -106,19 +132,20 @@ local function hasLead(model)
     return se:GetAttribute("Lead") ~= nil
 end
 
-local function attachDeathHook(model, espMapRef)
+-- Now reads the real `espMap` upvalue (no more nil global).
+local function attachDeathHook(model)
     local rep = getReplicator(model)
     if not rep or HealthHooks[rep] then return end
     HealthHooks[rep] = rep:GetAttributeChangedSignal("Health"):Connect(function()
         local hp = rep:GetAttribute("Health")
         if typeof(hp) == "number" and hp <= 0 then
             DeadSet[model] = true
-            local rec = espMapRef and espMapRef[model]
+            local rec = espMap[model]
             if rec then
                 if rec.highlight then rec.highlight:Destroy() end
                 if rec.beam then rec.beam:Destroy() end
                 if rec.attachTo then rec.attachTo:Destroy() end
-                espMapRef[model] = nil
+                espMap[model] = nil
             end
             if HealthHooks[rep] then
                 HealthHooks[rep]:Disconnect()
@@ -228,7 +255,7 @@ local function pickTargets()
                 if age >= CFG.SpawnGrace
                    and isAlive(npc)
                    and not hasLead(npc) then
-                    attachDeathHook(npc, espMap)
+                    attachDeathHook(npc)
                     table.insert(list, {
                         Model = npc,
                         Pos   = aimPart.Position,
@@ -244,16 +271,8 @@ local function pickTargets()
 end
 
 ------------------------------------------------------------
--- ESP
+-- ESP helpers
 ------------------------------------------------------------
-local lineFolder = Instance.new("Folder")
-lineFolder.Name = "AutoGatlingLines"; lineFolder.Parent = workspace
-
-local espFolder = Instance.new("Folder")
-espFolder.Name = "AutoGatlingESP"; espFolder.Parent = workspace
-
-local espMap = {}
-
 local function ensureAttachments(model)
     local rec = espMap[model]
     if rec and rec.attachTo and rec.attachTo.Parent then return rec end
@@ -380,7 +399,7 @@ local function spawnTracer(from, to, color)
     p.Color = color or Color3.fromRGB(255, 200, 80)
     local s = CFG.LowQuality and 0.05 or 0.09
     p.Size = Vector3.new(s, s, dist)
-    p.CFrame = CFrame.lookAt(from, to) * CFrame.new(0, 0, -dist / 2)
+    p.CFrame = CFrame.lookAt(from, to) * CFrame.new(0, 0, -dist/2)
     p.Parent = lineFolder
     task.delay(CFG.BulletLineLife, function() p:Destroy() end)
 end
@@ -511,7 +530,9 @@ local function heartbeatTick(dt)
     end
 
     if CFG.ShowTargetESP then
-        setESPtargets and setESPTargets(targets, current.Model)
+        -- FIXED: was `setESPtargets and setESPTargets(...)` — the lowercase
+        -- global never existed, so ESP silently never turned on.
+        setESPTargets(targets, current.Model)
     end
 
     S.LastFireTime = now
@@ -569,14 +590,42 @@ end
 function AutoGatlingGun.IsRunning() return S.Running end
 function AutoGatlingGun.GetShots() return S.ShotCount end
 
+-- FIXED: StopWatching is now a soft stop. The watcher stays alive so that
+-- re-enabling the hub toggle (which flips _G.AutoProgSettings.AutoGatlingGun)
+-- resumes firing without needing a rejoin or a re-execute.
 function AutoGatlingGun.StopWatching()
+    if S.Running then AutoGatlingGun.Stop() end
+    -- Watcher intentionally kept alive. Use _cleanup() for real teardown.
+end
+
+-- Real teardown (not called by the hub). Only use for full unload.
+function AutoGatlingGun._cleanup()
     if S._watchConn then S._watchConn:Disconnect() S._watchConn = nil end
+    if S.Heartbeat then S.Heartbeat:Disconnect() S.Heartbeat = nil end
+    S.Running = false
+    for _, conn in pairs(HealthHooks) do conn:Disconnect() end
+    HealthHooks = {}
+    clearESP()
+    if lineFolder and lineFolder.Parent then lineFolder:ClearAllChildren() end
 end
 
 ------------------------------------------------------------
--- WATCHER (auto-start + FPS pin)
+-- WATCHER (auto-start + FPS pin + toggle awareness)
 ------------------------------------------------------------
 S._watchConn = RunService.Heartbeat:Connect(function()
+    -- Determine user intent. The hub writes _G.AutoProgSettings.AutoGatlingGun
+    -- via SetSetting() inside the toggle callback, so we can read it here.
+    local userWants = true
+    local settings = _G and _G.AutoProgSettings
+    if settings and settings.AutoGatlingGun ~= nil then
+        userWants = settings.AutoGatlingGun == true
+    end
+
+    if not userWants then
+        if S.Running then AutoGatlingGun.Stop() end
+        return
+    end
+
     local tower, rep = findTower()
     if not tower then
         if S.Running then AutoGatlingGun.Stop() end
@@ -589,12 +638,18 @@ S._watchConn = RunService.Heartbeat:Connect(function()
 end)
 
 ------------------------------------------------------------
--- Bootstrap
+-- Bootstrap — kill any previous watcher from an older module load
+-- so re-executing the hub doesn't double-fire.
 ------------------------------------------------------------
-if getgenv().AutoGatlingGun and getgenv().AutoGatlingGun.StopWatching then
-    pcall(getgenv().AutoGatlingGun.StopWatching)
+do
+    local old = getgenv().AutoGatlingGun
+    if old then
+        if old._watchConn then pcall(function() old._watchConn:Disconnect() end) end
+        if old._cleanup   then pcall(old._cleanup) end
+    end
 end
 
+AutoGatlingGun._watchConn = S._watchConn
 getgenv().AutoGatlingGun = AutoGatlingGun
 
-print("[AutoGatlingGun] Loaded. DamageBuff-aware budgets, Lead-only check, 150ms grace, elites supported, FPS pinned, low-quality ESP, idle reload 2s.")
+print("[AutoGatlingGun] Loaded. ESP fixed, espMap forward-ref fixed, watcher toggle-aware.")
