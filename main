@@ -1761,7 +1761,6 @@ end
 
 function UpdatePathVisuals()
     if not Globals.PathVisuals then
-        if Globals.MilMarker then Globals.MilMarker:Destroy() Globals.MilMarker = nil end
         if Globals.MercMarker then Globals.MercMarker:Destroy() Globals.MercMarker = nil end
         return
     end
@@ -1769,33 +1768,20 @@ function UpdatePathVisuals()
     local PathNodes = FindPath()
     if not PathNodes then return end
 
-    if not Globals.MilMarker then
-        Globals.MilMarker = Instance.new("Part")
-        Globals.MilMarker.Name = "MilVisual"
-        Globals.MilMarker.Shape = Enum.PartType.Cylinder
-        Globals.MilMarker.Size = Vector3.new(0.3, 3, 3)
-        Globals.MilMarker.Color = Color3.fromRGB(0, 255, 0)
-        Globals.MilMarker.Material = Enum.Material.Plastic
-        Globals.MilMarker.Anchored = true
-        Globals.MilMarker.CanCollide = false
-        Globals.MilMarker.Orientation = Vector3.new(0, 0, 90)
-        Globals.MilMarker.Parent = workspace
-    end
-
     if not Globals.MercMarker then
-        Globals.MercMarker = Globals.MilMarker:Clone()
+        Globals.MercMarker = Instance.new("Part")
         Globals.MercMarker.Name = "MercVisual"
+        Globals.MercMarker.Shape = Enum.PartType.Cylinder
+        Globals.MercMarker.Size = Vector3.new(0.3, 3, 3)
         Globals.MercMarker.Color = Color3.fromRGB(255, 0, 0)
+        Globals.MercMarker.Material = Enum.Material.Plastic
+        Globals.MercMarker.Anchored = true
+        Globals.MercMarker.CanCollide = false
+        Globals.MercMarker.Orientation = Vector3.new(0, 0, 90)
         Globals.MercMarker.Parent = workspace
     end
 
-    local MilPos = GetPointAtDistance(PathNodes, Globals.MilitaryPath or 0)
     local MercPos = GetPointAtDistance(PathNodes, Globals.MercenaryPath or 0)
-
-    if MilPos then
-        Globals.MilMarker.Position = MilPos + Vector3.new(0, 0.2, 0)
-        Globals.MilMarker.Transparency = 0.7
-    end
     if MercPos then
         Globals.MercMarker.Position = MercPos + Vector3.new(0, 0.2, 0)
         Globals.MercMarker.Transparency = 0.7
