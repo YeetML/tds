@@ -60,7 +60,7 @@ local CFG = {
 
     ForceFPS        = true,
     FPSRecheck      = 0.2,
-    IdleReloadDelay = 1.0,
+    IdleReloadDelay = 2.0,
     SpawnGrace      = 0.15,
 
     BudgetSafety    = 1,
