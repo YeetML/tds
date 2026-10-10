@@ -2745,7 +2745,8 @@ function StartAutoGatlingGun()
                 end)
             end
             -- Re-arm the script on executor if the tower was sold then re-placed
-            if getgenv().AutoGatlingGun and getgenv().AutoGatlingGun.StopWatching then
+            local lib = getgenv().AutoGatlingGun
+            if type(lib) == "table" and type(lib.StopWatching) == "function" then
                 -- noop; the module's own watcher handles it
             end
             task.wait(1)
@@ -6286,7 +6287,7 @@ Automation:Toggle({
         Callback = function(v) SetSetting("AutoGatling", v) end
     })
 
-    Automation:Toggle({
+Automation:Toggle({
     Title = "Auto Gatling Gun",
     Desc  = "Loads external Auto Gatling Gun — smart shot budgets with DamageBuff support, Lead-aware, elite-ready",
     Value = Globals.AutoGatlingGun,
@@ -6294,9 +6295,16 @@ Automation:Toggle({
         SetSetting("AutoGatlingGun", v)
         if v then
             StartAutoGatlingGun()
-        elseif getgenv().AutoGatlingGun then
-            pcall(function() getgenv().AutoGatlingGun.Stop() end)
-            pcall(function() getgenv().AutoGatlingGun.StopWatching() end)
+        else
+            local lib = getgenv().AutoGatlingGun
+            if type(lib) == "table" then
+                if type(lib.Stop) == "function" then
+                    pcall(function() lib.Stop() end)
+                end
+                if type(lib.StopWatching) == "function" then
+                    pcall(function() lib.StopWatching() end)
+                end
+            end
             Globals.AutoGatlingGunExecuted = false
         end
     end
