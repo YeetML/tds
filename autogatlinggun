@@ -1,14 +1,6 @@
 --[[
-    Auto Gatling Gun — external module (fixed + game-side hitsound mute)
+    Auto Gatling Gun — external module (ESP + tracers removed)
     Loaded from the YeetML hub via loadstring(game:HttpGet(url))().
-
-    Fixes in this build:
-      1) ESP typo: `setESPtargets and setESPTargets(...)` → `setESPTargets(...)`
-      2) `espMap` forward-ref fixed (death cleanup works)
-      3) Toggle off → on no longer bricks the module (soft StopWatching)
-      4) NEW: game's own Gatling Gun hitsound is silenced at the source
-         (Destroy() doesn't flush queued audio — we set Volume = 0 on the
-          live instance and re-silence on every property change + heartbeat sweep)
 
     Features
       - Infinite range / angle, multi-target rotation (up to 5)
@@ -19,7 +11,8 @@
       - Smart shot budget: uses Damage * (1 + DamageBuff/100)
       - Persistent FPS = true on the Gatling Gun
       - Auto-starts the moment a Gatling Gun is placed
-      - Low-quality ESP + tracers, idle reload after 1 s
+      - Idle reload after 1 s
+      - Game-side Gatling Gun hitsound is silenced at the source
       - Exposes getgenv().AutoGatlingGun = { Start / Stop / IsRunning }
 ]]
 
@@ -43,11 +36,6 @@ local CFG = {
     AutoFire        = true,
     FireRate        = 60,
     MaxTargets      = 5,
-    ShowTargetESP   = true,
-    ShowBulletLines = true,
-    BulletLineLife  = 0.05,
-    TargetColor     = Color3.fromRGB(255, 60, 60),
-    CurrentColor    = Color3.fromRGB(255, 220, 60),
     HitsoundVolume  = 0,
     HitsoundId      = "rbxassetid://74643671307263",
     AutoReload      = true,
@@ -57,7 +45,6 @@ local CFG = {
     BatchSize       = 26,
     BatchStep       = 0,
 
-    LowQuality      = true,
     ForceFPS        = true,
     FPSRecheck      = 0.2,
     IdleReloadDelay = 1.0,
@@ -78,20 +65,7 @@ local S = {
     Heartbeat      = nil,
     CurrentIndex   = 1,
     _watchConn     = nil,
-    _beamAnchor    = nil,
-    _beamFrom      = nil,
 }
-
-------------------------------------------------------------
--- ESP state
-------------------------------------------------------------
-local lineFolder = Instance.new("Folder")
-lineFolder.Name = "AutoGatlingLines"; lineFolder.Parent = workspace
-
-local espFolder = Instance.new("Folder")
-espFolder.Name = "AutoGatlingESP"; espFolder.Parent = workspace
-
-local espMap = {}
 
 ------------------------------------------------------------
 -- ALIVE / LEAD
@@ -111,7 +85,7 @@ local function isAlive(model)
     if not rep or not rep.Parent then DeadSet[model] = true return false end
     local hp = rep:GetAttribute("Health")
     if typeof(hp) ~= "number" or hp <= 0 then DeadSet[model] = true return false end
-    DeadSet[model] = nil 
+    DeadSet[model] = nil
     return true
 end
 
@@ -130,13 +104,6 @@ local function attachDeathHook(model)
         local hp = rep:GetAttribute("Health")
         if typeof(hp) == "number" and hp <= 0 then
             DeadSet[model] = true
-            local rec = espMap[model]
-            if rec then
-                if rec.highlight then rec.highlight:Destroy() end
-                if rec.beam then rec.beam:Destroy() end
-                if rec.attachTo then rec.attachTo:Destroy() end
-                espMap[model] = nil
-            end
             if HealthHooks[rep] then
                 HealthHooks[rep]:Disconnect()
                 HealthHooks[rep] = nil
@@ -260,140 +227,6 @@ local function pickTargets()
 end
 
 ------------------------------------------------------------
--- ESP helpers
-------------------------------------------------------------
-local function ensureAttachments(model)
-    local rec = espMap[model]
-    if rec and rec.attachTo and rec.attachTo.Parent then return rec end
-    local root = findAimPart(model)
-    if not root then return nil end
-    local aTo = Instance.new("Attachment")
-    aTo.Name = "GatESP_To"
-    aTo.Parent = root
-    rec = rec or {}
-    rec.attachTo = aTo
-    espMap[model] = rec
-    return rec
-end
-
-local function makeBeam(fromAttach, toAttach, color)
-    local beam = Instance.new("Beam")
-    beam.Attachment0    = fromAttach
-    beam.Attachment1    = toAttach
-    beam.Color          = ColorSequence.new(color)
-    beam.LightEmission  = CFG.LowQuality and 0 or 1
-    beam.LightInfluence = 0
-    beam.FaceCamera     = true
-    local w = CFG.LowQuality and 0.05 or 0.12
-    beam.Width0, beam.Width1 = w, w
-    beam.Transparency = NumberSequence.new(CFG.LowQuality and 0.55 or 0.15)
-    beam.Segments = 1
-    beam.Parent = lineFolder
-    return beam
-end
-
-local function ensureBeamAnchor()
-    if S._beamAnchor and S._beamAnchor.Parent then return S._beamAnchor end
-    local tower, rep = S.Tower, S.Rep
-    if not tower then return nil end
-    local pos = rep:GetAttribute("Position")
-    if typeof(pos) ~= "Vector3" then
-        local pp = tower.PrimaryPart or tower:FindFirstChildWhichIsA("BasePart")
-        pos = pp and pp.Position
-    end
-    if not pos then return nil end
-
-    local anchor = Instance.new("Part")
-    anchor.Name = "GatESP_Anchor"
-    anchor.Anchored, anchor.CanCollide, anchor.CanQuery, anchor.CanTouch = true, false, false, false
-    anchor.Transparency = 1
-    anchor.Size = Vector3.new(0.1, 0.1, 0.1)
-    anchor.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
-    anchor.Parent = workspace
-    S._beamAnchor = anchor
-
-    local a = Instance.new("Attachment")
-    a.Name = "GatESP_From"
-    a.Parent = anchor
-    S._beamFrom = a
-    return anchor
-end
-
-local function setESPTargets(list, currentModel)
-    ensureBeamAnchor()
-    if not S._beamFrom then return end
-    local seen = {}
-    for _, t in ipairs(list) do
-        seen[t.Model] = true
-        local rec = ensureAttachments(t.Model)
-        if rec and rec.attachTo then
-            if not CFG.LowQuality then
-                if not rec.highlight or not rec.highlight.Parent then
-                    local hl = Instance.new("Highlight")
-                    hl.Adornee = t.Model
-                    hl.FillColor = CFG.TargetColor
-                    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                    hl.FillTransparency = 0.65
-                    hl.OutlineTransparency = 0
-                    hl.Parent = espFolder
-                    rec.highlight = hl
-                end
-            end
-            if not rec.beam or not rec.beam.Parent then
-                rec.beam = makeBeam(S._beamFrom, rec.attachTo, CFG.TargetColor)
-            end
-            local isCurrent = (t.Model == currentModel)
-            local col = isCurrent and CFG.CurrentColor or CFG.TargetColor
-            if rec.highlight then rec.highlight.FillColor = col end
-            rec.beam.Color = ColorSequence.new(col)
-            if CFG.LowQuality then
-                rec.beam.Width0 = isCurrent and 0.10 or 0.05
-                rec.beam.Width1 = isCurrent and 0.10 or 0.05
-            else
-                rec.beam.Width0 = isCurrent and 0.22 or 0.12
-                rec.beam.Width1 = isCurrent and 0.22 or 0.12
-            end
-        end
-    end
-    for m, rec in pairs(espMap) do
-        if not seen[m] or not m.Parent then
-            if rec.highlight then rec.highlight:Destroy() end
-            if rec.beam then rec.beam:Destroy() end
-            if rec.attachTo then rec.attachTo:Destroy() end
-            espMap[m] = nil
-        end
-    end
-end
-
-local function clearESP()
-    for m, rec in pairs(espMap) do
-        if rec.highlight then rec.highlight:Destroy() end
-        if rec.beam then rec.beam:Destroy() end
-        if rec.attachTo then rec.attachTo:Destroy() end
-    end
-    espMap = {}
-    if S._beamAnchor then S._beamAnchor:Destroy() S._beamAnchor = nil end
-    S._beamFrom = nil
-end
-
-------------------------------------------------------------
--- Tracer
-------------------------------------------------------------
-local function spawnTracer(from, to, color)
-    local dist = (to - from).Magnitude
-    if dist < 0.1 then return end
-    local p = Instance.new("Part")
-    p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch = true, false, false, false
-    if not CFG.LowQuality then p.Material = Enum.Material.Neon end
-    p.Color = color or Color3.fromRGB(255, 200, 80)
-    local s = CFG.LowQuality and 0.05 or 0.09
-    p.Size = Vector3.new(s, s, dist)
-    p.CFrame = CFrame.lookAt(from, to) * CFrame.new(0, 0, -dist/2)
-    p.Parent = lineFolder
-    task.delay(CFG.BulletLineLife, function() p:Destroy() end)
-end
-
-------------------------------------------------------------
 -- Module's own hitsound (still gated by CFG.HitsoundVolume)
 ------------------------------------------------------------
 RE_Hit.OnClientEvent:Connect(function()
@@ -432,7 +265,6 @@ local function heartbeatTick(dt)
     local tower, rep = S.Tower, S.Rep
     if not (tower and tower.Parent and rep and rep.Parent) then
         S.Running = false
-        if CFG.ShowTargetESP then clearESP() end
         return
     end
 
@@ -442,11 +274,9 @@ local function heartbeatTick(dt)
 
     if CFG.AutoReload and ammo == 0 and not reloading then
         RE_Reload:FireServer()
-        if CFG.ShowTargetESP then clearESP() end
         return
     end
     if reloading then
-        if CFG.ShowTargetESP then clearESP() end
         return
     end
 
@@ -455,7 +285,6 @@ local function heartbeatTick(dt)
 
     local targets = pickTargets()
     if #targets == 0 then
-        if CFG.ShowTargetESP then clearESP() end
         if CFG.AutoReload and not reloading
            and ammo < maxAmmo
            and (now - S.LastActualShot) >= CFG.IdleReloadDelay then
@@ -471,12 +300,6 @@ local function heartbeatTick(dt)
         S.CurrentIndex += 1
         S.LastFireTime = now
         return
-    end
-
-    local towerPos = rep:GetAttribute("Position")
-    if typeof(towerPos) ~= "Vector3" then
-        local pp = tower.PrimaryPart or tower:FindFirstChildWhichIsA("BasePart")
-        towerPos = pp and pp.Position
     end
 
     if CFG.AutoFire then
@@ -503,9 +326,6 @@ local function heartbeatTick(dt)
                and t.Model.Parent then
                 local stepTime = shotsThisTick * CFG.BatchStep
                 fireAt(t.Pos, stepTime)
-                if CFG.ShowBulletLines and towerPos then
-                    spawnTracer(towerPos + Vector3.new(0, 3, 0), t.Pos, CFG.CurrentColor)
-                end
                 shotsThisTick += 1
                 budgets[idx] -= 1
                 totalRemaining -= 1
@@ -514,10 +334,6 @@ local function heartbeatTick(dt)
             if idx > #targets then idx = 1 end
         end
         S.CurrentIndex = idx
-    end
-
-    if CFG.ShowTargetESP then
-        setESPTargets(targets, current.Model)
     end
 
     S.LastFireTime = now
@@ -634,8 +450,6 @@ function AutoGatlingGun.Stop()
     if S.Heartbeat then S.Heartbeat:Disconnect() S.Heartbeat = nil end
     for _, conn in pairs(HealthHooks) do conn:Disconnect() end
     HealthHooks = {}
-    clearESP()
-    lineFolder:ClearAllChildren()
     log("stopped")
     return true
 end
@@ -654,8 +468,6 @@ function AutoGatlingGun._cleanup()
     S.Running = false
     for _, conn in pairs(HealthHooks) do conn:Disconnect() end
     HealthHooks = {}
-    clearESP()
-    if lineFolder and lineFolder.Parent then lineFolder:ClearAllChildren() end
 end
 
 ------------------------------------------------------------
@@ -698,4 +510,4 @@ end
 AutoGatlingGun._watchConn = S._watchConn
 getgenv().AutoGatlingGun = AutoGatlingGun
 
-print("[AutoGatlingGun] Loaded. ESP fixed, espMap forward-ref fixed, watcher toggle-aware, game-side hitsound suppressed.")
+print("[AutoGatlingGun] Loaded. ESP + tracers removed, watcher toggle-aware, game-side hitsound suppressed.")
