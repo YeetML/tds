@@ -2723,7 +2723,7 @@ function StartAutoGatlingGun()
     Globals.AutoGatlingGunRunning = true
     task.spawn(function()
         while Globals.AutoGatlingGun do
-            if not Globals.AutoGatlingGunExecuted then
+            if Globals.GameState == "GAME" and not Globals.AutoGatlingGunExecuted then
                 task.spawn(function()
                     local ok, code = pcall(game.HttpGet, game,
                         "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/autogatlinggun")
