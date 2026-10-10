@@ -107,11 +107,11 @@ local FirstSeen = setmetatable({}, {__mode = "k"})
 local HealthHooks = {}
 
 local function isAlive(model)
-    if DeadSet[model] then return false end
     local rep = getReplicator(model)
     if not rep or not rep.Parent then DeadSet[model] = true return false end
     local hp = rep:GetAttribute("Health")
     if typeof(hp) ~= "number" or hp <= 0 then DeadSet[model] = true return false end
+    DeadSet[model] = nil 
     return true
 end
 
