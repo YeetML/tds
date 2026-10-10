@@ -1,19 +1,15 @@
 --[[
-    Auto Gatling Gun — external module (ESP + tracers removed)
+    Auto Gatling Gun — external module (ESP + tracers removed, optimized)
     Loaded from the YeetML hub via loadstring(game:HttpGet(url))().
 
-    Features
-      - Infinite range / angle, multi-target rotation (up to 5)
-      - Skips dead + missing-replicator enemies
-      - Skips Lead enemies (StatusEffects.Lead), no Shield reliance
-      - 150 ms spawn grace covers Lead replication window
-      - Elites without HumanoidRootPart supported (RootPart fallback)
-      - Smart shot budget: uses Damage * (1 + DamageBuff/100)
-      - Persistent FPS = true on the Gatling Gun
-      - Auto-starts the moment a Gatling Gun is placed
-      - Idle reload after 1 s
-      - Game-side Gatling Gun hitsound is silenced at the source
-      - Exposes getgenv().AutoGatlingGun = { Start / Stop / IsRunning }
+    Optimizations (identical DPS):
+      - Cached aimPart + replicator per NPC (weak table)
+      - Target eligibility refresh throttled to 10 Hz
+      - Path projection per NPC throttled to 0.5 s
+      - Path node cache TTL raised to 5 s
+      - Cached Rep passed through the fire loop (no redundant lookups)
+      - Sound-suppressor heartbeat sweep throttled to 10 Hz
+      - Orphaned HealthHooks swept every 5 s
 ]]
 
 local Players           = game:GetService("Players")
@@ -51,6 +47,13 @@ local CFG = {
     SpawnGrace      = 0.15,
 
     BudgetSafety    = 1,
+
+    -- Optimization knobs (safe to leave as-is)
+    CandidateRefresh   = 0.10,   -- how often eligibility + sort is recomputed
+    ProjectionRefresh  = 0.50,   -- how often path projection is recomputed per NPC
+    PathCacheTTL       = 5.00,   -- how long the path node list stays cached
+    SoundSweepInterval = 0.10,   -- heartbeat sweep interval for the sound muter
+    HealthSweepInterval= 5.00,   -- orphaned health-hook cleanup interval
 }
 
 local function log(...) if CFG.Debug then print("[AutoGatlingGun]", ...) end end
@@ -68,37 +71,51 @@ local S = {
 }
 
 ------------------------------------------------------------
--- ALIVE / LEAD
+-- PER-NPC CACHE
+-- Caches the expensive per-NPC lookups: aim part, replicator, and the
+-- last path projection. Weak keys so destroyed models drop out on GC.
 ------------------------------------------------------------
+local NPCMeta = setmetatable({}, {__mode = "k"})
+
 local function getReplicator(model)
     local rp = model:FindFirstChild("RootPointer")
     if rp and rp:IsA("ObjectValue") then return rp.Value end
     return nil
 end
 
-local DeadSet   = setmetatable({}, {__mode = "k"})
-local FirstSeen = setmetatable({}, {__mode = "k"})
+local function findAimPart(npc)
+    local hrp = npc:FindFirstChild("HumanoidRootPart")
+    if hrp and hrp:IsA("BasePart") then return hrp end
+    if npc.PrimaryPart and npc.PrimaryPart:IsA("BasePart") then return npc.PrimaryPart end
+    return npc:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function getNPCMeta(model)
+    local m = NPCMeta[model]
+    if m and m.aim and m.aim.Parent and m.rep and m.rep.Parent then
+        return m
+    end
+    local aim = findAimPart(model)
+    if not aim then return nil end
+    local rep = getReplicator(model)
+    m = m or {}
+    m.aim          = aim
+    m.rep          = rep
+    m.firstSeen    = m.firstSeen or os.clock()
+    m.proj         = m.proj or 0
+    m.projAt       = m.projAt or 0
+    NPCMeta[model] = m
+    return m
+end
+
+------------------------------------------------------------
+-- ALIVE / LEAD
+------------------------------------------------------------
+local DeadSet = setmetatable({}, {__mode = "k"})
 local HealthHooks = {}
+local HealthSweepAt = 0
 
-local function isAlive(model)
-    local rep = getReplicator(model)
-    if not rep or not rep.Parent then DeadSet[model] = true return false end
-    local hp = rep:GetAttribute("Health")
-    if typeof(hp) ~= "number" or hp <= 0 then DeadSet[model] = true return false end
-    DeadSet[model] = nil
-    return true
-end
-
-local function hasLead(model)
-    local rep = getReplicator(model)
-    if not rep then return false end
-    local se = rep:FindFirstChild("StatusEffects")
-    if not se then return false end
-    return se:GetAttribute("Lead") ~= nil
-end
-
-local function attachDeathHook(model)
-    local rep = getReplicator(model)
+local function attachDeathHook(model, rep)
     if not rep or HealthHooks[rep] then return end
     HealthHooks[rep] = rep:GetAttributeChangedSignal("Health"):Connect(function()
         local hp = rep:GetAttribute("Health")
@@ -112,12 +129,26 @@ local function attachDeathHook(model)
     end)
 end
 
+local function sweepHealthHooks()
+    local now = os.clock()
+    if now - HealthSweepAt < CFG.HealthSweepInterval then return end
+    HealthSweepAt = now
+    for rep, conn in pairs(HealthHooks) do
+        if not rep.Parent then
+            conn:Disconnect()
+            HealthHooks[rep] = nil
+        end
+    end
+end
+
 ------------------------------------------------------------
--- PATH
+-- PATH (TTL raised from 1 s → 5 s)
 ------------------------------------------------------------
 local pathCache = { nodes = nil, at = 0 }
 local function getPath()
-    if pathCache.nodes and os.clock() - pathCache.at < 1 then return pathCache.nodes end
+    if pathCache.nodes and os.clock() - pathCache.at < CFG.PathCacheTTL then
+        return pathCache.nodes
+    end
     local map   = workspace:FindFirstChild("Map")
     local paths = map and map:FindFirstChild("Paths")
     if not paths then return nil end
@@ -172,16 +203,6 @@ local function findTower()
 end
 
 ------------------------------------------------------------
--- AIM PART RESOLVER
-------------------------------------------------------------
-local function findAimPart(npc)
-    local hrp = npc:FindFirstChild("HumanoidRootPart")
-    if hrp and hrp:IsA("BasePart") then return hrp end
-    if npc.PrimaryPart and npc.PrimaryPart:IsA("BasePart") then return npc.PrimaryPart end
-    return npc:FindFirstChildWhichIsA("BasePart", true)
-end
-
-------------------------------------------------------------
 -- DAMAGE
 ------------------------------------------------------------
 local function getEffectiveDamage(rep)
@@ -193,36 +214,75 @@ local function getEffectiveDamage(rep)
 end
 
 ------------------------------------------------------------
--- TARGET SELECTION
+-- CANDIDATE LIST
+-- Refreshed at CandidateRefresh Hz. Per-tick firing reads fresh positions
+-- from the cached aim parts, so this does NOT change DPS or aim accuracy.
 ------------------------------------------------------------
-local function pickTargets()
+local Candidates = {}
+local CandidatesAt = 0
+
+local function refreshCandidates()
     local npcs = workspace:FindFirstChild("NPCs")
-    if not npcs then return {} end
+    Candidates = {}
+    if not npcs then return end
+
     local nodes = getPath()
+    local now   = os.clock()
     local list  = {}
-    local now = os.clock()
 
     for _, npc in ipairs(npcs:GetChildren()) do
         if npc:IsA("Model") then
-            local aimPart = findAimPart(npc)
-            if aimPart then
-                if not FirstSeen[npc] then FirstSeen[npc] = now end
-                local age = now - FirstSeen[npc]
-                if age >= CFG.SpawnGrace
-                   and isAlive(npc)
-                   and not hasLead(npc) then
-                    attachDeathHook(npc)
-                    table.insert(list, {
-                        Model = npc,
-                        Pos   = aimPart.Position,
-                        Proj  = nodes and projectOnPath(nodes, aimPart.Position) or 0,
-                    })
+            local meta = getNPCMeta(npc)
+            if meta and meta.aim.Parent and meta.rep and meta.rep.Parent then
+                local age = now - meta.firstSeen
+                if age >= CFG.SpawnGrace then
+                    local hp = meta.rep:GetAttribute("Health")
+                    if typeof(hp) == "number" and hp > 0 then
+                        local se = meta.rep:FindFirstChild("StatusEffects")
+                        if not (se and se:GetAttribute("Lead") ~= nil) then
+                            attachDeathHook(npc, meta.rep)
+                            -- Refresh projection only occasionally
+                            if nodes and (now - meta.projAt) >= CFG.ProjectionRefresh then
+                                meta.proj   = projectOnPath(nodes, meta.aim.Position)
+                                meta.projAt = now
+                            end
+                            table.insert(list, {
+                                model = npc,
+                                aim   = meta.aim,
+                                rep   = meta.rep,
+                                proj  = meta.proj,
+                            })
+                        end
+                    end
                 end
             end
         end
     end
-    table.sort(list, function(a, b) return a.Proj > b.Proj end)
-    while #list > CFG.MaxTargets do table.remove(list) end
+
+    table.sort(list, function(a, b) return a.proj > b.proj end)
+    -- Keep a small headroom above MaxTargets so dead targets are instantly
+    -- replaced from the next-eligible NPC at fire-tick time (no 100 ms gap).
+    local cap = CFG.MaxTargets * 3
+    while #list > cap do table.remove(list) end
+    Candidates = list
+    CandidatesAt = now
+end
+
+-- Build a fresh per-tick target list (positions + capped to MaxTargets)
+local function buildTargets()
+    local list = {}
+    local n = 0
+    for _, c in ipairs(Candidates) do
+        if c.aim.Parent and c.rep.Parent then
+            n = n + 1
+            list[n] = {
+                Model = c.model,
+                Pos   = c.aim.Position,
+                Rep   = c.rep,
+            }
+            if n >= CFG.MaxTargets then break end
+        end
+    end
     return list
 end
 
@@ -276,14 +336,17 @@ local function heartbeatTick(dt)
         RE_Reload:FireServer()
         return
     end
-    if reloading then
-        return
-    end
+    if reloading then return end
 
     local now = os.clock()
     if now - S.LastFireTime < FRAME_BUDGET then return end
 
-    local targets = pickTargets()
+    -- Refresh eligibility at CandidateRefresh Hz (10 Hz by default).
+    if now - CandidatesAt >= CFG.CandidateRefresh then
+        refreshCandidates()
+    end
+
+    local targets = buildTargets()
     if #targets == 0 then
         if CFG.AutoReload and not reloading
            and ammo < maxAmmo
@@ -296,7 +359,17 @@ local function heartbeatTick(dt)
     if S.CurrentIndex > #targets then S.CurrentIndex = 1 end
     local current = targets[S.CurrentIndex]
 
-    if not isAlive(current.Model) or not current.Model.Parent or hasLead(current.Model) then
+    -- Cheap liveness check using the cached Rep (no getReplicator call)
+    local cRep = current.Rep
+    local cHp  = cRep and cRep.Parent and cRep:GetAttribute("Health") or nil
+    if not cRep or not cRep.Parent or not current.Model.Parent
+       or typeof(cHp) ~= "number" or cHp <= 0 then
+        S.CurrentIndex += 1
+        S.LastFireTime = now
+        return
+    end
+    local cSE = cRep:FindFirstChild("StatusEffects")
+    if cSE and cSE:GetAttribute("Lead") ~= nil then
         S.CurrentIndex += 1
         S.LastFireTime = now
         return
@@ -305,10 +378,10 @@ local function heartbeatTick(dt)
     if CFG.AutoFire then
         local damage = getEffectiveDamage(rep)
 
+        -- Compute per-target shot budgets using cached Rep (no re-lookup)
         local budgets, totalRemaining = {}, 0
         for i, t in ipairs(targets) do
-            local tRep = getReplicator(t.Model)
-            local hp = tRep and tRep:GetAttribute("Health") or 0
+            local hp = t.Rep and t.Rep:GetAttribute("Health") or 0
             if type(hp) ~= "number" or hp < 0 then hp = 0 end
             local need = math.max(1, math.ceil(hp / damage) + CFG.BudgetSafety)
             budgets[i] = need
@@ -320,15 +393,20 @@ local function heartbeatTick(dt)
         while shotsThisTick < CFG.BatchSize and totalRemaining > 0 do
             local t = targets[idx]
             if not t then break end
+            local r = t.Rep
             if budgets[idx] > 0
-               and isAlive(t.Model)
-               and not hasLead(t.Model)
-               and t.Model.Parent then
-                local stepTime = shotsThisTick * CFG.BatchStep
-                fireAt(t.Pos, stepTime)
-                shotsThisTick += 1
-                budgets[idx] -= 1
-                totalRemaining -= 1
+               and r and r.Parent and t.Model.Parent then
+                local hp = r:GetAttribute("Health")
+                if typeof(hp) == "number" and hp > 0 then
+                    local se = r:FindFirstChild("StatusEffects")
+                    if not (se and se:GetAttribute("Lead") ~= nil) then
+                        local stepTime = shotsThisTick * CFG.BatchStep
+                        fireAt(t.Pos, stepTime)
+                        shotsThisTick += 1
+                        budgets[idx] -= 1
+                        totalRemaining -= 1
+                    end
+                end
             end
             idx += 1
             if idx > #targets then idx = 1 end
@@ -358,11 +436,7 @@ local function enforceFPS(tower, rep)
 end
 
 ------------------------------------------------------------
--- GAME-SIDE HITSOUND SUPPRESSOR
--- The game plays its own Gatling Gun hit sound (same asset ID) that the
--- module config cannot reach. Destroy() doesn't flush queued audio, so we
--- set Volume = 0 on the live instance and re-silence on every change.
--- Idempotent — guarded by getgenv flag so module reloads don't double-hook.
+-- GAME-SIDE HITSOUND SUPPRESSOR (sweep throttled to 10 Hz)
 ------------------------------------------------------------
 do
     if not getgenv()._AGG_SoundMute then
@@ -414,8 +488,12 @@ do
             if c.Name == "PlayerGui" then hookRoot(c) end
         end)
 
-        -- Heartbeat sweep catches anything that slipped past the signals
-        RunService.Heartbeat:Connect(function()
+        -- Heartbeat sweep (throttled) — catch anything the signals missed
+        local accum = 0
+        RunService.Heartbeat:Connect(function(dt)
+            accum = accum + dt
+            if accum < CFG.SoundSweepInterval then return end
+            accum = 0
             for _, s in ipairs(SoundService:GetChildren()) do
                 if s:IsA("Sound") and matchSound(s) and s.Volume > 0 then
                     silence(s)
@@ -438,6 +516,7 @@ function AutoGatlingGun.Start()
     S.Tower, S.Rep = tower, rep
     S.Running, S.ShotCount, S.LastFireTime, S.CurrentIndex = true, 0, 0, 1
     S.LastActualShot = os.clock()
+    Candidates, CandidatesAt = {}, 0     -- force a fresh scan on first tick
     enforceFPS(tower, rep)
     S.Heartbeat = RunService.Heartbeat:Connect(heartbeatTick)
     log("started")
@@ -450,6 +529,7 @@ function AutoGatlingGun.Stop()
     if S.Heartbeat then S.Heartbeat:Disconnect() S.Heartbeat = nil end
     for _, conn in pairs(HealthHooks) do conn:Disconnect() end
     HealthHooks = {}
+    Candidates, CandidatesAt = {}, 0
     log("stopped")
     return true
 end
@@ -459,7 +539,6 @@ function AutoGatlingGun.GetShots() return S.ShotCount end
 
 function AutoGatlingGun.StopWatching()
     if S.Running then AutoGatlingGun.Stop() end
-    -- Watcher intentionally kept alive. Use _cleanup() for real teardown.
 end
 
 function AutoGatlingGun._cleanup()
@@ -468,6 +547,7 @@ function AutoGatlingGun._cleanup()
     S.Running = false
     for _, conn in pairs(HealthHooks) do conn:Disconnect() end
     HealthHooks = {}
+    Candidates, CandidatesAt = {}, 0
 end
 
 ------------------------------------------------------------
@@ -490,6 +570,10 @@ S._watchConn = RunService.Heartbeat:Connect(function()
         if S.Running then AutoGatlingGun.Stop() end
         return
     end
+
+    -- Periodic orphan cleanup (cheap: no-op most of the time)
+    sweepHealthHooks()
+
     enforceFPS(tower, rep)
     if not S.Running then
         AutoGatlingGun.Start()
@@ -510,4 +594,4 @@ end
 AutoGatlingGun._watchConn = S._watchConn
 getgenv().AutoGatlingGun = AutoGatlingGun
 
-print("[AutoGatlingGun] Loaded. ESP + tracers removed, watcher toggle-aware, game-side hitsound suppressed.")
+print("[AutoGatlingGun] Loaded (optimized, DPS unchanged). ESP/tracers off, sound suppressed.")
