@@ -4860,15 +4860,33 @@ LoadSettings()
 Globals.TimeScaleValue = CoerceTimeScaleValue(Globals.TimeScaleValue, 2)
 Apply3dRendering()
 
+local function EnsureAutoDJLib()
+    if type(Globals.AutoDJLib) == "table"
+       and type(Globals.AutoDJLib.IsRunning) == "function" then
+        return Globals.AutoDJLib
+    end
+    Globals.AutoDJLib = nil
+    local ok, res = pcall(function()
+        return loadstring(game:HttpGet(
+            "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"
+        ))()
+    end)
+    if ok and type(res) == "table" and type(res.IsRunning) == "function" then
+        Globals.AutoDJLib = res
+        return res
+    end
+    return nil
+end
+
 if Globals.RandomDJ or Globals.MuteOtherDJs then
-    if not Globals.AutoDJLib then
-        Globals.AutoDJLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
-    end
-    if Globals.RandomDJ and Globals.AutoDJLib and not Globals.AutoDJLib.IsRunning() then
-        Globals.AutoDJLib.Start()
-    end
-    if Globals.MuteOtherDJs and Globals.AutoDJLib and Globals.AutoDJLib.StartMuteOthers then
-        Globals.AutoDJLib.StartMuteOthers()
+    local lib = EnsureAutoDJLib()
+    if lib then
+        if Globals.RandomDJ and not lib.IsRunning() then
+            lib.Start()
+        end
+        if Globals.MuteOtherDJs and type(lib.StartMuteOthers) == "function" then
+            lib.StartMuteOthers()
+        end
     end
 end
 
@@ -6152,25 +6170,26 @@ local Automation = Globals.Window:Tab({Title = "Automation", Icon = "bot"}) do
         end
     })
 
-    Automation:Toggle({
-        Title = "Random DJ Songs",
-        Desc = "Plays random songs from a curated list (overrides manual ID).",
-        Value = Globals.RandomDJ or false,
-        Callback = function(v)
-            SetSetting("RandomDJ", v)
-            if v then
-                if not Globals.AutoDJLib then
-                    Globals.AutoDJLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
-                end
-                Globals.AutoDJLib.Start()
-            else
-                if Globals.AutoDJLib then Globals.AutoDJLib.Stop() end
-                if Globals.DJCustomSongID and Globals.DJCustomSongID ~= "" then
-                    AutoSetDJSong()
-                end
+Automation:Toggle({
+    Title = "Random DJ Songs",
+    Desc = "Plays random songs from a curated list (overrides manual ID).",
+    Value = Globals.RandomDJ or false,
+    Callback = function(v)
+        SetSetting("RandomDJ", v)
+        if v then
+            local lib = EnsureAutoDJLib()
+            if lib then lib.Start() end
+        else
+            local lib = Globals.AutoDJLib
+            if type(lib) == "table" and type(lib.Stop) == "function" then
+                lib.Stop()
+            end
+            if Globals.DJCustomSongID and Globals.DJCustomSongID ~= "" then
+                AutoSetDJSong()
             end
         end
-    })
+    end
+})
 
     Automation:Section({Title = "Unit Spawners"})
 
@@ -7590,25 +7609,27 @@ task.spawn(function()
         if Globals.AutoDJ and not Globals.AutoDjRunning then StartAutoDjBooth() end
         if Globals.AutoPulseTrooper and not Globals.AutoPulseTrooperRunning then StartAutoPulseTrooper() end
 
-        if Globals.RandomDJ then
-            if not Globals.AutoDJLib then
-                Globals.AutoDJLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
-            end
-            if Globals.AutoDJLib and not Globals.AutoDJLib.IsRunning() then
-                Globals.AutoDJLib.Start()
-            end
-        elseif Globals.AutoDJLib and Globals.AutoDJLib.IsRunning() then
-            Globals.AutoDJLib.Stop()
-        end
+if Globals.RandomDJ then
+    local lib = EnsureAutoDJLib()
+    if lib and not lib.IsRunning() then
+        lib.Start()
+    end
+else
+    local lib = Globals.AutoDJLib
+    if type(lib) == "table"
+       and type(lib.IsRunning) == "function"
+       and lib.IsRunning()
+       and type(lib.Stop) == "function" then
+        lib.Stop()
+    end
+end
 
-        if Globals.MuteOtherDJs then
-            if not Globals.AutoDJLib then
-                Globals.AutoDJLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/AutoDjCustomSongs"))()
-            end
-            if Globals.AutoDJLib and Globals.AutoDJLib.StartMuteOthers then
-                Globals.AutoDJLib.StartMuteOthers()
-            end
-        end
+if Globals.MuteOtherDJs then
+    local lib = EnsureAutoDJLib()
+    if lib and type(lib.StartMuteOthers) == "function" then
+        lib.StartMuteOthers()
+    end
+end
         if Globals.AutoGatlingGun and not Globals.AutoGatlingGunRunning then StartAutoGatlingGun() end
         if Globals.AutoNecro and not Globals.AutoNecroRunning then StartAutoNecro() end
         if Globals.AutoFreezer and not Globals.AutoFreezerRunning then StartAutoFreezer() end
