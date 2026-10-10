@@ -41,7 +41,7 @@ local RE_Hit    = Net:WaitForChild("RE:Hit")
 ------------------------------------------------------------
 local CFG = {
     AutoFire        = true,
-    FireRate        = 60,
+    FireRate        = 30,
     MaxTargets      = 5,
     ShowTargetESP   = true,
     ShowBulletLines = true,
@@ -54,7 +54,7 @@ local CFG = {
     Debug           = false,
     TimestampOffset = 0,
     SyncOffset      = 0,
-    BatchSize       = 26,
+    BatchSize       = 5,
     BatchStep       = 0,
 
     LowQuality      = true,
