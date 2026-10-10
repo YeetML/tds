@@ -2736,12 +2736,15 @@ function StartAutoGatlingGun()
                         warn("[AutoGatlingGun] loadstring failed")
                         return
                     end
-                    local ran = pcall(fn)
-                    if ran then
-                        Globals.AutoGatlingGunExecuted = true
-                    else
-                        warn("[AutoGatlingGun] module errored on execute, will retry")
-                    end
+                        if type(getgenv().AutoGatlingGun) ~= "table" then
+        getgenv().AutoGatlingGun = nil
+    end
+local ran, err = pcall(fn)
+if ran then
+    Globals.AutoGatlingGunExecuted = true
+else
+    warn("[AutoGatlingGun] module errored: " .. tostring(err))
+end
                 end)
             end
             -- Re-arm the script on executor if the tower was sold then re-placed
