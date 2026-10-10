@@ -1,17 +1,14 @@
 --[[
-    Auto Gatling Gun — external module (fixed)
+    Auto Gatling Gun — external module (fixed + game-side hitsound mute)
     Loaded from the YeetML hub via loadstring(game:HttpGet(url))().
 
     Fixes in this build:
       1) ESP typo: `setESPtargets and setESPTargets(...)` → `setESPTargets(...)`
-         (previous build never drew any beam/highlight)
-      2) `espMap` was referenced by `pickTargets`/`attachDeathHook` before its
-         `local` declaration → global lookup returned nil, death cleanup was
-         a no-op. `espMap` is now declared before those functions.
-      3) Toggle off → on used to permanently disable the module because the
-         hub calls StopWatching() on toggle-off and never re-executes the
-         module on toggle-on. The watcher is now toggle-aware and reads
-         _G.AutoProgSettings.AutoGatlingGun so re-enabling resumes firing.
+      2) `espMap` forward-ref fixed (death cleanup works)
+      3) Toggle off → on no longer bricks the module (soft StopWatching)
+      4) NEW: game's own Gatling Gun hitsound is silenced at the source
+         (Destroy() doesn't flush queued audio — we set Volume = 0 on the
+          live instance and re-silence on every property change + heartbeat sweep)
 
     Features
       - Infinite range / angle, multi-target rotation (up to 5)
@@ -66,8 +63,6 @@ local CFG = {
     IdleReloadDelay = 1.0,
     SpawnGrace      = 0.15,
 
-    -- Shot budget safety: fire one extra shot per target so tiny HP
-    -- replication lag never leaves an enemy alive.
     BudgetSafety    = 1,
 }
 
@@ -88,9 +83,7 @@ local S = {
 }
 
 ------------------------------------------------------------
--- ESP state — declared BEFORE pickTargets / attachDeathHook so that
--- those functions close over the real local variable (upvalue), not a
--- nil global. `clearESP` reassigns espMap, and every closure sees it.
+-- ESP state
 ------------------------------------------------------------
 local lineFolder = Instance.new("Folder")
 lineFolder.Name = "AutoGatlingLines"; lineFolder.Parent = workspace
@@ -122,8 +115,6 @@ local function isAlive(model)
     return true
 end
 
--- Only Lead is checked. Shield can exist on non-Lead enemies and those
--- must still be shot.
 local function hasLead(model)
     local rep = getReplicator(model)
     if not rep then return false end
@@ -132,7 +123,6 @@ local function hasLead(model)
     return se:GetAttribute("Lead") ~= nil
 end
 
--- Now reads the real `espMap` upvalue (no more nil global).
 local function attachDeathHook(model)
     local rep = getReplicator(model)
     if not rep or HealthHooks[rep] then return end
@@ -225,14 +215,13 @@ local function findAimPart(npc)
 end
 
 ------------------------------------------------------------
--- DAMAGE — applies DamageBuff (percent)
+-- DAMAGE
 ------------------------------------------------------------
 local function getEffectiveDamage(rep)
     local base = rep:GetAttribute("Damage")
     if type(base) ~= "number" or base < 1 then base = 1 end
     local buff = rep:GetAttribute("DamageBuff")
     if type(buff) ~= "number" then buff = 0 end
-    -- e.g. base=8, buff=20 → 8 * 1.2 = 9.6
     return base * (1 + buff / 100)
 end
 
@@ -405,7 +394,7 @@ local function spawnTracer(from, to, color)
 end
 
 ------------------------------------------------------------
--- Hitsound
+-- Module's own hitsound (still gated by CFG.HitsoundVolume)
 ------------------------------------------------------------
 RE_Hit.OnClientEvent:Connect(function()
     if not S.Running or CFG.HitsoundVolume <= 0 then return end
@@ -491,10 +480,8 @@ local function heartbeatTick(dt)
     end
 
     if CFG.AutoFire then
-        -- Effective damage includes DamageBuff (percentage)
         local damage = getEffectiveDamage(rep)
 
-        -- Build per-target shot budgets: ceil(HP / damage) + safety
         local budgets, totalRemaining = {}, 0
         for i, t in ipairs(targets) do
             local tRep = getReplicator(t.Model)
@@ -530,8 +517,6 @@ local function heartbeatTick(dt)
     end
 
     if CFG.ShowTargetESP then
-        -- FIXED: was `setESPtargets and setESPTargets(...)` — the lowercase
-        -- global never existed, so ESP silently never turned on.
         setESPTargets(targets, current.Model)
     end
 
@@ -554,6 +539,74 @@ local function enforceFPS(tower, rep)
             Troop = tower, Name = "FPS", Data = { enabled = true },
         })
     end)
+end
+
+------------------------------------------------------------
+-- GAME-SIDE HITSOUND SUPPRESSOR
+-- The game plays its own Gatling Gun hit sound (same asset ID) that the
+-- module config cannot reach. Destroy() doesn't flush queued audio, so we
+-- set Volume = 0 on the live instance and re-silence on every change.
+-- Idempotent — guarded by getgenv flag so module reloads don't double-hook.
+------------------------------------------------------------
+do
+    if not getgenv()._AGG_SoundMute then
+        getgenv()._AGG_SoundMute = true
+
+        local banned = tostring(CFG.HitsoundId):match("(%d+)") or "74643671307263"
+        local hooked = setmetatable({}, {__mode = "k"})
+
+        local function matchSound(s)
+            return s:IsA("Sound")
+               and tostring(s.SoundId ~= "" and s.SoundId or ""):find(banned, 1, true)
+        end
+
+        local function silence(s)
+            if not matchSound(s) then return end
+            pcall(function()
+                s.Volume  = 0
+                s.Playing = false
+            end)
+        end
+
+        local function watchSound(s)
+            if not s:IsA("Sound") then return end
+            silence(s)
+            if hooked[s] then return end
+            hooked[s] = true
+            s:GetPropertyChangedSignal("SoundId"):Connect(function() silence(s) end)
+            s:GetPropertyChangedSignal("Playing"):Connect(function()
+                if s.Playing then silence(s) end
+            end)
+            s:GetPropertyChangedSignal("Volume"):Connect(function()
+                if s.Volume > 0 then silence(s) end
+            end)
+        end
+
+        local function hookRoot(root)
+            if not root then return end
+            for _, c in ipairs(root:GetDescendants()) do
+                if c:IsA("Sound") then watchSound(c) end
+            end
+            root.DescendantAdded:Connect(watchSound)
+        end
+
+        hookRoot(SoundService)
+        hookRoot(workspace)
+        local pg = LP:FindFirstChild("PlayerGui")
+        if pg then hookRoot(pg) end
+        LP.ChildAdded:Connect(function(c)
+            if c.Name == "PlayerGui" then hookRoot(c) end
+        end)
+
+        -- Heartbeat sweep catches anything that slipped past the signals
+        RunService.Heartbeat:Connect(function()
+            for _, s in ipairs(SoundService:GetChildren()) do
+                if s:IsA("Sound") and matchSound(s) and s.Volume > 0 then
+                    silence(s)
+                end
+            end
+        end)
+    end
 end
 
 ------------------------------------------------------------
@@ -590,15 +643,11 @@ end
 function AutoGatlingGun.IsRunning() return S.Running end
 function AutoGatlingGun.GetShots() return S.ShotCount end
 
--- FIXED: StopWatching is now a soft stop. The watcher stays alive so that
--- re-enabling the hub toggle (which flips _G.AutoProgSettings.AutoGatlingGun)
--- resumes firing without needing a rejoin or a re-execute.
 function AutoGatlingGun.StopWatching()
     if S.Running then AutoGatlingGun.Stop() end
     -- Watcher intentionally kept alive. Use _cleanup() for real teardown.
 end
 
--- Real teardown (not called by the hub). Only use for full unload.
 function AutoGatlingGun._cleanup()
     if S._watchConn then S._watchConn:Disconnect() S._watchConn = nil end
     if S.Heartbeat then S.Heartbeat:Disconnect() S.Heartbeat = nil end
@@ -610,11 +659,9 @@ function AutoGatlingGun._cleanup()
 end
 
 ------------------------------------------------------------
--- WATCHER (auto-start + FPS pin + toggle awareness)
+-- WATCHER
 ------------------------------------------------------------
 S._watchConn = RunService.Heartbeat:Connect(function()
-    -- Determine user intent. The hub writes _G.AutoProgSettings.AutoGatlingGun
-    -- via SetSetting() inside the toggle callback, so we can read it here.
     local userWants = true
     local settings = _G and _G.AutoProgSettings
     if settings and settings.AutoGatlingGun ~= nil then
@@ -638,8 +685,7 @@ S._watchConn = RunService.Heartbeat:Connect(function()
 end)
 
 ------------------------------------------------------------
--- Bootstrap — kill any previous watcher from an older module load
--- so re-executing the hub doesn't double-fire.
+-- Bootstrap
 ------------------------------------------------------------
 do
     local old = getgenv().AutoGatlingGun
@@ -652,4 +698,4 @@ end
 AutoGatlingGun._watchConn = S._watchConn
 getgenv().AutoGatlingGun = AutoGatlingGun
 
-print("[AutoGatlingGun] Loaded. ESP fixed, espMap forward-ref fixed, watcher toggle-aware.")
+print("[AutoGatlingGun] Loaded. ESP fixed, espMap forward-ref fixed, watcher toggle-aware, game-side hitsound suppressed.")
