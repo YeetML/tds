@@ -1,0 +1,583 @@
+--[[
+    Gatling Gun — Gatlify Mode  (dead-target skip via StateReplicators)
+    - Infinite range / angle
+    - Multi-target, rotated across up to 5 targets
+    - Skips enemies whose NPCReplicator.Health <= 0 or whose link is gone
+    - Skips Lead-immune enemies (StatusEffects.Lead present = shielded)
+    - Works with elite enemies that have RootPart instead of HumanoidRootPart
+    - ESP + bullet lines only visible while actively firing
+    - Persistent FPS = true on the Gatling Gun (TowerReplicator.FPS)
+    - Auto-starts the moment a Gatling Gun is placed (Heartbeat watcher)
+    - Low-quality ESP / tracers to preserve FPS
+    - Idle reload when no targets remain and gun hasn't fired for 2 seconds
+]]
+
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService        = game:GetService("RunService")
+local SoundService      = game:GetService("SoundService")
+
+local LP         = Players.LocalPlayer
+local Net        = ReplicatedStorage:WaitForChild("Network"):WaitForChild("GatlingGun")
+local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
+
+local RE_Fire   = Net:WaitForChild("RE:Fire")
+local RE_Reload = Net:WaitForChild("RE:Reload")
+local RE_Hit    = Net:WaitForChild("RE:Hit")
+
+------------------------------------------------------------
+-- CONFIG
+------------------------------------------------------------
+local CFG = {
+    AutoFire        = true,
+    FireRate        = 60,
+    MaxTargets      = 5,
+    ShowTargetESP   = true,
+    ShowBulletLines = true,
+    BulletLineLife  = 0.05,
+    TargetColor     = Color3.fromRGB(255, 60, 60),
+    CurrentColor    = Color3.fromRGB(255, 220, 60),
+    HitsoundVolume  = 1,
+    HitsoundId      = "rbxassetid://74643671307263",
+    AutoReload      = true,
+    Debug           = false,
+    TimestampOffset = 0,
+    SyncOffset      = 0,
+    BatchSize       = 26,
+    BatchStep       = 0,
+
+    -- Low-quality ESP / tracer mode (biggest FPS win when true)
+    LowQuality      = true,
+
+    -- Pin TowerReplicator.FPS to true on the Gatling Gun
+    ForceFPS        = true,
+    FPSRecheck      = 0.2,   -- min seconds between FPS re-fires
+
+    -- Idle reload: seconds of no shooting + no targets required to trigger
+    IdleReloadDelay = 2.0,
+}
+
+local function log(...) if CFG.Debug then print("[Gatling]", ...) end end
+
+local S = {
+    Running        = false,
+    Tower          = nil,
+    Rep            = nil,
+    ShotCount      = 0,
+    LastFireTime   = 0,
+    LastActualShot = 0,
+    Heartbeat      = nil,
+    CurrentIndex   = 1,
+}
+
+------------------------------------------------------------
+-- ALIVE CHECK  (via StateReplicators.NPCReplicator.Health)
+------------------------------------------------------------
+local function getReplicator(model)
+    local rp = model:FindFirstChild("RootPointer")
+    if rp and rp:IsA("ObjectValue") then return rp.Value end
+    return nil
+end
+
+local DeadSet = setmetatable({}, {__mode = "k"})
+local HealthHooks = {}
+
+local function isAlive(model)
+    if DeadSet[model] then return false end
+    local rep = getReplicator(model)
+    if not rep or not rep.Parent then DeadSet[model] = true return false end
+    local hp = rep:GetAttribute("Health")
+    if typeof(hp) ~= "number" or hp <= 0 then DeadSet[model] = true return false end
+    return true
+end
+
+-- Lead enemies are bullet-immune while shielded. StatusEffects stores one
+-- attribute per active effect, keyed by effect name. `Lead` present
+-- (value is a JSON string while shielded) = skip. When the shield breaks,
+-- the attribute is removed entirely (goes nil), so `~= nil` correctly
+-- toggles off and the enemy becomes shootable again on the next frame.
+local function hasLead(model)
+    local rep = getReplicator(model)
+    if not rep then return false end
+    local se = rep:FindFirstChild("StatusEffects")
+    if not se then return false end
+    return se:GetAttribute("Lead") ~= nil
+end
+
+local function attachDeathHook(model, espMapRef)
+    local rep = getReplicator(model)
+    if not rep or HealthHooks[rep] then return end
+    HealthHooks[rep] = rep:GetAttributeChangedSignal("Health"):Connect(function()
+        local hp = rep:GetAttribute("Health")
+        if typeof(hp) == "number" and hp <= 0 then
+            DeadSet[model] = true
+            local rec = espMapRef and espMapRef[model]
+            if rec then
+                if rec.highlight then rec.highlight:Destroy() end
+                if rec.beam then rec.beam:Destroy() end
+                if rec.attachTo then rec.attachTo:Destroy() end
+                espMapRef[model] = nil
+            end
+            if HealthHooks[rep] then
+                HealthHooks[rep]:Disconnect()
+                HealthHooks[rep] = nil
+            end
+        end
+    end)
+end
+
+------------------------------------------------------------
+-- PATH
+------------------------------------------------------------
+local pathCache = { nodes = nil, at = 0 }
+local function getPath()
+    if pathCache.nodes and os.clock() - pathCache.at < 1 then return pathCache.nodes end
+    local map   = workspace:FindFirstChild("Map")
+    local paths = map and map:FindFirstChild("Paths")
+    if not paths then return nil end
+    local best, bestLen = nil, -1
+    for _, folder in ipairs(paths:GetChildren()) do
+        local ns = {}
+        for _, n in ipairs(folder:GetChildren()) do
+            if n:IsA("BasePart") and tonumber(n.Name) then table.insert(ns, n) end
+        end
+        if #ns >= 2 then
+            table.sort(ns, function(a, b) return tonumber(a.Name) < tonumber(b.Name) end)
+            local len = 0
+            for i = 1, #ns - 1 do len = len + (ns[i + 1].Position - ns[i].Position).Magnitude end
+            if len > bestLen then bestLen, best = len, ns end
+        end
+    end
+    pathCache.nodes, pathCache.at = best, os.clock()
+    return best
+end
+
+local function projectOnPath(nodes, pos)
+    local bestDist, bestGap, cum = 0, math.huge, 0
+    for i = 1, #nodes - 1 do
+        local a, b = nodes[i].Position, nodes[i + 1].Position
+        local ab   = b - a
+        local seg  = ab.Magnitude
+        if seg > 0 then
+            local t   = math.clamp((pos - a):Dot(ab) / (seg * seg), 0, 1)
+            local gap = (pos - (a + ab * t)).Magnitude
+            if gap < bestGap then bestGap, bestDist = gap, cum + seg * t end
+        end
+        cum = cum + seg
+    end
+    return bestDist
+end
+
+------------------------------------------------------------
+-- TOWER
+------------------------------------------------------------
+local function findTower()
+    local folder = workspace:FindFirstChild("Towers")
+    if not folder then return nil, nil end
+    for _, m in ipairs(folder:GetChildren()) do
+        local rep = m:FindFirstChild("TowerReplicator")
+        if rep
+            and rep:GetAttribute("Name") == "Gatling Gun"
+            and rep:GetAttribute("OwnerId") == LP.UserId then
+            return m, rep
+        end
+    end
+    return nil, nil
+end
+
+------------------------------------------------------------
+-- AIM PART RESOLVER
+-- Normal enemies: HumanoidRootPart exists.
+-- Elites (Lead, etc.): no HumanoidRootPart — expose RootPart as PrimaryPart.
+------------------------------------------------------------
+local function findAimPart(npc)
+    local hrp = npc:FindFirstChild("HumanoidRootPart")
+    if hrp and hrp:IsA("BasePart") then return hrp end
+    if npc.PrimaryPart and npc.PrimaryPart:IsA("BasePart") then return npc.PrimaryPart end
+    return npc:FindFirstChildWhichIsA("BasePart", true)
+end
+
+------------------------------------------------------------
+-- TARGET SELECTION
+------------------------------------------------------------
+local function pickTargets()
+    local npcs = workspace:FindFirstChild("NPCs")
+    if not npcs then return {} end
+    local nodes = getPath()
+    local list  = {}
+    for _, npc in ipairs(npcs:GetChildren()) do
+        if npc:IsA("Model") then
+            local aimPart = findAimPart(npc)
+            if aimPart and isAlive(npc) and not hasLead(npc) then
+                attachDeathHook(npc, espMap)
+                table.insert(list, {
+                    Model = npc,
+                    Pos   = aimPart.Position,
+                    Proj  = nodes and projectOnPath(nodes, aimPart.Position) or 0,
+                })
+            end
+        end
+    end
+    table.sort(list, function(a, b) return a.Proj > b.Proj end)
+    while #list > CFG.MaxTargets do table.remove(list) end
+    return list
+end
+
+------------------------------------------------------------
+-- ESP
+------------------------------------------------------------
+local lineFolder = Instance.new("Folder")
+lineFolder.Name = "GatlingLines"; lineFolder.Parent = workspace
+
+local espFolder = Instance.new("Folder")
+espFolder.Name = "GatlingESP"; espFolder.Parent = workspace
+
+local espMap = {}
+
+local function ensureAttachments(model)
+    local rec = espMap[model]
+    if rec and rec.attachTo and rec.attachTo.Parent then return rec end
+    local root = findAimPart(model)
+    if not root then return nil end
+    local aTo = Instance.new("Attachment")
+    aTo.Name = "GatESP_To"
+    aTo.Parent = root
+    rec = rec or {}
+    rec.attachTo = aTo
+    espMap[model] = rec
+    return rec
+end
+
+local function makeBeam(fromAttach, toAttach, color)
+    local beam = Instance.new("Beam")
+    beam.Attachment0    = fromAttach
+    beam.Attachment1    = toAttach
+    beam.Color          = ColorSequence.new(color)
+    beam.LightEmission  = CFG.LowQuality and 0 or 1
+    beam.LightInfluence = 0
+    beam.FaceCamera     = true
+    local w = CFG.LowQuality and 0.05 or 0.12
+    beam.Width0 = w
+    beam.Width1 = w
+    beam.Transparency = NumberSequence.new(CFG.LowQuality and 0.55 or 0.15)
+    beam.Segments = 1
+    beam.Parent = lineFolder
+    return beam
+end
+
+local function ensureBeamAnchor()
+    if S._beamAnchor and S._beamAnchor.Parent then return S._beamAnchor end
+    local tower, rep = S.Tower, S.Rep
+    if not tower then return nil end
+    local pos = rep:GetAttribute("Position")
+    if typeof(pos) ~= "Vector3" then
+        local pp = tower.PrimaryPart or tower:FindFirstChildWhichIsA("BasePart")
+        pos = pp and pp.Position
+    end
+    if not pos then return nil end
+
+    local anchor = Instance.new("Part")
+    anchor.Name = "GatESP_Anchor"
+    anchor.Anchored, anchor.CanCollide, anchor.CanQuery, anchor.CanTouch = true, false, false, false
+    anchor.Transparency = 1
+    anchor.Size = Vector3.new(0.1, 0.1, 0.1)
+    anchor.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+    anchor.Parent = workspace
+    S._beamAnchor = anchor
+
+    local a = Instance.new("Attachment")
+    a.Name = "GatESP_From"
+    a.Parent = anchor
+    S._beamFrom = a
+    return anchor
+end
+
+local function setESPTargets(list, currentModel)
+    ensureBeamAnchor()
+    if not S._beamFrom then return end
+    local seen = {}
+    for _, t in ipairs(list) do
+        seen[t.Model] = true
+        local rec = ensureAttachments(t.Model)
+        if rec and rec.attachTo then
+            -- Highlight creation is skipped in low-quality mode.
+            if not CFG.LowQuality then
+                if not rec.highlight or not rec.highlight.Parent then
+                    local hl = Instance.new("Highlight")
+                    hl.Adornee = t.Model
+                    hl.FillColor = CFG.TargetColor
+                    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    hl.FillTransparency = 0.65
+                    hl.OutlineTransparency = 0
+                    hl.Parent = espFolder
+                    rec.highlight = hl
+                end
+            end
+            if not rec.beam or not rec.beam.Parent then
+                rec.beam = makeBeam(S._beamFrom, rec.attachTo, CFG.TargetColor)
+            end
+            local isCurrent = (t.Model == currentModel)
+            local col = isCurrent and CFG.CurrentColor or CFG.TargetColor
+            if rec.highlight then
+                rec.highlight.FillColor = col
+            end
+            rec.beam.Color = ColorSequence.new(col)
+            if CFG.LowQuality then
+                rec.beam.Width0 = isCurrent and 0.10 or 0.05
+                rec.beam.Width1 = isCurrent and 0.10 or 0.05
+            else
+                rec.beam.Width0 = isCurrent and 0.22 or 0.12
+                rec.beam.Width1 = isCurrent and 0.22 or 0.12
+            end
+        end
+    end
+    for m, rec in pairs(espMap) do
+        if not seen[m] or not m.Parent then
+            if rec.highlight then rec.highlight:Destroy() end
+            if rec.beam then rec.beam:Destroy() end
+            if rec.attachTo then rec.attachTo:Destroy() end
+            espMap[m] = nil
+        end
+    end
+end
+
+local function clearESP()
+    for m, rec in pairs(espMap) do
+        if rec.highlight then rec.highlight:Destroy() end
+        if rec.beam then rec.beam:Destroy() end
+        if rec.attachTo then rec.attachTo:Destroy() end
+    end
+    espMap = {}
+    if S._beamAnchor then S._beamAnchor:Destroy() S._beamAnchor = nil end
+    S._beamFrom = nil
+end
+
+------------------------------------------------------------
+-- Tracer
+------------------------------------------------------------
+local function spawnTracer(from, to, color)
+    local dist = (to - from).Magnitude
+    if dist < 0.1 then return end
+    local p = Instance.new("Part")
+    p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch = true, false, false, false
+    if not CFG.LowQuality then
+        p.Material = Enum.Material.Neon
+    end
+    p.Color = color or Color3.fromRGB(255, 200, 80)
+    local s = CFG.LowQuality and 0.05 or 0.09
+    p.Size = Vector3.new(s, s, dist)
+    p.CFrame = CFrame.lookAt(from, to) * CFrame.new(0, 0, -dist / 2)
+    p.Parent = lineFolder
+    task.delay(CFG.BulletLineLife, function() p:Destroy() end)
+end
+
+------------------------------------------------------------
+-- Hitsound
+------------------------------------------------------------
+RE_Hit.OnClientEvent:Connect(function()
+    if not S.Running or CFG.HitsoundVolume <= 0 then return end
+    local s = Instance.new("Sound")
+    s.SoundId = CFG.HitsoundId
+    s.Volume  = CFG.HitsoundVolume
+    s.PlaybackSpeed = 0.9 + math.random() * 0.2
+    s.Parent = SoundService
+    s:Play()
+    s.Ended:Once(function() s:Destroy() end)
+end)
+
+------------------------------------------------------------
+-- FIRE
+------------------------------------------------------------
+local function fireAt(pos, extraTime)
+    local sync = workspace:GetAttribute("Sync") or 0
+    local now  = workspace:GetServerTimeNow()
+    RE_Fire:FireServer(
+        pos,
+        sync + CFG.SyncOffset,
+        now + CFG.TimestampOffset + (extraTime or 0)
+    )
+    S.ShotCount += 1
+    S.LastActualShot = os.clock()
+end
+
+------------------------------------------------------------
+-- MAIN LOOP
+------------------------------------------------------------
+local FRAME_BUDGET = 1 / CFG.FireRate
+
+local function heartbeatTick(dt)
+    if not S.Running then return end
+    local tower, rep = S.Tower, S.Rep
+    if not (tower and tower.Parent and rep and rep.Parent) then
+        S.Running = false
+        if CFG.ShowTargetESP then clearESP() end
+        return
+    end
+
+    local ammo      = rep:GetAttribute("Ammo") or 0
+    local maxAmmo   = rep:GetAttribute("MaxAmmo") or ammo
+    local reloading = rep:GetAttribute("Reloading") == true
+
+    if CFG.AutoReload and ammo == 0 and not reloading then
+        RE_Reload:FireServer()
+        if CFG.ShowTargetESP then clearESP() end
+        return
+    end
+    if reloading then
+        if CFG.ShowTargetESP then clearESP() end
+        return
+    end
+
+    local now = os.clock()
+    if now - S.LastFireTime < FRAME_BUDGET then return end
+
+    local targets = pickTargets()
+    if #targets == 0 then
+        if CFG.ShowTargetESP then clearESP() end
+
+        -- Idle reload: no shootable enemies on the field (none exist, or
+        -- all are dead / lead-immune), the magazine isn't full, and we
+        -- haven't actually fired a shot for IdleReloadDelay seconds.
+        if CFG.AutoReload and not reloading
+           and ammo < maxAmmo
+           and (now - S.LastActualShot) >= CFG.IdleReloadDelay then
+            RE_Reload:FireServer()
+        end
+        return
+    end
+
+    if S.CurrentIndex > #targets then S.CurrentIndex = 1 end
+    local current = targets[S.CurrentIndex]
+
+    -- CHANGED: also bail if the current target picked up Lead between
+    -- pickTargets() and the batch start.
+    if not isAlive(current.Model) or not current.Model.Parent or hasLead(current.Model) then
+        S.CurrentIndex += 1
+        S.LastFireTime = now
+        return
+    end
+
+    local towerPos = rep:GetAttribute("Position")
+    if typeof(towerPos) ~= "Vector3" then
+        local pp = tower.PrimaryPart or tower:FindFirstChildWhichIsA("BasePart")
+        towerPos = pp and pp.Position
+    end
+
+    if CFG.AutoFire then
+        local shotsThisTick = 0
+        local idx = S.CurrentIndex
+        while shotsThisTick < CFG.BatchSize do
+            local t = targets[idx]
+            if not t then break end
+            -- CHANGED: re-verify Lead on every shot. If the target picked
+            -- up Lead between pickTargets() and now, skip the shot.
+            if isAlive(t.Model) and not hasLead(t.Model) and t.Model.Parent then
+                local stepTime = shotsThisTick * CFG.BatchStep
+                fireAt(t.Pos, stepTime)
+                if CFG.ShowBulletLines and towerPos then
+                    spawnTracer(towerPos + Vector3.new(0, 3, 0), t.Pos, CFG.CurrentColor)
+                end
+                shotsThisTick += 1
+            end
+            idx += 1
+            if idx > #targets then idx = 1 end
+            if shotsThisTick > 200 then break end
+        end
+        S.CurrentIndex = idx
+    end
+
+    if CFG.ShowTargetESP then
+        setESPTargets(targets, current.Model)
+    end
+
+    S.LastFireTime = now
+end
+
+------------------------------------------------------------
+-- FPS ENFORCEMENT  (keeps TowerReplicator.FPS == true)
+------------------------------------------------------------
+local FPSLastFire = setmetatable({}, {__mode = "k"})
+
+local function enforceFPS(tower, rep)
+    if not CFG.ForceFPS then return end
+    if rep:GetAttribute("FPS") == true then return end
+
+    local now = os.clock()
+    if now - (FPSLastFire[tower] or 0) < CFG.FPSRecheck then return end
+    FPSLastFire[tower] = now
+
+    pcall(function()
+        RemoteFunc:InvokeServer("Troops", "Abilities", "Activate", {
+            Troop = tower,
+            Name  = "FPS",
+            Data  = { enabled = true },
+        })
+    end)
+end
+
+------------------------------------------------------------
+-- PUBLIC
+------------------------------------------------------------
+local Gatling = {}
+Gatling.CFG = CFG
+
+function Gatling.Start()
+    if S.Running then return false end
+    local tower, rep = findTower()
+    if not tower then return false end
+    S.Tower, S.Rep = tower, rep
+    S.Running, S.ShotCount, S.LastFireTime, S.CurrentIndex = true, 0, 0, 1
+    S.LastActualShot = os.clock()
+    enforceFPS(tower, rep)
+    S.Heartbeat = RunService.Heartbeat:Connect(heartbeatTick)
+    log("started")
+    return true
+end
+
+function Gatling.Stop()
+    if not S.Running then return false end
+    S.Running = false
+    if S.Heartbeat then S.Heartbeat:Disconnect() S.Heartbeat = nil end
+    for _, conn in pairs(HealthHooks) do conn:Disconnect() end
+    HealthHooks = {}
+    clearESP()
+    lineFolder:ClearAllChildren()
+    log("stopped")
+    return true
+end
+
+function Gatling.IsRunning() return S.Running end
+function Gatling.GetShots() return S.ShotCount end
+
+function Gatling.StopWatching()
+    if S._watchConn then S._watchConn:Disconnect() S._watchConn = nil end
+end
+
+------------------------------------------------------------
+-- WATCHER  (auto-start + FPS pin, same-frame detection)
+------------------------------------------------------------
+S._watchConn = RunService.Heartbeat:Connect(function()
+    local tower, rep = findTower()
+
+    if not tower then
+        if S.Running then Gatling.Stop() end
+        return
+    end
+
+    enforceFPS(tower, rep)
+
+    if not S.Running then
+        Gatling.Start()
+    end
+end)
+
+------------------------------------------------------------
+-- Bootstrap
+------------------------------------------------------------
+if getgenv().Gatling and getgenv().Gatling.StopWatching then
+    pcall(getgenv().Gatling.StopWatching)
+end
+
+getgenv().Gatling = Gatling
+
+print("[Gatling] Loaded. Lead re-checked per shot, elites supported, FPS pinned, low-quality ESP, idle reload = 2s.")
