@@ -22,12 +22,42 @@ local RunService        = game:GetService("RunService")
 local SoundService      = game:GetService("SoundService")
 
 local LP         = Players.LocalPlayer
-local Net        = ReplicatedStorage:WaitForChild("Network"):WaitForChild("GatlingGun")
-local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
+------------------------------------------------------------
+-- SAFE NETWORK RESOLVE (no infinite-yield warning)
+------------------------------------------------------------
+local function waitForChildSafe(parent, name, timeout)
+    timeout = timeout or 1e9          -- effectively forever
+    local deadline = os.clock() + timeout
+    local child = parent:FindFirstChild(name)
+    while not child and os.clock() < deadline do
+        task.wait(0.25)
+        child = parent:FindFirstChild(name)
+    end
+    return child
+end
 
-local RE_Fire   = Net:WaitForChild("RE:Fire")
-local RE_Reload = Net:WaitForChild("RE:Reload")
-local RE_Hit    = Net:WaitForChild("RE:Hit")
+local NetworkFolder = waitForChildSafe(ReplicatedStorage, "Network")
+if not NetworkFolder then
+    warn("[AutoGatlingGun] Network folder never appeared")
+    return
+end
+
+local Net = waitForChildSafe(NetworkFolder, "GatlingGun")
+if not Net then
+    warn("[AutoGatlingGun] GatlingGun remote folder never appeared")
+    return
+end
+
+local RE_Fire   = waitForChildSafe(Net, "RE:Fire")
+local RE_Reload = waitForChildSafe(Net, "RE:Reload")
+local RE_Hit    = waitForChildSafe(Net, "RE:Hit")
+
+if not (RE_Fire and RE_Reload and RE_Hit) then
+    warn("[AutoGatlingGun] One or more GatlingGun remotes missing – aborting")
+    return
+end
+
+local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
 
 ------------------------------------------------------------
 -- CONFIG
