@@ -853,7 +853,7 @@ local DefaultSettings = {
     SelectedCrate = "All",
     AutoReady = false,
     AutoChain = true,
-    AutoGatling = true,
+    AutoGatling = false,
     Gatlify = false,
     AutoSWATVan = true, 
     AutoPremium = false,
@@ -900,6 +900,7 @@ local DefaultSettings = {
     AutoPulseTrooper = true,
     AutoTrials = false,
     AutoFreezer = true,
+    AutoGatlingGun = true,
     AutoSaboteur = true,
     SmartAutoPlace = false,
     GroundPercentage = 10,
@@ -989,6 +990,8 @@ Globals.AutoReadyRunning = Globals.AutoReadyRunning or false
 Globals.MuteOtherDJsRunning = Globals.MuteOtherDJsRunning or false
 Globals.AutoMedicLib = Globals.AutoMedicLib or nil
 Globals.AutoBountyLib = Globals.AutoBountyLib or nil
+Globals.AutoGatlingGunRunning  = Globals.AutoGatlingGunRunning  or false
+Globals.AutoGatlingGunExecuted = Globals.AutoGatlingGunExecuted or false
 Globals.AutoPlaceTowersModule = Globals.AutoPlaceTowersModule or nil
 Globals.SmartAutoPlaceRunning = Globals.SmartAutoPlaceRunning or false
 Globals.AutoPulseTrooperRunning = Globals.AutoPulseTrooperRunning or false
@@ -2711,6 +2714,31 @@ function StartAutoGatling()
             task.wait(1)
         end
         Globals.AutoGatlingRunning = false
+    end)
+end
+
+function StartAutoGatlingGun()
+    if Globals.AutoGatlingGunRunning or not Globals.AutoGatlingGun then return end
+    Globals.AutoGatlingGunRunning = true
+    task.spawn(function()
+        while Globals.AutoGatlingGun do
+            if not Globals.AutoGatlingGunExecuted then
+                Globals.AutoGatlingGunExecuted = true
+                task.spawn(function()
+                    pcall(function()
+                        loadstring(game:HttpGet(
+                            "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/autogatlinggun"
+                        ))()
+                    end)
+                end)
+            end
+            -- Re-arm the script on executor if the tower was sold then re-placed
+            if getgenv().AutoGatlingGun and getgenv().AutoGatlingGun.StopWatching then
+                -- noop; the module's own watcher handles it
+            end
+            task.wait(1)
+        end
+        Globals.AutoGatlingGunRunning = false
     end)
 end
 
@@ -6228,6 +6256,21 @@ local Automation = Globals.Window:Tab({Title = "Automation", Icon = "bot"}) do
     })
 
     Automation:Toggle({
+    Title = "Auto Gatling Gun",
+    Desc  = "Loads external Auto Gatling Gun — smart shot budgets with DamageBuff support, Lead-aware, elite-ready",
+    Value = Globals.AutoGatlingGun,
+    Callback = function(v)
+        SetSetting("AutoGatlingGun", v)
+        if v then
+            StartAutoGatlingGun()
+        elseif getgenv().AutoGatlingGun then
+            pcall(function() getgenv().AutoGatlingGun.Stop() end)
+            pcall(function() getgenv().AutoGatlingGun.StopWatching() end)
+        end
+    end
+})
+
+    Automation:Toggle({
         Title = "Gatlify",
         Desc = "Gatling gun script but better, more stable, with fixed lags and more features than Railgun (includes a key system)",
         Value = Globals.Gatlify,
@@ -7553,7 +7596,7 @@ task.spawn(function()
                 Globals.AutoDJLib.StartMuteOthers()
             end
         end
-
+        if Globals.AutoGatlingGun and not Globals.AutoGatlingGunRunning then StartAutoGatlingGun() end
         if Globals.AutoNecro and not Globals.AutoNecroRunning then StartAutoNecro() end
         if Globals.AutoFreezer and not Globals.AutoFreezerRunning then StartAutoFreezer() end
         if Globals.AutoSaboteur and not Globals.AutoSaboteurRunning then StartAutoSaboteur() end
