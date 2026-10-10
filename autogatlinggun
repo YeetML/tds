@@ -276,7 +276,7 @@ local function heartbeatTick(dt)
         RE_Reload:FireServer()
         return
     end
-    if reloading then
+    if ammo <= 0 then
         return
     end
 
