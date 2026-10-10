@@ -1272,6 +1272,7 @@ function LoadSettings()
                 Globals[key] = DefaultVal
             end
         end
+         _G.AutoProgSettings[key] = Globals[key]
     end
 
     SaveSettings()
@@ -2723,13 +2724,24 @@ function StartAutoGatlingGun()
     task.spawn(function()
         while Globals.AutoGatlingGun do
             if not Globals.AutoGatlingGunExecuted then
-                Globals.AutoGatlingGunExecuted = true
                 task.spawn(function()
-                    pcall(function()
-                        loadstring(game:HttpGet(
-                            "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/autogatlinggun"
-                        ))()
-                    end)
+                    local ok, code = pcall(game.HttpGet, game,
+                        "https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/autogatlinggun")
+                    if not ok or type(code) ~= "string" then
+                        warn("[AutoGatlingGun] fetch failed, will retry next tick")
+                        return
+                    end
+                    local fn = loadstring(code)
+                    if not fn then
+                        warn("[AutoGatlingGun] loadstring failed")
+                        return
+                    end
+                    local ran = pcall(fn)
+                    if ran then
+                        Globals.AutoGatlingGunExecuted = true
+                    else
+                        warn("[AutoGatlingGun] module errored on execute, will retry")
+                    end
                 end)
             end
             -- Re-arm the script on executor if the tower was sold then re-placed
@@ -6266,6 +6278,7 @@ local Automation = Globals.Window:Tab({Title = "Automation", Icon = "bot"}) do
         elseif getgenv().AutoGatlingGun then
             pcall(function() getgenv().AutoGatlingGun.Stop() end)
             pcall(function() getgenv().AutoGatlingGun.StopWatching() end)
+            Globals.AutoGatlingGunExecuted = false
         end
     end
 })
