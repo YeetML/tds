@@ -22,7 +22,7 @@
       - Smart shot budget: uses Damage * (1 + DamageBuff/100)
       - Persistent FPS = true on the Gatling Gun
       - Auto-starts the moment a Gatling Gun is placed
-      - Low-quality ESP + tracers, idle reload after 2 s
+      - Low-quality ESP + tracers, idle reload after 1 s
       - Exposes getgenv().AutoGatlingGun = { Start / Stop / IsRunning }
 ]]
 
@@ -51,7 +51,7 @@ local CFG = {
     BulletLineLife  = 0.05,
     TargetColor     = Color3.fromRGB(255, 60, 60),
     CurrentColor    = Color3.fromRGB(255, 220, 60),
-    HitsoundVolume  = 1,
+    HitsoundVolume  = 0,
     HitsoundId      = "rbxassetid://74643671307263",
     AutoReload      = true,
     Debug           = false,
@@ -63,7 +63,7 @@ local CFG = {
     LowQuality      = true,
     ForceFPS        = true,
     FPSRecheck      = 0.2,
-    IdleReloadDelay = 2.0,
+    IdleReloadDelay = 1.0,
     SpawnGrace      = 0.15,
 
     -- Shot budget safety: fire one extra shot per target so tiny HP
