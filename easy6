@@ -1,0 +1,102 @@
+local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+
+TDS:Loadout("Militant", "None", "None", "None", "None")
+TDS:Mode("Easy")
+TDS:GameInfo("Abyssal Trench", {})
+
+TDS:Ready()
+TDS:Place("Militant", -27.72719955444336, 0.4474809467792511, -14.487972259521484)
+
+TDS:Place("Militant", -26.655738830566406, 0.4474788308143616, -6.565786838531494)
+
+TDS:Place("Militant", -24.723114013671875, 0.4474809169769287, -14.137214660644531)
+
+TDS:Place("Militant", -21.667861938476562, 0.44748085737228394, -13.982989311218262)
+
+TDS:Upgrade(4)
+TDS:Place("Militant", -23.477134704589844, 0.44747909903526306, -7.084675312042236)
+
+TDS:Place("Militant", -26.17535400390625, 0.4474829435348511, -17.76165008544922)
+TDS:Place("Militant", -23.076797485351562, 0.44748175144195557, -16.698640823364258)
+
+TDS:Place("Militant", -19.895458221435547, 0.44748204946517944, -16.433536529541016)
+TDS:Place("Militant", -17.700672149658203, 0.44748127460479736, -14.22023868560791)
+TDS:Upgrade(1)
+TDS:Upgrade(2)
+TDS:Upgrade(3)
+TDS:Upgrade(5)
+
+
+TDS:Upgrade(6)
+TDS:Upgrade(1)
+TDS:Upgrade(2)
+
+
+TDS:Upgrade(7)
+
+
+TDS:Upgrade(3)
+TDS:Upgrade(4)
+TDS:Upgrade(8)
+
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+TDS:Upgrade(9)
+TDS:Upgrade(7)
+TDS:Upgrade(8)
+
+TDS:Upgrade(9)
+
+
+TDS:Upgrade(1)
+TDS:Place("Militant", -16.325027465820312, 0.4474789798259735, -7.259552001953125)
+
+TDS:Place("Militant", -23.004791259765625, 0.4474835693836212, -20.09978675842285)
+TDS:Upgrade(2)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+TDS:VoteSkip(14)
+
+TDS:Upgrade(3)
+TDS:Upgrade(10)
+TDS:Upgrade(11)
+
+TDS:Upgrade(4)
+TDS:Upgrade(5)
+TDS:Upgrade(6)
+
+TDS:Upgrade(7)
+
+TDS:Upgrade(8)
+TDS:Upgrade(9)
+TDS:Upgrade(10)
+
+TDS:Upgrade(11)
+
+TDS:Upgrade(1)
+TDS:Place("Militant", -19.94430923461914, 0.4474828243255615, -19.579111099243164)
+TDS:Place("Militant", -16.798492431640625, 0.44748228788375854, -17.473440170288086)
+TDS:Upgrade(12)
+TDS:Upgrade(13)
+TDS:Upgrade(12)
+TDS:Upgrade(13)
+TDS:Upgrade(10)
+TDS:Upgrade(13)
+TDS:Upgrade(12)
+TDS:Upgrade(2)
+TDS:Upgrade(11)
+TDS:Place("Militant", -14.663311004638672, 0.4474811553955078, -14.088363647460938)
+TDS:Upgrade(3)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:Upgrade(14)
+TDS:Upgrade(4)
+TDS:Upgrade(5)
+TDS:Upgrade(14)
+TDS:Upgrade(6)
+TDS:Upgrade(7)
+TDS:Upgrade(13)
+TDS:Upgrade(12)
+TDS:Upgrade(8)
+
+TDS:Upgrade(9)
