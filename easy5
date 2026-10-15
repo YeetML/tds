@@ -1,5 +1,5 @@
-local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
-
+loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/1ccd0ba7c9ad62afbcb61747b65194a58bfbd09cc9b30e7f7a5e7931821344c0/download"))()
+local TDS = shared.TDSTable
 TDS:Loadout("Militant", "Shotgunner", "None", "None", "None")
 TDS:Mode("Easy")
 TDS:GameInfo("Mason Arch", {})
