@@ -11,7 +11,8 @@ local LOSS_THRESHOLD = 30
 local lossCount = 0
 local LOBBY_ID = 3260590327
 
-local TDS = loadstring(game:HttpGet("https://raw.githubusercontent.com/YeetML/tds/refs/heads/main/main"))()
+loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/1ccd0ba7c9ad62afbcb61747b65194a58bfbd09cc9b30e7f7a5e7931821344c0/download"))()
+local TDS = shared.TDSTable 
 
 TDS:Loadout("Pyromancer", "Farm", "Shotgunner", "None", "None")
 TDS:Mode("Hardcore")
